@@ -84,6 +84,7 @@ export class App {
     document.getElementById('regen')!.addEventListener('click', () => {
       void this.regenerate();
     });
+    this.buildEnvPicker();
   }
 
   // True while a world is being generated (the frame loop pauses).
@@ -105,6 +106,43 @@ export class App {
     return new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
   }
 
+  // On-screen environment picker (also reachable with keys 1-7).
+  private envButtons = new Map<BiomeId, HTMLButtonElement>();
+  private buildEnvPicker() {
+    const nav = document.getElementById('envs')!;
+    BIOME_ORDER.forEach((id, i) => {
+      const b = document.createElement('button');
+      b.textContent = BIOMES[id].name;
+      b.title = `${BIOMES[id].name} (${i + 1})`;
+      b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', () => {
+        b.blur();
+        this.switchTo(id);
+      });
+      nav.appendChild(b);
+      this.envButtons.set(id, b);
+    });
+  }
+
+  private updateEnvPicker(id: BiomeId) {
+    for (const [k, b] of this.envButtons) {
+      b.setAttribute('aria-pressed', k === id ? 'true' : 'false');
+    }
+    this.envButtons
+      .get(id)
+      ?.scrollIntoView({block: 'nearest', inline: 'nearest'});
+    const url = new URL(location.href);
+    url.searchParams.set('biome', id);
+    history.replaceState(null, '', url);
+  }
+
+  switchTo(id: BiomeId) {
+    if (this.busy || id === this.biome?.id) return;
+    this.params.s = null;
+    this.params.tod = null;
+    void this.generate(id);
+  }
+
   // New world with a fresh random seed in the current environment.
   async regenerate() {
     if (this.busy) return;
@@ -120,6 +158,7 @@ export class App {
     this.setProgress(`${name}: shaping the land`, 0.05);
     await this.yieldToPaint();
     this.biome = structuredClone(BIOMES[id]);
+    this.updateEnvPicker(id);
     if (this.params.tod !== null) this.biome.sky.timeOfDay = this.params.tod;
     this.road = new Road(this.biome, this.params.seed);
     this.setProgress(`${name}: populating traffic`, 0.2);
@@ -205,6 +244,7 @@ export class App {
           break;
         case 'h':
           this.hudEl.classList.toggle('hidden');
+          document.body.classList.toggle('ui-hidden');
           break;
         case 'r':
           void this.regenerate();
@@ -212,9 +252,7 @@ export class App {
         default: {
           const n = Number(e.key);
           if (n >= 1 && n <= BIOME_ORDER.length) {
-            this.params.s = null;
-            this.params.tod = null;
-            void this.generate(BIOME_ORDER[n - 1]);
+            this.switchTo(BIOME_ORDER[n - 1]);
           }
         }
       }
