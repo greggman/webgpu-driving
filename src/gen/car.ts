@@ -1322,44 +1322,52 @@ export function buildWheel(): MeshData {
     for (const q of [0, 1, 2, 0, 2, 3]) push(disc[q], [1, 0, 0], MAT_DISC);
     void face;
   }
-  // Five twin spokes: slightly concave, raised above the disc.
+  // Five twin spokes: a concave dish (hub set back, the spokes curving out
+  // to the lip) with a ridged face that splits the highlight.
   const spoke = (ang: number, width: number) => {
     const c = Math.cos(ang),
       s = Math.sin(ang);
     const t = [0, -s, c]; // tangent (perpendicular to the radial dir)
-    const rad = [0, c, s];
-    const pts = (r: number, x: number, off: number) => [
-      x,
-      rad[1] * r + t[1] * off,
-      rad[2] * r + t[2] * off,
-    ];
-    const w0 = width,
-      w1 = width * 0.7;
     const inner = 0.19,
       outer = 0.62;
     const xIn = hw * 0.45,
-      xOut = hw * 0.8; // concave dish: hub set back from the lip
-    // Face.
-    const f = [
-      pts(inner, xIn, -w0),
-      pts(outer, xOut, -w1),
-      pts(outer, xOut, w1),
-      pts(inner, xIn, w0),
+      xOut = hw * 0.8;
+    const back = 0.05;
+    // Across the spoke: back edge, face edge, face, ridge, face, edge, back.
+    const across: Array<[number, number]> = [
+      [-1, -back],
+      [-1, 0],
+      [-0.5, 0.008],
+      [0, 0.015],
+      [0.5, 0.008],
+      [1, 0],
+      [1, -back],
     ];
-    for (const q of [0, 1, 2, 0, 2, 3]) push(f[q], [1, 0, 0], MAT_RIM);
-    // Sides (give the spoke depth).
-    for (const sgn of [-1, 1]) {
-      const ww0 = w0 * sgn,
-        ww1 = w1 * sgn;
-      const sd = [
-        pts(inner, xIn, ww0),
-        pts(outer, xOut, ww1),
-        pts(outer, xOut - 0.12, ww1),
-        pts(inner, xIn - 0.12, ww0),
-      ];
-      const nn = [0, t[1] * sgn, t[2] * sgn];
-      for (const q of [0, 1, 2, 0, 2, 3]) push(sd[q], nn, MAT_RIM);
+    const grid: P3[][] = [];
+    for (let i = 0; i <= 6; ++i) {
+      const u = i / 6;
+      const r = inner + (outer - inner) * u;
+      const x = xIn + (xOut - xIn) * Math.pow(u, 1.7);
+      const w = width * (1 - 0.3 * u);
+      grid.push(
+        across.map(([o, dx]) => [
+          x + dx,
+          c * r + t[1] * o * w,
+          s * r + t[2] * o * w,
+        ]),
+      );
     }
+    emitGrid(
+      push,
+      grid,
+      () => MAT_RIM,
+      p => {
+        const off = p[1] * t[1] + p[2] * t[2];
+        const sg = Math.abs(off) < 1e-6 ? 0 : Math.sign(off);
+        return [0.6, t[1] * sg, t[2] * sg];
+      },
+      false,
+    );
   };
   for (let k = 0; k < 5; ++k) {
     const a = (k / 5) * Math.PI * 2;
@@ -1387,26 +1395,46 @@ export function buildWheel(): MeshData {
       MAT_CHROME,
     );
   }
-  // Caliper (fixed; the shader doesn't spin it): a curved block at the rear top.
-  for (let i = 0; i < 6; ++i) {
-    const a0 = Math.PI * 0.55 + (i / 6) * 0.8,
-      a1 = Math.PI * 0.55 + ((i + 1) / 6) * 0.8;
-    const P = [
-      ring(0.6, hw * 0.3, a0),
-      ring(0.36, hw * 0.3, a0),
-      ring(0.36, hw * 0.3, a1),
-      ring(0.6, hw * 0.3, a1),
-    ];
-    for (const q of [0, 1, 2, 0, 2, 3]) push(P[q], [1, 0, 0], MAT_CALIPER);
-    const T = [
-      ring(0.6, hw * 0.3, a0),
-      ring(0.6, -hw * 0.1, a0),
-      ring(0.6, -hw * 0.1, a1),
-      ring(0.6, hw * 0.3, a1),
-    ];
-    const nt = (a: number) => [0, Math.cos(a), Math.sin(a)];
-    for (const q of [0, 1, 2, 0, 2, 3])
-      push(T[q], nt(q < 2 ? a0 : a1), MAT_CALIPER);
+  // Caliper (fixed; the shader doesn't spin it): a rounded body at the
+  // rear top that straddles the disc's edge, with capsule-like ends.
+  {
+    const aC = Math.PI * 0.55,
+      aSpan = 0.8;
+    const rc = 0.5,
+      rr = 0.14, // radial half size
+      xc = 0.04,
+      xr = 0.075; // axial half size
+    const grid: P3[][] = [];
+    for (let i = 0; i <= 10; ++i) {
+      const tt = i / 10;
+      const a = aC + tt * aSpan;
+      const e = Math.pow(
+        Math.sin(Math.PI * Math.min(Math.max(tt, 0.02), 0.98)),
+        0.3,
+      );
+      const row: P3[] = [];
+      for (let j = 0; j < 16; ++j) {
+        const th = (j / 16) * Math.PI * 2;
+        const cs = Math.cos(th),
+          sn = Math.sin(th);
+        // Rounded-rectangle section.
+        const px = Math.sign(cs) * Math.pow(Math.abs(cs), 0.4),
+          py = Math.sign(sn) * Math.pow(Math.abs(sn), 0.4);
+        row.push(ring(rc + py * rr * e, xc + px * xr * e, a) as P3);
+      }
+      grid.push(row);
+    }
+    emitGrid(
+      push,
+      grid,
+      () => MAT_CALIPER,
+      p => {
+        const a = Math.atan2(p[2], p[1]);
+        const q = ring(rc, xc, a);
+        return [p[0] - q[0], p[1] - q[1], p[2] - q[2]];
+      },
+      true,
+    );
   }
   const out = orient(new Float32Array(v));
   return {vertices: out, count: out.length / V_FLOATS};

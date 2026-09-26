@@ -105,6 +105,12 @@ export interface BodyCurves {
   hoodLines?: {x: number; height: number; crease: number};
   hoodDome?: number; // raise of the hood centre line (m), faded at cowl / nose
   doorBow?: number; // outward bow of the panel between door line and shoulder (m)
+  // Inward dish of the lower door between rocker and door line (m): a
+  // concave band that turns convex again at the sill.
+  doorConcave?: number;
+  archGap?: number; // wheel arch radius minus wheel radius (m, default 0.02)
+  // Door mirror head: width (outboard), height, and gap from the belt (m).
+  mirror?: {w: number; h: number; out: number};
   // Lamps, grille and intakes: real openings cut into the skin (see
   // buildOpenings).
   openings?: Opening[];
@@ -118,7 +124,7 @@ export interface BodyCurves {
     sideRear: number; // z where the side glass ends (C pillar)
     pillars: number[]; // z of the B (and other) pillars
     pillarWidth: number;
-        quarterLight?: [number, number]; // z range of a small window behind the C pillar
+    quarterLight?: [number, number]; // z range of a small window behind the C pillar
     // Painted A / C pillar band across the top of the windscreen and
     // backlight edges (m, measured inboard from the rail).
     aPillarWidth?: number;
@@ -185,7 +191,7 @@ const asCurve = (v: Knots | number) =>
 function spline2(
   pts: Array<[number, number]>,
   counts: number[],
-    sharp: number[] = [],
+  sharp: number[] = [],
   uAt: Array<number[] | undefined> = [],
 ): {p: Array<[number, number]>; span: number[]} {
   // Hermite spline with Catmull-Rom tangents over a centripetal
@@ -224,7 +230,7 @@ function spline2(
     const h = t[s + 2] - t[s + 1];
     const cnt = counts[s];
     for (let q = 0; q < cnt; ++q) {
-            // Sample parameters: uniform unless the span has its own list.
+      // Sample parameters: uniform unless the span has its own list.
       const u = uAt[s]?.[q] ?? q / cnt;
       const u2 = u * u,
         u3 = u2 * u;
@@ -247,7 +253,7 @@ function spline2(
 // Samples per span, bottom centre -> roof centre:
 // underside, sill, lower door, door->shoulder, shoulder->belt, side glass,
 // roof rail curve, roof.
-const SPAN_COUNTS = [4, 4, 8, 9, 7, 12, 6, 9];
+const SPAN_COUNTS = [4, 4, 8, 9, 7, 12, 6, 12];
 const SPAN_GLASS = 5;
 
 export interface BodyGeom {
@@ -301,9 +307,9 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     beltIn = asCurve(c.beltIn),
     railIn = asCurve(c.railIn);
   const cab = c.cabin;
-    const inCabin = (z: number) =>
+  const inCabin = (z: number) =>
     z > cab.rearGlassBase && z < cab.windscreenBase;
-    const pillarW = cab.aPillarWidth ?? 0.06;
+  const pillarW = cab.aPillarWidth ?? 0.06;
   const fritW = cab.frit ?? [0, 0];
 
   // Section half (x >= 0) through the character lines at z.
@@ -356,45 +362,42 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       hoodPt,
       [0, tp + dome],
     ];
-        const cr = c.creases ?? {};
+    const cr = c.creases ?? {};
     // The rail -> roof span puts rows at the pillar band and frit edges.
     const railLen = Math.max(Math.hypot(rx - hoodPt[0], ry - hoodPt[1]), 0.05);
     const a = Math.min(pillarW / railLen, 0.4),
       b = Math.min(a + fritW[1] / railLen, 0.55);
     const n6 = SPAN_COUNTS[6];
-        const u6 = fritW[1] > 0 ? [0, a, b] : [0, a];
+    const u6 = fritW[1] > 0 ? [0, a, b] : [0, a];
     const e = u6[u6.length - 1],
       rest = n6 - u6.length + 1;
     for (let q = 1; q < rest; ++q) u6.push(e + ((1 - e) * q) / rest);
-    const sp2 = spline2(pts, SPAN_COUNTS, [
-      0,
-      0,
-      0,
-      cr.door ?? 0,
-      cr.shoulder ?? 0,
-      cr.belt ?? 0,
-      0,
-            hoodCrease,
-    ],
-    [, , , , , , u6]);
+    const sp2 = spline2(
+      pts,
+      SPAN_COUNTS,
+      [0, 0, 0, cr.door ?? 0, cr.shoulder ?? 0, cr.belt ?? 0, 0, hoodCrease],
+      SPAN_COUNTS.map((_, i) => (i === 6 ? u6 : undefined)),
+    );
     // Door panel bow: a gentle outward belly between door line and
     // shoulder (a highlight gradient instead of a flat band).
-    if (c.doorBow) {
-      const n = SPAN_COUNTS[3];
+    const bow = (span: number, amt: number) => {
+      const n = SPAN_COUNTS[span];
       let q = 0;
       for (let k = 0; k < sp2.p.length; ++k)
-        if (sp2.span[k] === 3) {
+        if (sp2.span[k] === span) {
           sp2.p[k][0] +=
-            c.doorBow * Math.sin((Math.PI * q) / n) * (W > 0.3 ? 1 : W / 0.3);
+            amt * Math.sin((Math.PI * q) / n) * (W > 0.3 ? 1 : W / 0.3);
           q++;
         }
-    }
+    };
+    if (c.doorBow) bow(3, c.doorBow);
+    if (c.doorConcave) bow(2, -c.doorConcave);
     return sp2;
   };
 
   // Stations: fine everywhere, finer at the ends (where the plan curve
   // turns in to form the fascias) and at the wheel arches.
-  const archR = R + 0.02;
+  const archR = R + (c.archGap ?? 0.02);
   const zs: number[] = [];
   for (let z = tail; z <= nose + 1e-6; z += 0.03) zs.push(z);
   for (const [a, b] of [
@@ -405,7 +408,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   for (const az of axles)
     for (let q = 0; q <= 40; ++q)
       zs.push(az + (archR + 0.06) * ((q / 40) * 2 - 1));
-    zs.push(nose, tail);
+  zs.push(nose, tail);
   // Rows at the windscreen header / backlight frit edges.
   zs.push(cab.roofFront, cab.roofBack);
   if (fritW[0] > 0) zs.push(cab.roofFront + fritW[0], cab.roofBack - fritW[0]);
@@ -417,7 +420,6 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   // mat()) and a flared, rolled arch lip (below) covers the cut edge.
   // Inboard of xIn the skin stays, forming the well's inner wall.
   const xIn = sp.track / 2 - 0.2;
-  const trimArch = (_x: number, y: number, _z: number): number => y;
 
   // Raked fascias: the upper nose / tail leans back from the bumper.
   const rakeZ = (z: number, x: number, y: number) => {
@@ -469,11 +471,11 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     const ring: P3[] = [];
     const zr = (x: number, y: number) => rakeZ(z, x, y);
     for (let k = 0; k < p.length; ++k) {
-      const y = trimArch(p[k][0], p[k][1], z);
+      const y = p[k][1];
       ring.push([-p[k][0], y, zr(p[k][0], y)]);
     }
     for (let k = p.length - 2; k >= 0; --k) {
-      const y = trimArch(p[k][0], p[k][1], z);
+      const y = p[k][1];
       ring.push([p[k][0], y, zr(p[k][0], y)]);
     }
     grid.push(ring);
@@ -569,7 +571,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     const ws = z > cab.roofFront && z < cab.windscreenBase;
     const back = z < cab.roofBack && z > cab.rearGlassBase;
     if (ws || back) {
-            if (s === 6 && first) return MAT_PAINT; // A / C pillar band
+      if (s === 6 && first) return MAT_PAINT; // A / C pillar band
       // Black frit along the pillars and across the header / trailing edge.
       if (fritW[1] > 0 && s === 6 && k === spanStart[6] + 1) return MAT_TRIM;
       if (
@@ -688,22 +690,26 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     const z = cab.windscreenBase - 0.28;
     const wz = g.beltX(z);
     const y = g.belt(z) + 0.07;
-    const mw = 0.17,
-      mh = 0.1,
+    const mc = c.mirror ?? {w: 0.17, h: 0.1, out: 0.085};
+    const mw = mc.w,
+      mh = mc.h,
       md = 0.08;
-    const x0 = sx * (wz + 0.085);
+    const x0 = sx * (wz + mc.out);
     const mg: P3[][] = [];
     for (let a = 0; a <= 10; ++a) {
       const t = a / 10;
-      const sc = Math.pow(
-        Math.sin(Math.PI * Math.min(1, 0.08 + t * 0.92)),
-        0.35,
-      );
+      // A head that tapers toward its stalk and has a tight outboard cap,
+      // not a round pod.
+      const sc =
+        (0.6 + 0.4 * sm(0, 0.5, t)) *
+        Math.pow(Math.sin((Math.PI / 2) * Math.min(1, (1 - t) / 0.14)), 0.5) *
+        Math.pow(Math.sin((Math.PI / 2) * Math.min(1, 0.1 + t / 0.06)), 0.5);
       const row: P3[] = [];
       for (let b = 0; b <= 16; ++b) {
         const th = (b / 16) * Math.PI * 2;
         const cz = Math.cos(th),
-          sy = Math.sin(th);
+          s0 = Math.sin(th),
+          sy = Math.sign(s0) * Math.pow(Math.abs(s0), 0.6); // squarer section
         const dz = cz > 0 ? cz * md : cz * 0.012;
         row.push([
           x0 + sx * (t - 0.5) * mw,
