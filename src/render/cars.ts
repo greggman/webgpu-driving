@@ -13,7 +13,7 @@ import {RENDER_PRELUDE} from './shaders';
 import carSrc from '../shaders/car.wgsl';
 import {GBUFFER_TARGETS, DEPTH_FORMAT} from './targets';
 
-export const CAR_FLOATS = 48; // 2 mat4 + 4 vec4
+export const CAR_FLOATS = 52; // 2 mat4 + 5 vec4
 const MAX_CARS = 256;
 
 export interface CarDraw {

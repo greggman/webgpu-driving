@@ -554,6 +554,7 @@ export class Renderer {
     this.cars.draw(main);
     this.roadMesh!.draw(main);
     this.props.draw(main);
+    main.setBindGroup(2, this.emptyBG);
     this.vegetation.draw(main, this.emptyBG);
     if (!DEBUG.has('noterrain')) this.terrain.draw(main);
     this.water.draw(main);

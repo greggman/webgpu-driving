@@ -8,6 +8,7 @@ struct Car {
   p0: vec4f,      // wheelbase, track, wheel radius, wheel spin angle
   p1: vec4f,      // steer, brake, lights on, dirt
   p2: vec4f,      // half length, half width, front cap y, rear cap y
+  p3: vec4f,      // windshield base z, B-pillar z, rear glass base z, beltline y
 };
 
 @group(1) @binding(0) var<storage, read> cars: array<Car>;
@@ -27,6 +28,7 @@ struct VOut {
   @location(3) local: vec3f,
   @location(4) @interpolate(flat) mat: u32,
   @location(5) @interpolate(flat) car: u32,
+  @location(6) lnormal: vec3f,
 };
 
 @vertex
@@ -41,6 +43,7 @@ fn vsBody(v: VIn, @builtin(instance_index) ii: u32) -> VOut {
   o.local = v.pos;
   o.mat = u32(v.mat + 0.5);
   o.car = ii;
+  o.lnormal = v.normal;
   return o;
 }
 
@@ -85,6 +88,7 @@ fn vsWheel(v: VIn, @builtin(instance_index) ii: u32) -> VOut {
   o.local = v.pos;
   o.mat = u32(v.mat + 0.5);
   o.car = ci;
+  o.lnormal = v.normal;
   return o;
 }
 
@@ -150,26 +154,38 @@ fn fs(in: VOut) -> GBufferOut {
   let ao = saturate(0.45 + lp.y * 0.9);
   var mat = in.mat;
 
-  // Head / tail light zones on the body.
+  // Fascia details from local position + local normal.
+  let ln = normalize(in.lnormal);
+  let ax = abs(lp.x) / halfW;
   var isHead = false;
   var isTail = false;
   var isGrille = false;
-  if (mat == 0u || mat == 3u) {
-    let ax = abs(lp.x) / halfW;
-    if (lp.z > halfL - 0.32 && lp.y > c.p2.z - 0.04 && lp.y < c.p2.z + 0.14 && ax > 0.5 && ax < 0.93) {
+  var isBlack = false;
+  if (mat == 0u || mat == 3u || mat == 4u) {
+    let capF = c.p2.z;
+    let capR = c.p2.w;
+    if (lp.z > halfL - 0.4 && ln.z > 0.15 && lp.y > capF - 0.02 && lp.y < capF + 0.13 && ax > 0.42 && ax < 0.9) {
       isHead = true;
     }
-    if (mat == 3u && ax < 0.45 && lp.y < c.p2.z - 0.02 && lp.y > c.p2.z - 0.22) {
+    if (lp.z > halfL - 0.25 && ln.z > 0.5 && ax < 0.42 && lp.y < capF - 0.03 && lp.y > capF - 0.24) {
       isGrille = true;
     }
-  }
-  if (mat == 0u || mat == 4u) {
-    let ax = abs(lp.x) / halfW;
-    if (lp.z < -halfL + 0.2 && lp.y > c.p2.w - 0.02 && lp.y < c.p2.w + 0.18 && ax > 0.55) {
-      isTail = true;
+    // Full-width tail light bar + corner clusters.
+    if (lp.z < -halfL + 0.35 && ln.z < -0.2) {
+      let bar = abs(lp.y - (capR + 0.06)) < 0.035;
+      let corner = ax > 0.62 && lp.y > capR - 0.03 && lp.y < capR + 0.14;
+      if (bar || corner) { isTail = true; }
+    }
+    // Black lower bumpers / valances.
+    if (abs(lp.z) > halfL - 0.45 && lp.y < 0.36) { isBlack = true; }
+    // Wheel arch liners.
+    let wr = c.p0.z;
+    for (var w = 0; w < 2; w++) {
+      let az = select(-0.5, 0.5, w == 0) * c.p0.x;
+      let dd = length(vec2f(lp.z - az, lp.y - wr));
+      if (dd < wr + 0.075 && ax > 0.8) { isBlack = true; }
     }
   }
-
   if (isHead) {
     s.albedo = vec3f(0.6);
     s.rough = 0.05;
@@ -186,12 +202,15 @@ fn fs(in: VOut) -> GBufferOut {
     let slat = step(0.5, fract(lp.y * 40.0));
     s.albedo = vec3f(0.02 + 0.03 * slat);
     s.rough = 0.4;
+  } else if (isBlack) {
+    s.albedo = vec3f(0.018);
+    s.rough = 0.6;
   } else if (mat == 0u || mat == 3u || mat == 4u) {
     // Paint with metallic flakes and a clear coat.
-    let flakeCell = floor(lp * 900.0);
+    let flakeCell = floor(lp * 2500.0);
     let fh = hash01(i32(flakeCell.x + flakeCell.z * 13.0), i32(flakeCell.y));
     let fn2 = vec3f(hash01(i32(flakeCell.x), i32(flakeCell.y + 7.0)), fh, hash01(i32(flakeCell.z), i32(flakeCell.x + 3.0))) - 0.5;
-    s.n = normalize(n + fn2 * 0.25 * c.color.w);
+    s.n = normalize(n + fn2 * 0.06 * c.color.w);
     s.albedo = c.color.rgb;
     s.metal = c.color.w;
     s.rough = 0.38;
@@ -200,14 +219,11 @@ fn fs(in: VOut) -> GBufferOut {
     let grime = saturate((0.45 - lp.y) * 3.0) * c.p1.w;
     s.albedo = mix(s.albedo, vec3f(0.12, 0.1, 0.08), grime);
     coat *= 1.0 - grime;
-    if (mat == 3u || mat == 4u) {
-      // Bumper lower valance in black.
-      if (lp.y < c.p2.z - 0.25 || (mat == 4u && lp.y < c.p2.w - 0.12)) {
-        s.albedo = vec3f(0.03);
-        s.metal = 0.0;
-        s.rough = 0.55;
-        coat = 0.0;
-      }
+    // Door and hood/trunk panel seams.
+    if (ax > 0.86 && lp.y < c.p3.w && lp.y > 0.25) {
+      let seam = min(min(abs(lp.z - (c.p3.x - 0.05)), abs(lp.z - c.p3.y)), abs(lp.z - (c.p3.z + 0.15)));
+      let line = 1.0 - smoothstep(0.003, 0.009, seam);
+      s.albedo *= 1.0 - 0.8 * line;
     }
   } else if (mat == 1u) {
     // Glass: dark, very smooth, strongly reflective at grazing angles.

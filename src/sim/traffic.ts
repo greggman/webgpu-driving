@@ -76,15 +76,19 @@ export class Traffic {
       biome.id === 'desert' || biome.id === 'snow'
         ? 'suv'
         : kinds[seed % kinds.length];
-    const pc: Array<[number, number, number, number]> = [
-      [0.55, 0.02, 0.02, 0.65],
-      [0.03, 0.06, 0.3, 0.75],
-      [0.75, 0.75, 0.78, 0.5],
-      [0.45, 0.46, 0.48, 0.9],
-    ];
+    // Hero paint per environment (car-commercial palette).
+    const hero: Record<string, [number, number, number, number]> = {
+      country: [0.5, 0.015, 0.012, 0.55], // candy red
+      desert: [0.62, 0.62, 0.6, 0.85], // liquid silver
+      coast: [0.02, 0.09, 0.25, 0.75], // deep ocean blue
+      forest: [0.75, 0.74, 0.7, 0.45], // pearl white
+      snow: [0.01, 0.01, 0.012, 0.6], // gloss black
+      lahonda: [0.55, 0.22, 0.03, 0.8], // burnt orange
+      night: [0.4, 0.41, 0.43, 0.9], // gunmetal silver
+    };
     this.player = this.make(
       pk,
-      pc[seed % pc.length],
+      hero[biome.id] ?? [0.5, 0.015, 0.012, 0.55],
       1,
       sStart,
       this.laneD(1, 0),

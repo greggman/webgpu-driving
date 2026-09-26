@@ -1,4 +1,6 @@
 [
-  {"name": "insp-coast-a", "params": {"biome": "coast", "cam": "custom", "s": "2500", "eye": "-10,25,14", "look": "60,60,0", "fov": "55"}},
-  {"name": "insp-coast-b", "params": {"biome": "coast", "cam": "helicopter", "s": "4000", "t": "2"}}
+  {"name": "insp-car-rear", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "-7,2.5,1.6", "look": "0,0,0.7", "fov": "40"}},
+  {"name": "insp-car-side", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "1,6.5,1.2", "look": "0,0,0.7", "fov": "40"}},
+  {"name": "insp-car-front", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "7,2.5,1.4", "look": "0,0,0.7", "fov": "40"}},
+  {"name": "insp-car-top", "params": {"biome": "desert", "cam": "custom", "s": "1500", "eye": "-5,-5,4", "look": "0,0,0.7", "fov": "40"}}
 ]
