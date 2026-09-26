@@ -732,7 +732,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     let r = length(lp.yz);
     let ang = atan2(lp.z, lp.y);
     let slot = step(0.9, fract(ang * 6.0 / 6.2831853 * 1.0 + r * 1.5)) * step(0.3, r) * step(r, 0.52);
-    s.albedo = mix(vec3f(0.45), vec3f(0.05), slot);
+        s.albedo = mix(vec3f(0.28), vec3f(0.04), slot);
     s.metal = 1.0 - slot;
     s.rough = 0.35;
   } else if (mat == 22u) {
@@ -871,6 +871,12 @@ fn fsGlass(in: VOut) -> GlassOut {
     return o;
   }
   let interior = c.p4.x > 0.5;
+    if (!interior && dot(n, v) < 0.0) {
+    // The far pane, seen through the cabin: the headliner, shelf and seats
+    // behind it block nearly all of the view out.
+    o.color = vec4f(vec3f(0.0), 0.93);
+    return o;
+  }
   if (!interior) {
     // Tinted, reflective glass seen from outside.
     let r = reflect(-v, nn);

@@ -1395,11 +1395,13 @@ export function buildWheel(): MeshData {
       MAT_CHROME,
     );
   }
-  // Caliper (fixed; the shader doesn't spin it): a rounded body at the
-  // rear top that straddles the disc's edge, with capsule-like ends.
+    // Caliper (fixed; the shader doesn't spin it): a rounded body that
+  // straddles the disc's edge, with capsule-like ends.
   {
-    const aC = Math.PI * 0.55,
-      aSpan = 0.8;
+        // Behind the axle at about 9 o'clock (seen in profile, out of the
+    // arch's shadow).
+    const aC = -Math.PI / 2 - 0.45,
+      aSpan = 0.9;
     const rc = 0.5,
       rr = 0.14, // radial half size
       xc = 0.04,
