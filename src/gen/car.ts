@@ -66,6 +66,8 @@ export interface CarSpec {
   cladding: boolean; // black plastic arch / sill cladding
   quarter: boolean; // rear quarter window behind the C pillar
   flare: number; // rear fender flare (m)
+  axleShift: number; // both axles moved forward by this (shorter front overhang)
+
   headlightY: number;
   taillightY: number;
   bedFront?: number; // pickup bed start (z)
@@ -96,6 +98,7 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'sedan':
       return spec({
         kind,
+        axleShift: 0.1,
         boxy: 5,
         cladding: false,
         quarter: false,
@@ -104,7 +107,7 @@ export function carSpec(kind: CarKind): CarSpec {
         width: 1.86,
         wheelbase: 2.85,
         wheelR: 0.345,
-        track: 1.6,
+        track: 1.63,
         clearance: 0.15,
         noseY: 0.66,
         hoodY: 0.9,
@@ -114,8 +117,8 @@ export function carSpec(kind: CarKind): CarSpec {
         tailY: 0.96,
         roofY: 1.44,
         roofW: 0.72,
-        wsBase: 0.98,
-        roofFront: 0.05,
+        wsBase: 0.86,
+        roofFront: -0.06,
         roofBack: -0.85,
         rearBase: -1.45,
         sideRear: -1.0,
@@ -123,6 +126,7 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'hatch':
       return spec({
         kind,
+        axleShift: 0.06,
         boxy: 5,
         cladding: false,
         quarter: false,
@@ -131,7 +135,7 @@ export function carSpec(kind: CarKind): CarSpec {
         width: 1.8,
         wheelbase: 2.62,
         wheelR: 0.33,
-        track: 1.55,
+        track: 1.58,
         clearance: 0.15,
         noseY: 0.66,
         hoodY: 0.97,
@@ -150,6 +154,7 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'suv':
       return spec({
         kind,
+        axleShift: 0.08,
         boxy: 7,
         cladding: true,
         quarter: true,
@@ -158,7 +163,7 @@ export function carSpec(kind: CarKind): CarSpec {
         width: 1.96,
         wheelbase: 2.9,
         wheelR: 0.405,
-        track: 1.68,
+        track: 1.71,
         clearance: 0.24,
         noseY: 0.95,
         hoodY: 1.14,
@@ -177,18 +182,19 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'coupe':
       return spec({
         kind,
+        axleShift: 0.1,
         boxy: 4.5,
         cladding: false,
         quarter: false,
         flare: 0.05,
-        length: 4.55,
+        length: 4.45,
         width: 1.9,
         wheelbase: 2.68,
         wheelR: 0.355,
-        track: 1.62,
+        track: 1.65,
         clearance: 0.13,
-        noseY: 0.6,
-        hoodY: 0.86,
+        noseY: 0.56,
+        hoodY: 0.8,
         beltF: 0.9,
         beltR: 0.97,
         deckY: 0.96,
@@ -204,6 +210,7 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'wagon':
       return spec({
         kind,
+        axleShift: 0.1,
         boxy: 5.5,
         cladding: false,
         quarter: true,
@@ -212,7 +219,7 @@ export function carSpec(kind: CarKind): CarSpec {
         width: 1.86,
         wheelbase: 2.88,
         wheelR: 0.345,
-        track: 1.6,
+        track: 1.63,
         clearance: 0.15,
         noseY: 0.66,
         hoodY: 0.95,
@@ -231,6 +238,7 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'pickup':
       return spec({
         kind,
+        axleShift: 0.12,
         boxy: 9,
         cladding: true,
         quarter: false,
@@ -239,7 +247,7 @@ export function carSpec(kind: CarKind): CarSpec {
         width: 2.0,
         wheelbase: 3.45,
         wheelR: 0.42,
-        track: 1.72,
+        track: 1.75,
         clearance: 0.27,
         noseY: 1.08,
         hoodY: 1.24,
@@ -339,7 +347,10 @@ export function buildCarBody(sp: CarSpec): MeshData {
   const L = sp.length,
     HW = sp.width / 2,
     R = sp.wheelR;
-  const axles = [sp.wheelbase / 2, -sp.wheelbase / 2];
+  const axles = [
+    sp.wheelbase / 2 + sp.axleShift,
+    -sp.wheelbase / 2 + sp.axleShift,
+  ];
   const nose = L / 2,
     tail = -L / 2;
   const pickup = sp.bedFront !== undefined;
@@ -434,8 +445,8 @@ export function buildCarBody(sp: CarSpec): MeshData {
         // Hood: centre lowered between two creases running to the lamps.
         const xr = x / w;
         const f = smooth(sp.wsBase, sp.wsBase + 0.15, z);
-        y -= 0.035 * f * Math.max(0, 1 - Math.pow(xr / 0.55, 2));
-        y += 0.008 * f * Math.exp(-Math.pow((xr - 0.58) / 0.05, 2));
+        y -= 0.012 * f * Math.max(0, 1 - Math.pow(xr / 0.6, 2));
+        y += 0.004 * f * Math.exp(-Math.pow((xr - 0.6) / 0.035, 2));
       }
       half.push([x, y]);
     }
@@ -462,7 +473,12 @@ export function buildCarBody(sp: CarSpec): MeshData {
     // Black lower cladding / sills.
     const bot = bottomLine(z, topLine(z));
     if (sp.cladding && p[1] < bot + 0.1) return MAT_TRIM;
-    const between = Math.abs(z) < sp.wheelbase / 2 - archR;
+    // Arch lips / liners: the downward-facing skin around each wheel.
+    for (const az of axles) {
+      if (Math.abs(z - az) < archR + 0.03 && p[1] < bot + 0.03)
+        return MAT_UNDER;
+    }
+    const between = Math.abs(z - sp.axleShift) < sp.wheelbase / 2 - archR;
     if (between && p[1] < bot + 0.05) return MAT_TRIM;
     if (z > nose - 0.3) return MAT_FRONT;
     if (z < tail + 0.3) return MAT_REAR;
@@ -694,7 +710,7 @@ export function buildCarBody(sp: CarSpec): MeshData {
     const mw = 0.2,
       mh = 0.1,
       md = 0.09;
-    const x0 = sx * (wz + 0.07);
+    const x0 = sx * (wz + 0.1);
     const grid: P3[][] = [];
     const NX = 10,
       NA = 16;
@@ -726,14 +742,10 @@ export function buildCarBody(sp: CarSpec): MeshData {
       p => [p[0] - x0, p[1] - y, p[2] - z + 0.02],
       true,
     );
-    box(push, [x0, y, z - 0.034], [mw * 0.46, mh * 0.44, 0.003], MAT_CHROME);
+    box(push, [x0, y, z - 0.034], [mw * 0.46, mh * 0.44, 0.003], MAT_TRIM);
     // Arm.
-    box(
-      push,
-      [sx * (wz + 0.035), y - 0.035, z - 0.01],
-      [0.05, 0.022, 0.04],
-      MAT_PAINT,
-    );
+    box(push, [sx * (wz + 0.01), y - 0.06, z], [0.07, 0.03, 0.045], MAT_PAINT);
+    box(push, [sx * wz, y - 0.085, z + 0.01], [0.05, 0.012, 0.07], MAT_TRIM);
   }
   // Door handles.
   for (const sx of [-1, 1]) {
@@ -761,17 +773,6 @@ export function buildCarBody(sp: CarSpec): MeshData {
     [0.26, 0.065, 0.006],
     MAT_PLATE,
   );
-  // Exhaust tips.
-  if (sp.kind !== 'suv') {
-    for (const sx of [-0.55, 0.55]) {
-      box(
-        push,
-        [sx * HW, sp.clearance + 0.1, tail + 0.12],
-        [0.038, 0.026, 0.05],
-        MAT_TRIM,
-      );
-    }
-  }
   const out = orient(new Float32Array(verts));
   return {vertices: out, count: out.length / V_FLOATS};
 }

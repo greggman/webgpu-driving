@@ -15,7 +15,7 @@ import {buildInterior, Interior} from '../gen/interior';
 import carSrc from '../shaders/car.wgsl';
 import {GBUFFER_TARGETS, DEPTH_FORMAT} from './targets';
 
-export const CAR_FLOATS = 64; // 2 mat4 + 8 vec4
+export const CAR_FLOATS = 68; // 2 mat4 + 9 vec4
 const MAX_CARS = 256;
 
 export interface CarDraw {
@@ -273,9 +273,10 @@ export class CarRenderer {
         o + 56,
       );
       this.data.set(
-        [0.37, spec.belt - 0.01, CAR_KINDS.indexOf(c.kind), spec.clearance],
+        [0.37, spec.belt - 0.01, CAR_KINDS.indexOf(c.kind), 0],
         o + 60,
       );
+      this.data.set([spec.axleShift, spec.clearance, 0, 0], o + 64);
       if (c.interior) this.interiorDraw = {kind: c.kind, index: i};
       const last = this.ranges[this.ranges.length - 1];
       if (last && last.kind === c.kind) last.count++;
@@ -297,14 +298,17 @@ export class CarRenderer {
     this.drawWith(pass, this.bodyPipe, this.wheelPipe);
   }
 
-  // Transparent windshield overlay for the interior camera.
+  // Transparent glass (tint, reflections; wipers / snow on the windshield
+  // for the interior camera), blended over the cabins.
   drawGlass(pass: GPURenderPassEncoder) {
-    if (!this.interiorDraw) return;
-    const m = this.meshes.get(this.interiorDraw.kind)!;
+    if (!this.total) return;
     pass.setPipeline(this.glassPipe);
     pass.setBindGroup(1, this.bg);
-    pass.setVertexBuffer(0, m.buf);
-    pass.draw(m.count, 1, 0, this.interiorDraw.index);
+    for (const r of this.ranges) {
+      const m = this.meshes.get(r.kind)!;
+      pass.setVertexBuffer(0, m.buf);
+      pass.draw(m.count, r.count, 0, r.first);
+    }
   }
 
   drawShadow(pass: GPURenderPassEncoder) {
@@ -330,11 +334,14 @@ export class CarRenderer {
     pass.setPipeline(wheel);
     pass.setVertexBuffer(0, this.wheel.buf);
     pass.draw(this.wheel.count, this.total * 4, 0, 0);
-    if (this.interiorDraw) {
-      const m = this.meshes.get(this.interiorDraw.kind)!;
+    // Cabins (seen through the glass); not needed in the shadow maps.
+    if (body === this.bodyPipe) {
       pass.setPipeline(body);
-      pass.setVertexBuffer(0, m.interiorBuf);
-      pass.draw(m.interior.count, 1, 0, this.interiorDraw.index);
+      for (const r of this.ranges) {
+        const m = this.meshes.get(r.kind)!;
+        pass.setVertexBuffer(0, m.interiorBuf);
+        pass.draw(m.interior.count, r.count, 0, r.first);
+      }
     }
   }
 }

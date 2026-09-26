@@ -11,7 +11,8 @@ struct Car {
   p3: vec4f,      // windshield base z, B-pillar z, rear glass base z, beltline y
   p4: vec4f,      // interior view (1), speed km/h, rpm, steering wheel angle
   p5: vec4f,      // steering wheel center xyz, tilt
-  p6: vec4f,      // driver x, dash top y, style (kind index), ground clearance
+  p6: vec4f,      // driver x, dash top y, style (kind index), -
+  p7: vec4f,      // axle z shift, ground clearance, -, -
 };
 
 @group(1) @binding(0) var<storage, read> cars: array<Car>;
@@ -90,7 +91,7 @@ fn wheelLocal(p: vec3f, ci: u32, wi: u32, mat: f32) -> vec3f {
     let ss = sin(st);
     q = vec3f(q.x * cs + q.z * ss, q.y, -q.x * ss + q.z * cs);
   }
-  let off = vec3f(side * (c.p0.y * 0.5), R, select(-0.5, 0.5, front) * c.p0.x);
+  let off = vec3f(side * (c.p0.y * 0.5), R, select(-0.5, 0.5, front) * c.p0.x + c.p7.x);
   return q + off;
 }
 
@@ -219,11 +220,12 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   let lp = in.local;
   let v = normalize(F.cam.xyz - wp);
   let interior = c.p4.x > 0.5;
-  if (interior && in.mat == 1u) { discard; }
+  // Glass is drawn in the blended pass (fsGlass).
+  if (in.mat == 1u) { discard; }
   if (dot(n, v) < 0.0) { n = -n; }
   // Cabin materials (interior mesh, or the inside of the body shell).
   let wheelMat = in.mat == 7u || in.mat == 8u || in.mat >= 20u;
-  if ((in.mat >= 10u && in.mat < 20u) || (interior && !ff && !wheelMat)) {
+  if ((in.mat >= 10u && in.mat < 20u) || (!ff && !wheelMat)) {
     var s: Surface;
     let im = interiorShade(select(10u, in.mat, in.mat >= 10u), lp, c);
     s.albedo = im.rgb;
@@ -342,6 +344,11 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       }
     }
     if (lp.z > halfL - 0.4 && gy < -0.44) { part = 4u; }
+    // Fog lamp pods in the bumper corners.
+    if (style != 3u && lp.z > halfL - 0.45 && ln.z > 0.2) {
+      let fd = length(vec2f((ax - 0.8) * halfW, gy + 0.36));
+      if (fd < 0.045) { part = select(5u, 6u, fd < 0.032); }
+    }
   }
   if (body && lp.z < 0.0) {
     if (lp.z < -halfL + 0.5 && ln.z < -0.1) {
@@ -362,8 +369,14 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       }
       if (lamp) { part = 2u; } else if (bezel) { part = 4u; }
     }
-    // Rear diffuser.
-    if (lp.z < -halfL + 0.4 && lp.y < ty - 0.48) { part = 4u; }
+    // Rear diffuser with exhaust tips.
+    if (lp.z < -halfL + 0.4 && lp.y < ty - 0.48) {
+      part = 4u;
+      if (style != 2u && style != 5u && ln.z < -0.2) {
+        let ed = length(vec2f((ax - 0.55) * halfW, lp.y - (ty - 0.53)));
+        if (ed < 0.04) { part = select(5u, 7u, ed < 0.03); }
+      }
+    }
   }
   if (part == 1u) {
     // Clear cover over a dark chrome housing: two projector lenses and an
@@ -430,7 +443,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       let f = abs(fract(q) - 0.5);
       wall = smoothstep(0.36, 0.42, max(f.x, f.y));
     } else {
-      wall = smoothstep(0.3, 0.4, abs(fract(lp.y * 30.0) - 0.5));
+      let freq = select(30.0, 9.0, style == 5u);
+      wall = smoothstep(select(0.3, 0.22, style == 5u), select(0.4, 0.3, style == 5u), abs(fract(lp.y * freq) - 0.5));
     }
     let bright = select(0.06, 0.5, cell == 0u || cell == 2u);
     s.albedo = mix(vec3f(0.003), vec3f(bright), wall);
@@ -442,6 +456,16 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     s.metal = 1.0;
     s.rough = 0.12;
     coat = 1.0;
+  } else if (part == 6u) {
+    // Fog lamp lens.
+    s.albedo = vec3f(0.5);
+    s.metal = 1.0;
+    s.rough = 0.1;
+    coat = 1.0;
+    emissive = vec3f(1.0, 0.95, 0.85) * (0.1 + 6.0 * lightsOn);
+  } else if (part == 7u) {
+    s.albedo = vec3f(0.005);
+    s.rough = 0.9;
   } else if (part == 4u) {
     s.albedo = vec3f(0.02);
     s.rough = 0.55;
@@ -461,9 +485,14 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     coat *= 1.0 - grime;
     // Panel gaps: doors (front / rear / B pillar), hood and trunk shut lines.
     var seam = 1.0;
-    if (ax > 0.8 && lp.y < c.p3.w && lp.y > 0.3) {
-      seam = min(min(abs(lp.z - (c.p3.x - 0.08)), abs(lp.z - c.p3.y)), abs(lp.z - (c.p3.z + 0.1)));
+    let doorBot = c.p7.y + 0.14;
+    let doorF = c.p3.x - 0.08;
+    var doorR = select(c.p3.z + 0.1, c.p3.y - 0.9, style == 3u);
+    if (style == 5u) { doorR = c.p3.y; }
+    if (ax > 0.8 && lp.y < c.p3.w && lp.y > doorBot) {
+      seam = min(min(abs(lp.z - doorF), abs(lp.z - c.p3.y)), abs(lp.z - doorR));
     }
+    if (ax > 0.8 && lp.z < doorF && lp.z > doorR) { seam = min(seam, abs(lp.y - doorBot)); }
     if (ln.y > 0.5) {
       seam = min(seam, abs(lp.z - (c.p3.x + 0.03)));
       seam = min(seam, abs(ax - 0.9) * halfW);
@@ -557,6 +586,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     coat = 0.5;
   }
   s.ao = min(s.ao, ao);
+  if (body || mat == 2u) { s.ao *= mix(1.0, 0.25, saturate(-in.lnormal.y * 1.5)); }
   let sh = sunShadow(wp, s.n) * cloudShadow(wp);
   var col = clearcoatShade(s, wp, sh, coat);
   if (coat > 0.0 && s.metal > 0.0) {
@@ -589,17 +619,32 @@ fn wiperAngle(t: f32) -> f32 {
 @fragment
 fn fsGlass(in: VOut) -> GlassOut {
   let c = cars[in.car];
-  if (in.mat != 1u || c.p4.x < 0.5) { discard; }
+  if (in.mat != 1u) { discard; }
   let lp = in.local;
   var o: GlassOut;
   o.velocity = vec2f(0.0);
   o.normal = vec4f(0.0);
   let wsBase = c.p3.x;
-  let roofFront = c.p3.y + (c.p3.x - c.p3.y) * 0.0;
-  // Only the windshield (front glass above the dash).
-  if (lp.z < wsBase - 0.9) { discard; }
   let n = normalize(in.normal);
   let v = normalize(F.cam.xyz - in.world);
+  // Only the windshield (front glass above the dash) from inside gets the
+  // wipers and snow; everything else is tinted, reflective glass.
+  if (c.p4.x < 0.5 || lp.z < wsBase - 0.9) {
+    let nn = select(-n, n, dot(n, v) > 0.0);
+    let nv = saturate(dot(nn, v));
+    let fres = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
+    let r = reflect(-v, nn);
+    let l = F.sun.xyz;
+    let h = normalize(v + l);
+    let sh = sunShadow(in.world, nn);
+    let spec = D_GGX(saturate(dot(nn, h)), 0.0004) * V_SmithGGX(max(nv, 1e-3), saturate(dot(nn, l)), 0.0004) * fres;
+    var refl = envRadiance(r, 0.02) * fres + F.sunColor.rgb * min(spec, 200.0) * sh * saturate(dot(nn, l));
+    // Tint: traffic glass is darker (privacy glass), windscreens lighter.
+    let tint = select(0.55, 0.35, lp.z > wsBase - 0.9 && nn.y > 0.2 && c.p4.x < 0.5);
+    let a = 1.0 - (1.0 - tint) * (1.0 - fres);
+    o.color = vec4f(refl, a);
+    return o;
+  }
   let fres = 0.03 + 0.2 * pow(1.0 - saturate(abs(dot(n, v))), 5.0);
   var col = skyRadiance(reflect(-v, n)) * fres * 0.5;
   var a = fres * 0.3;
