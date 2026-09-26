@@ -14,9 +14,10 @@
     "fix": "gts fix",
     "typecheck": "tsc --noEmit",
     "wgsl": "node test/wgsl-reserved.js",
-    "test": "npm run wgsl && npm run typecheck && npm run lint && npm run build && npm run unit && npm run shoot",
+    "test": "npm run wgsl && npm run typecheck && npm run lint && npm run build && npm run unit && npm run shoot && npm run keys",
     "soak": "node test/soak.js",
-    "perf": "node test/perf.js"
+    "perf": "node test/perf.js",
+    "keys": "node test/keys.js"
   },
   "license": "MIT",
   "devDependencies": {

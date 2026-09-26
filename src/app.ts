@@ -8,7 +8,7 @@ import {Traffic} from './sim/traffic';
 import {vehiclePose, Pose} from './sim/pose';
 import {CameraState, Director, SHOT_KINDS, ShotKind} from './camera/director';
 import {computeSky} from './world/sky';
-import {carSpec} from './gen/car';
+import {CAR_KINDS, CarKind, carSpec} from './gen/car';
 import {Tumbleweeds} from './sim/tumbleweeds';
 import {SettingsPanel, loadStoredSettings} from './ui/settings';
 import {
@@ -110,6 +110,7 @@ export class App {
   private prevPoses = new Map<number, Pose>();
   private hudEl = document.getElementById('hud')!;
   private keys = new Set<string>();
+  private playerKind: CarKind | null = null;
   private idle = 0;
   frames = 0;
   private fpsAcc = 0;
@@ -185,6 +186,28 @@ export class App {
   setCruise(v: number) {
     this.biome.road.cruise = v;
     this.traffic.player.desired = v;
+  }
+
+  // Driver eye in car-local (forward, left, up) from the car's proportions.
+  private updateDriverEye() {
+    const ps = carSpec(this.traffic.player.kind);
+    this.director.driverEye = [
+      (ps.roofFront + ps.roofBack) / 2 - 0.15,
+      0.37,
+      Math.min(ps.belt + 0.27, ps.roofY - 0.14),
+    ];
+  }
+
+  // Player car: index into CAR_KINDS (kept across environments).
+  setPlayerCar(kind: CarKind) {
+    this.playerKind = kind;
+    this.traffic.setPlayerKind(kind);
+    this.updateDriverEye();
+    this.settings.sync();
+  }
+
+  get playerCar(): CarKind {
+    return this.traffic.player.kind;
   }
 
   setCamera(kind: ShotKind | null) {
@@ -273,9 +296,8 @@ export class App {
     this.mark('road done');
     const s0 = this.params.s ?? 800;
     this.traffic = new Traffic(this.biome, this.params.seed, s0);
-    const ps = carSpec(this.traffic.player.kind);
-    const roof = ps.roofY;
-    const eyeZ = (ps.roofFront + ps.roofBack) / 2 - 0.15;
+    if (this.playerKind) this.traffic.setPlayerKind(this.playerKind);
+    const keepForced = this.director?.forced ?? null;
     this.director = new Director(
       this.road,
       this.params.seed,
@@ -283,11 +305,7 @@ export class App {
     );
     // Aerial shots must clear the canopy (vegetation is GPU-scattered, so we
     // use a conservative per-biome height).
-    this.director.driverEye = [
-      eyeZ,
-      0.37,
-      Math.min(ps.belt + 0.27, roof - 0.14),
-    ];
+    this.updateDriverEye();
     const kinds = this.biome.scatter.treeKinds;
     this.director.canopy = kinds.includes('redwood')
       ? 55
@@ -304,6 +322,10 @@ export class App {
       this.director.cut(s0, this.params.cam);
       if (this.params.shotTime !== null)
         this.director.setShotTime(this.params.shotTime);
+    } else if (keepForced) {
+      // Switching environments keeps the chosen camera.
+      this.director.forced = keepForced;
+      this.director.cut(s0, keepForced);
     }
     // Let traffic settle into a natural arrangement before we start.
     for (let i = 0; i < 120; ++i) this.traffic.update(1 / 30);
@@ -354,10 +376,22 @@ export class App {
         case 's':
           t.adjustSpeed(-2);
           break;
-        case 'c':
-          this.director.forced = null;
-          this.director.cut(t.player.s);
+        case 'c': {
+          // Cycle: auto director, then each shot in turn.
+          const order: Array<ShotKind | null> = [
+            null,
+            ...SHOT_KINDS.filter(k => k !== 'custom'),
+          ];
+          const i = order.indexOf(this.director.forced);
+          this.setCamera(order[(i + 1) % order.length]);
+          this.settings.sync();
           break;
+        }
+        case 'v': {
+          const i = CAR_KINDS.indexOf(t.player.kind);
+          this.setPlayerCar(CAR_KINDS[(i + 1) % CAR_KINDS.length]);
+          break;
+        }
         case 'p':
           t.autopilot = !t.autopilot;
           this.settings.sync();

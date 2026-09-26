@@ -105,6 +105,12 @@ export class Traffic {
     return dir === 1 ? -d : d;
   }
 
+  // The player picked a different car.
+  setPlayerKind(kind: CarKind) {
+    this.player.kind = kind;
+    this.player.length = carLength(kind);
+  }
+
   private make(
     kind: CarKind,
     color: [number, number, number, number],
@@ -113,7 +119,7 @@ export class Traffic {
     d: number,
     desired: number,
   ): Vehicle {
-    const len = kind === 'pickup' ? 5.4 : kind === 'hatch' ? 4.1 : 4.8;
+    const len = carLength(kind);
     return {
       id: this.nextId++,
       kind,
@@ -442,4 +448,8 @@ export class Traffic {
     }
     return m;
   }
+}
+
+function carLength(kind: CarKind): number {
+  return kind === 'pickup' ? 5.4 : kind === 'hatch' ? 4.1 : 4.8;
 }

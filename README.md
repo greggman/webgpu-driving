@@ -14,7 +14,8 @@ Seven environments: **country road**, **desert dirt road**, **ocean coastline**,
 |---|---|
 | ← / → (A / D) | change lanes (only when it's safe; you can't crash) |
 | ↑ / ↓ (W / S) | speed up / slow down |
-| C | next camera shot |
+| C | cycle camera: auto director, then each shot in turn (kept when switching environments) |
+| V | cycle the player's car |
 | R (or the ↻ button, top right) | generate a new world (new seed) |
 | P | toggle autopilot |
 | ⚙ (top left) | settings: environment, time of day, clouds, speed, camera, graphics toggles |

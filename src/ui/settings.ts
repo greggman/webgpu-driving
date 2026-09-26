@@ -4,6 +4,7 @@
 import type {App} from '../app';
 import {BIOMES, BIOME_ORDER, BiomeId} from '../world/biome';
 import {SHOT_KINDS, ShotKind} from '../camera/director';
+import {CAR_KINDS, CarKind} from '../gen/car';
 import {
   DEFAULT_GRAPHICS,
   GraphicsSettings,
@@ -41,6 +42,7 @@ const GRAPHICS_LABELS: Array<[keyof GraphicsSettings, string]> = [
   ['grass', 'Grass'],
   ['filmGrain', 'Film grain & vignette'],
   ['letterbox', 'Cinematic letterbox'],
+  ['native', 'Native display resolution (Retina; slower)'],
 ];
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -90,6 +92,7 @@ export class SettingsPanel {
   private cruiseOut!: HTMLOutputElement;
   private autopilot!: HTMLInputElement;
   private camera!: HTMLSelectElement;
+  private car!: HTMLSelectElement;
   private hud!: HTMLInputElement;
   private graphicsInputs = new Map<keyof GraphicsSettings, HTMLInputElement>();
   private scale!: HTMLInputElement;
@@ -259,10 +262,24 @@ export class SettingsPanel {
       },
     );
 
+    // Player car (unnamed: Car 1..N; V cycles them).
+    const carId = 's-car';
+    scene.appendChild(el('label', {for: carId, class: 'block'}, 'Car (V)'));
+    this.car = el('select', {id: carId});
+    CAR_KINDS.forEach((k, i) =>
+      this.car.appendChild(el('option', {value: k}, `Car ${i + 1}`)),
+    );
+    this.car.addEventListener('change', () => {
+      app.setPlayerCar(this.car.value as CarKind);
+    });
+    scene.appendChild(this.car);
+
     // Camera.
     const cam = this.section('Camera');
     const camId = 's-camera';
-    cam.appendChild(el('label', {for: camId, class: 'block'}, 'Shot'));
+    cam.appendChild(
+      el('label', {for: camId, class: 'block'}, 'Shot (C cycles)'),
+    );
     this.camera = el('select', {id: camId});
     this.camera.appendChild(
       el('option', {value: ''}, 'Auto director (cuts between shots)'),
@@ -352,6 +369,7 @@ export class SettingsPanel {
     this.cruiseOut.value = `${kmh} km/h`;
     this.autopilot.checked = app.traffic?.autopilot ?? true;
     this.camera.value = app.director?.forced ?? '';
+    if (app.traffic) this.car.value = app.playerCar;
     const g = app.renderer.graphics;
     for (const [k, input] of this.graphicsInputs)
       input.checked = g[k] as boolean;

@@ -48,6 +48,7 @@ export interface GraphicsSettings {
   filmGrain: boolean;
   letterbox: boolean;
   renderScale: number; // 0.5 .. 1
+  native: boolean; // render at device pixels (else CSS pixels)
   lowPower: boolean; // phones: DPR 1, sparser grass, shorter vegetation ranges
 }
 
@@ -61,6 +62,7 @@ export const DEFAULT_GRAPHICS: GraphicsSettings = {
   filmGrain: true,
   letterbox: false,
   renderScale: 1,
+  native: false,
   lowPower: false,
 };
 
@@ -683,8 +685,11 @@ export class Renderer {
     const gpu = this.gpu;
     const d = gpu.device;
     const canvas = gpu.canvas;
+    // CSS pixels by default (like most games on high-DPI displays); native
+    // device resolution is a setting.
+    const native = this.graphics.native && !this.graphics.lowPower;
     const dpr =
-      Math.min(window.devicePixelRatio || 1, this.graphics.lowPower ? 1 : 2) *
+      (native ? Math.min(window.devicePixelRatio || 1, 2) : 1) *
       this.graphics.renderScale;
     const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
     const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
