@@ -327,13 +327,15 @@ export class Props {
             x: pa.pos[0],
             y: ga,
             z: pa.pos[2],
-            yaw: pa.heading + Math.PI / 2,
+                        // Local x (the crossarm) across the road, perpendicular to the
+            // wires.
+            yaw: pa.heading,
             stretch: 1,
             scale: 1,
             tint: 0.5,
           });
-          const yawA = pa.heading + Math.PI / 2,
-            yawB = pb.heading + Math.PI / 2;
+          const yawA = pa.heading,
+            yawB = pb.heading;
           for (const off of [-1.05, 0, 1.05]) {
             const A = [
               pa.pos[0] + Math.cos(yawA) * off,

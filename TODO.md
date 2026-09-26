@@ -12,7 +12,7 @@
     position will see the car. If not, check some new random position next frame,
     don't switch the camera until you find a good position.
 
-[ ] The telephone poles are rotated 90 degrees the wrong direction?
+[x] The telephone poles are rotated 90 degrees the wrong direction?
 
     I think the post at the top of the telephone pole is supposed to be
     perpendicular to wires it is carrying. Currently they are parallel
