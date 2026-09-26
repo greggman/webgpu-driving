@@ -273,7 +273,7 @@ export class App {
     const s0 = this.params.s ?? 800;
     this.traffic = new Traffic(this.biome, this.params.seed, s0);
     const ps = carSpec(this.traffic.player.kind);
-    const roof = Math.max(...ps.top.map(p => p[1]));
+    const roof = ps.roofY;
     const eyeZ = (ps.roofFront + ps.roofBack) / 2 - 0.15;
     this.director = new Director(
       this.road,

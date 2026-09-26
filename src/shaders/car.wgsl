@@ -72,14 +72,15 @@ fn vsBody(v0: VIn, @builtin(instance_index) ii: u32) -> VOut {
   return o;
 }
 
-fn wheelLocal(p: vec3f, ci: u32, wi: u32, spinOffset: f32) -> vec3f {
+fn wheelLocal(p: vec3f, ci: u32, wi: u32, mat: f32) -> vec3f {
   let c = cars[ci];
   let R = c.p0.z;
   let front = wi < 2u;
   let side = select(-1.0, 1.0, (wi & 1u) == 1u);
   // Mirror the wheel for the left side so the rim faces outward.
   var q = vec3f(p.x * side, p.y, p.z) * R;
-  let a = c.p0.w + spinOffset;
+  // Brake calipers are fixed to the knuckle.
+  let a = select(c.p0.w, 0.0, mat > 21.5);
   let ca = cos(a);
   let sa = sin(a);
   q = vec3f(q.x, q.y * ca - q.z * sa, q.y * sa + q.z * ca);
@@ -98,15 +99,15 @@ fn vsWheel(v: VIn, @builtin(instance_index) ii: u32) -> VOut {
   let ci = ii / 4u;
   let wi = ii % 4u;
   let c = cars[ci];
-  let lp = wheelLocal(v.pos, ci, wi, 0.0);
+  let lp = wheelLocal(v.pos, ci, wi, v.mat);
   let side = select(-1.0, 1.0, (wi & 1u) == 1u);
   var ln = vec3f(v.normal.x * side, v.normal.yz);
-  let a = c.p0.w;
+  let a = select(c.p0.w, 0.0, v.mat > 21.5);
   ln = vec3f(ln.x, ln.y * cos(a) - ln.z * sin(a), ln.y * sin(a) + ln.z * cos(a));
   var o: VOut;
   let w = c.model * vec4f(lp, 1.0);
   o.world = w.xyz;
-  o.prevWorld = (c.prevModel * vec4f(wheelLocal(v.pos, ci, wi, -c.p1.w * 0.0), 1.0)).xyz;
+  o.prevWorld = (c.prevModel * vec4f(wheelLocal(v.pos, ci, wi, v.mat), 1.0)).xyz;
   o.pos = F.viewProj * w;
   o.normal = (c.model * vec4f(ln, 0.0)).xyz;
   // Rim-space coordinates for the spoke pattern (unrotated wheel).
@@ -140,7 +141,7 @@ fn fsShadow(in: CSOut) {
 fn vsWheelShadow(v: VIn, @builtin(instance_index) ii: u32) -> CSOut {
   let ci = ii / 4u;
   var o: CSOut;
-  o.pos = shadowVP * (cars[ci].model * vec4f(wheelLocal(v.pos, ci, ii % 4u, 0.0), 1.0));
+  o.pos = shadowVP * (cars[ci].model * vec4f(wheelLocal(v.pos, ci, ii % 4u, v.mat), 1.0));
   o.mat = 7u;
   return o;
 }
@@ -221,7 +222,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   if (interior && in.mat == 1u) { discard; }
   if (dot(n, v) < 0.0) { n = -n; }
   // Cabin materials (interior mesh, or the inside of the body shell).
-  if (in.mat >= 10u || (interior && !ff && in.mat != 7u && in.mat != 8u)) {
+  let wheelMat = in.mat == 7u || in.mat == 8u || in.mat >= 20u;
+  if ((in.mat >= 10u && in.mat < 20u) || (interior && !ff && !wheelMat)) {
     var s: Surface;
     let im = interiorShade(select(10u, in.mat, in.mat >= 10u), lp, c);
     s.albedo = im.rgb;
@@ -288,59 +290,87 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   let ao = saturate(0.45 + lp.y * 0.9);
   var mat = in.mat;
 
-  // Fascia details from local position + local normal.
+  // Lamps, grille, intakes and plates from local position + local normal
+  // (the body mesh only carries front / rear fascia material ids).
   let ln = normalize(in.lnormal);
   let ax = abs(lp.x) / halfW;
-  var isHead = false;
-  var isTail = false;
-  var isGrille = false;
-  var isBlack = false;
-  if (mat == 0u || mat == 3u || mat == 4u) {
-    let capF = c.p2.z;
-    let capR = c.p2.w;
-    if (lp.z > halfL - 0.4 && ln.z > 0.15 && lp.y > capF - 0.02 && lp.y < capF + 0.13 && ax > 0.42 && ax < 0.9) {
-      isHead = true;
+  let hy = c.p2.z; // headlight centre height
+  let ty = c.p2.w; // tail light centre height
+  let body = mat == 0u || mat == 3u || mat == 4u;
+  var part = 0u; // 1 headlight, 2 tail light, 3 grille, 4 black plastic
+  if (body && lp.z > 0.0) {
+    // Swept headlight units in the upper corners of the nose.
+    let hu = (ax - 0.5) / 0.4;
+    let top = 0.04 + 0.035 * saturate(hu);
+    if (lp.z > halfL - 0.55 && ln.z > 0.08 && hu > 0.0 && hu < 1.0 && lp.y > hy - 0.045 && lp.y < hy + top) {
+      part = 1u;
     }
-    if (lp.z > halfL - 0.25 && ln.z > 0.5 && ax < 0.42 && lp.y < capF - 0.03 && lp.y > capF - 0.24) {
-      isGrille = true;
-    }
-    // Full-width tail light bar + corner clusters.
-    if (lp.z < -halfL + 0.35 && ln.z < -0.2) {
-      let bar = abs(lp.y - (capR + 0.06)) < 0.035;
-      let corner = ax > 0.62 && lp.y > capR - 0.03 && lp.y < capR + 0.14;
-      if (bar || corner) { isTail = true; }
-    }
-    // Black lower bumpers / valances.
-    if (abs(lp.z) > halfL - 0.45 && lp.y < 0.36) { isBlack = true; }
-    // Wheel arch liners.
-    let wr = c.p0.z;
-    for (var w = 0; w < 2; w++) {
-      let az = select(-0.5, 0.5, w == 0) * c.p0.x;
-      let dd = length(vec2f(lp.z - az, lp.y - wr));
-      // Only the arch undersides (downward-facing), not the fender skin.
-      if (dd < wr + 0.09 && ax > 0.7 && ln.y < -0.2) { isBlack = true; }
-    }
+    if (lp.z > halfL - 0.3 && ln.z > 0.3 && ax < 0.46 && lp.y < hy + 0.03 && lp.y > hy - 0.24) { part = 3u; }
+    // Lower intake and splitter.
+    if (lp.z > halfL - 0.3 && ln.z > 0.3 && ax < 0.7 && lp.y < hy - 0.29 && lp.y > hy - 0.42) { part = 3u; }
+    if (lp.z > halfL - 0.4 && lp.y < hy - 0.42) { part = 4u; }
   }
-  if (isHead) {
-    s.albedo = vec3f(0.6);
-    s.rough = 0.05;
+  if (body && lp.z < 0.0) {
+    if (lp.z < -halfL + 0.5 && ln.z < -0.1) {
+      let corner = ax > 0.58 && ax < 0.97 && lp.y > ty - 0.05 && lp.y < ty + 0.075;
+      let bar = ax <= 0.58 && abs(lp.y - (ty + 0.045)) < 0.018;
+      if (corner || bar) { part = 2u; }
+    }
+    // Rear diffuser.
+    if (lp.z < -halfL + 0.4 && lp.y < ty - 0.48) { part = 4u; }
+  }
+  if (part == 1u) {
+    // Clear cover over a dark chrome housing: two projector lenses and an
+    // LED daytime-running-light strip along the lower / outer edge.
+    let px = ax * halfW;
+    let dy = lp.y - hy;
+    s.albedo = vec3f(0.035);
     s.metal = 1.0;
-    let beam = 0.3 + 30.0 * lightsOn;
-    emissive = vec3f(1.0, 0.97, 0.9) * beam * smoothstep(0.1, 0.0, abs(fract(lp.x * 8.0) - 0.5) - 0.3);
-    emissive = max(emissive, vec3f(1.0, 0.97, 0.9) * (0.2 + 8.0 * lightsOn));
-  } else if (isTail) {
-    s.albedo = vec3f(0.35, 0.02, 0.02);
-    s.rough = 0.1;
+    s.rough = 0.18;
+    coat = 1.0;
+    var lens = 0.0;
+    var ring = 0.0;
+    for (var k = 0; k < 2; k++) {
+      let cx = halfW * (0.62 + 0.16 * f32(k));
+      let d = length(vec2f(px - cx, dy - 0.008));
+      lens = max(lens, 1.0 - smoothstep(0.022, 0.026, d));
+      ring = max(ring, smoothstep(0.024, 0.028, d) * (1.0 - smoothstep(0.034, 0.038, d)));
+    }
+    s.albedo = mix(s.albedo, vec3f(0.75), ring);
+    s.rough = mix(s.rough, 0.08, ring);
+    let hu = (ax - 0.5) / 0.4;
+    let drl = (1.0 - smoothstep(0.004, 0.008, abs(dy + 0.032))) * step(0.05, hu)
+      + (1.0 - smoothstep(0.006, 0.012, abs(hu - 0.95) * halfW * 0.4)) * step(dy, 0.06);
+    let white = vec3f(1.0, 0.97, 0.92);
+    emissive = white * (saturate(drl) * (2.5 + 6.0 * lightsOn) + lens * (0.05 + 40.0 * lightsOn));
+    s.albedo = mix(s.albedo, vec3f(0.9), saturate(drl));
+  } else if (part == 2u) {
+    // Layered tail lamp: smoked outer lens, bright inner light-guide lines.
     let brake = c.p1.y;
-    emissive = vec3f(1.0, 0.05, 0.02) * (0.15 + 4.0 * lightsOn + 10.0 * brake);
-  } else if (isGrille) {
-    let slat = step(0.5, fract(lp.y * 40.0));
-    s.albedo = vec3f(0.02 + 0.03 * slat);
-    s.rough = 0.4;
-  } else if (isBlack) {
-    s.albedo = vec3f(0.018);
-    s.rough = 0.6;
-  } else if (mat == 0u || mat == 3u || mat == 4u) {
+    let lines = 1.0 - smoothstep(0.1, 0.25, abs(fract((lp.y - ty) * 38.0) - 0.5));
+    let edge = 1.0 - smoothstep(0.0, 0.02, min(abs(lp.y - (ty - 0.05)), abs(lp.y - (ty + 0.075))));
+    s.albedo = vec3f(0.18, 0.01, 0.012);
+    s.rough = 0.06;
+    coat = 1.0;
+    let glow = 0.3 + 5.0 * lightsOn + 14.0 * brake;
+    emissive = vec3f(1.0, 0.04, 0.02) * glow * (0.25 + 0.75 * max(lines, edge * 0.8));
+  } else if (part == 3u) {
+    // Honeycomb grille with depth: bright cell walls, dark recessed cells.
+    let q = vec2f(lp.x, lp.y) * 42.0;
+    let r = vec2f(1.0, 1.732);
+    let h = r * 0.5;
+    let a = (q - r * floor(q / r)) - h;
+    let b = (q - h - r * floor((q - h) / r)) - h;
+    let g = select(b, a, dot(a, a) < dot(b, b));
+    let hexD = max(abs(g.x) * 0.866 + abs(g.y) * 0.5, abs(g.y));
+    let wall = smoothstep(0.36, 0.44, hexD);
+    s.albedo = mix(vec3f(0.004), vec3f(0.06), wall);
+    s.rough = mix(0.8, 0.25, wall);
+    s.ao = 1.0;
+  } else if (part == 4u) {
+    s.albedo = vec3f(0.02);
+    s.rough = 0.55;
+  } else if (body) {
     // Paint with metallic flakes and a clear coat.
     let flakeCell = floor(lp * 2500.0);
     let fh = hash01(i32(flakeCell.x + flakeCell.z * 13.0), i32(flakeCell.y));
@@ -348,51 +378,95 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     s.n = normalize(n + fn2 * 0.06 * c.color.w);
     s.albedo = c.color.rgb;
     s.metal = c.color.w;
-    s.rough = 0.38;
+    s.rough = 0.34;
     coat = 1.0;
     // Road grime toward the bottom.
     let grime = saturate((0.45 - lp.y) * 3.0) * c.p1.w;
     s.albedo = mix(s.albedo, vec3f(0.12, 0.1, 0.08), grime);
     coat *= 1.0 - grime;
-    // Door and hood/trunk panel seams.
-    if (ax > 0.86 && lp.y < c.p3.w && lp.y > 0.25) {
-      let seam = min(min(abs(lp.z - (c.p3.x - 0.05)), abs(lp.z - c.p3.y)), abs(lp.z - (c.p3.z + 0.15)));
-      let line = 1.0 - smoothstep(0.003, 0.009, seam);
-      s.albedo *= 1.0 - 0.8 * line;
+    // Panel gaps: doors (front / rear / B pillar), hood and trunk shut lines.
+    var seam = 1.0;
+    if (ax > 0.8 && lp.y < c.p3.w && lp.y > 0.3) {
+      seam = min(min(abs(lp.z - (c.p3.x - 0.08)), abs(lp.z - c.p3.y)), abs(lp.z - (c.p3.z + 0.1)));
     }
+    if (ln.y > 0.5) {
+      seam = min(seam, abs(lp.z - (c.p3.x + 0.03)));
+      seam = min(seam, abs(ax - 0.9) * halfW);
+    }
+    let line = 1.0 - smoothstep(0.002, 0.006, seam);
+    s.albedo *= 1.0 - 0.85 * line;
+    coat *= 1.0 - line;
   } else if (mat == 1u) {
-    // Glass: dark, very smooth, strongly reflective at grazing angles.
-    s.albedo = vec3f(0.015, 0.018, 0.02);
+    // Glass: dark tint, very smooth, strongly reflective at grazing angles.
+    s.albedo = vec3f(0.012, 0.015, 0.018);
     s.rough = 0.02;
     coat = 1.0;
   } else if (mat == 2u) {
-    s.albedo = vec3f(0.025);
-    s.rough = 0.55;
-  } else if (mat == 5u) {
+    // Gloss-black trim (window frames, pillars, seals).
     s.albedo = vec3f(0.02);
+    s.rough = 0.22;
+  } else if (mat == 5u) {
+    s.albedo = vec3f(0.015);
     s.rough = 0.9;
   } else if (mat == 6u) {
     s.albedo = vec3f(0.9);
     s.metal = 1.0;
     s.rough = 0.12;
   } else if (mat == 7u) {
-    // Tire rubber, tread grooves on the tread face.
-    let groove = step(0.8, fract(lp.x * 9.0 + 0.5));
-    s.albedo = vec3f(0.012, 0.012, 0.014) * (1.0 - 0.4 * groove);
-    s.rough = 0.9;
-    s.spec = 0.15;
-  } else {
-    // Rim: machined alloy with 5 spokes.
-    let a = atan2(lp.z, lp.y);
+    // Tyre: tread blocks on the crown, faint raised lettering ring on the wall.
     let r = length(lp.yz);
-    let spoke = smoothstep(0.55, 0.75, cos(a * 5.0)) ;
-    let hub = 1.0 - smoothstep(0.18, 0.22, r);
-    let solid = max(spoke, hub);
-    s.albedo = mix(vec3f(0.03), vec3f(0.5), max(solid, step(0.6, r)));
-    s.metal = mix(0.0, 1.0, max(solid, step(0.6, r)));
-    s.rough = 0.32;
+    let ang = atan2(lp.z, lp.y);
+    var dark = 0.0;
+    if (abs(ln.x) < 0.6) {
+      let groove = step(0.82, fract(lp.x * 12.0 + 0.5));
+      let sipe = step(0.9, fract(ang * 70.0 / 6.2831853 + lp.x * 3.0));
+      dark = max(groove, sipe * step(0.2, abs(lp.x) * 4.0));
+    } else {
+      let band = 1.0 - smoothstep(0.0, 0.015, abs(r - 0.86));
+      let letters = step(0.5, fract(ang * 40.0 / 6.2831853)) * step(0.7, fract(ang * 3.0));
+      s.albedo = vec3f(band * letters * 0.02);
+    }
+    s.albedo = vec3f(0.016, 0.016, 0.018) * (1.0 - 0.6 * dark) + s.albedo;
+    s.rough = 0.85;
+    s.spec = 0.25;
+  } else if (mat == 20u) {
+    // Licence plate: white retro-reflective sheet, dark border and characters.
+    let py = lp.y - (select(ty, hy, lp.z > 0.0) - 0.3);
+    let px = lp.x + 0.26;
+    let border = step(0.5, f32(abs(py) > 0.05 || px < 0.012 || px > 0.508));
+    let ci = floor((px - 0.04) / 0.064);
+    let cu = fract((px - 0.04) / 0.064);
+    let cv = (py + 0.035) / 0.07;
+    let cell = vec2i(i32(cu * 3.0 / 0.8), i32(cv * 5.0));
+    let on = step(0.45, hash01(i32(ci) * 17 + cell.x + 3 * i32(c.color.x * 97.0), cell.y + 11))
+      * step(cu, 0.8) * step(0.0, cv) * step(cv, 1.0) * step(0.0, ci) * step(ci, 6.0);
+    s.albedo = mix(vec3f(0.8, 0.8, 0.75), vec3f(0.02, 0.03, 0.08), max(border * 0.9, on));
+    s.rough = 0.4;
+    emissive = vec3f(1.0, 0.95, 0.85) * lightsOn * 0.3 * s.albedo * step(lp.z, 0.0);
+  } else if (mat == 21u) {
+    // Brake disc: machined, with curved slots.
+    let r = length(lp.yz);
+    let ang = atan2(lp.z, lp.y);
+    let slot = step(0.9, fract(ang * 6.0 / 6.2831853 * 1.0 + r * 1.5)) * step(0.3, r) * step(r, 0.52);
+    s.albedo = mix(vec3f(0.45), vec3f(0.05), slot);
+    s.metal = 1.0 - slot;
+    s.rough = 0.35;
+  } else if (mat == 22u) {
+    s.albedo = vec3f(0.5, 0.03, 0.02);
+    s.rough = 0.3;
+    coat = 1.0;
+  } else {
+    // Alloy rim: bright machined spoke faces, darker barrel and cap.
+    let r = length(lp.yz);
+    let face = saturate(abs(ln.x) * 2.0 - 0.6);
+    s.albedo = mix(vec3f(0.18), vec3f(0.72), face);
+    s.metal = 1.0;
+    s.rough = mix(0.45, 0.18, face);
+    if (r < 0.2) { s.albedo = vec3f(0.08); s.rough = 0.3; }
+    if (abs(r - 0.1) < 0.01) { s.albedo = vec3f(0.8); }
+    coat = 0.5;
   }
-  s.ao = ao;
+  s.ao = min(s.ao, ao);
   let sh = sunShadow(wp, s.n) * cloudShadow(wp);
   var col = clearcoatShade(s, wp, sh, coat);
   if (coat > 0.0 && s.metal > 0.0) {

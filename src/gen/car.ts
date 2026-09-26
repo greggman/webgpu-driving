@@ -1,8 +1,21 @@
-// Procedural car bodies. A body is lofted from cross-section rings placed
-// along the car's length: the side profile (roof/hood/trunk line and the
-// underside with wheel arches), plan-view taper, and a tumblehome greenhouse
-// are all parametric per archetype. Local frame: +z forward, +y up, +x left,
-// origin on the ground midway between the axles.
+// Procedural car bodies (second generation).
+//
+// A body is two lofts:
+//  * the lower body ("tub"): stations along the length, each a superellipse
+//    cross-section (boxy but rounded sheet metal) between the underside and a
+//    top line that is the hood, the beltline, then the trunk deck; plan-view
+//    taper, fender flares and wheel arches (the underside rises around each
+//    axle) shape it; flat-ish end caps are the front / rear fascias (lamps,
+//    grille, plates are drawn by the shader from local position);
+//  * the greenhouse: stations from the rear-glass base to the windshield
+//    base, a trapezoid section with tumblehome and rounded roof corners; the
+//    windshield rake, roof and rear glass come from its top line. Glass vs.
+//    pillars / frit / seals is assigned per quad.
+// Plus mirrors on arms, door handles, exhaust tips and plates. All normals
+// are smooth (finite differences over each loft grid).
+//
+// Local frame: +z forward, +y up, +x left; origin on the ground midway
+// between the axles.
 
 export type CarKind = 'sedan' | 'hatch' | 'suv' | 'coupe' | 'wagon' | 'pickup';
 export const CAR_KINDS: CarKind[] = [
@@ -14,7 +27,7 @@ export const CAR_KINDS: CarKind[] = [
   'pickup',
 ];
 
-// Material ids (see car.wgsl).
+// Material ids (see car.wgsl). 10-17 are cabin materials (interior.ts).
 export const MAT_PAINT = 0;
 export const MAT_GLASS = 1;
 export const MAT_TRIM = 2;
@@ -24,6 +37,9 @@ export const MAT_UNDER = 5;
 export const MAT_CHROME = 6;
 export const MAT_TIRE = 7;
 export const MAT_RIM = 8;
+export const MAT_PLATE = 20;
+export const MAT_DISC = 21;
+export const MAT_CALIPER = 22;
 
 export interface CarSpec {
   kind: CarKind;
@@ -32,194 +48,187 @@ export interface CarSpec {
   wheelbase: number;
   wheelR: number;
   track: number;
-  // Side profile top line: [z (m, + forward), y] from front to back.
-  top: Array<[number, number]>;
-  belt: number; // beltline height
-  // Greenhouse z ranges: windshield base, roof front, roof back, rear glass base.
-  wsBase: number;
+  clearance: number;
+  noseY: number; // top of the front fascia
+  hoodY: number; // hood height at the cowl
+  beltF: number; // beltline at the windshield base
+  beltR: number; // beltline at the rear glass base
+  deckY: number; // trunk / tailgate top
+  tailY: number; // top of the rear fascia
+  roofY: number;
+  roofW: number; // roof half-width as a fraction of the body half-width
+  wsBase: number; // windshield base (z)
   roofFront: number;
   roofBack: number;
-  rearBase: number;
+  rearBase: number; // rear glass base (z)
+  sideRear: number; // where the side glass ends (z)
+  headlightY: number;
+  taillightY: number;
   bedFront?: number; // pickup bed start (z)
+  // Compatibility with the shader / interior: [front cap y, ..., rear y].
+  top: Array<[number, number]>;
+  belt: number;
+}
+
+function spec(
+  s: Omit<CarSpec, 'top' | 'belt' | 'headlightY' | 'taillightY'>,
+): CarSpec {
+  const headlightY = s.noseY - 0.05;
+  const taillightY = s.tailY - 0.1;
+  return {
+    ...s,
+    headlightY,
+    taillightY,
+    top: [
+      [s.length / 2, headlightY],
+      [-s.length / 2, taillightY],
+    ],
+    belt: (s.beltF + s.beltR) / 2,
+  };
 }
 
 export function carSpec(kind: CarKind): CarSpec {
   switch (kind) {
     case 'sedan':
-      return {
+      return spec({
         kind,
-        length: 4.75,
-        width: 1.84,
-        wheelbase: 2.8,
-        wheelR: 0.33,
-        track: 1.58,
-        top: [
-          [2.37, 0.55],
-          [2.3, 0.72],
-          [2.0, 0.82],
-          [1.05, 0.95],
-          [0.25, 1.42],
-          [-0.75, 1.44],
-          [-1.55, 1.05],
-          [-2.2, 1.0],
-          [-2.37, 0.62],
-        ],
-        belt: 0.98,
-        wsBase: 1.05,
-        roofFront: 0.25,
-        roofBack: -0.75,
-        rearBase: -1.55,
-      };
-    case 'hatch':
-      return {
-        kind,
-        length: 4.1,
-        width: 1.78,
-        wheelbase: 2.6,
-        wheelR: 0.31,
-        track: 1.54,
-        top: [
-          [2.05, 0.55],
-          [1.98, 0.74],
-          [1.6, 0.86],
-          [0.95, 0.98],
-          [0.15, 1.45],
-          [-1.35, 1.44],
-          [-1.9, 1.12],
-          [-2.05, 0.62],
-        ],
-        belt: 1.0,
-        wsBase: 0.95,
-        roofFront: 0.15,
-        roofBack: -1.35,
-        rearBase: -1.9,
-      };
-    case 'suv':
-      return {
-        kind,
-        length: 4.8,
-        width: 1.95,
+        length: 4.82,
+        width: 1.86,
         wheelbase: 2.85,
-        wheelR: 0.38,
-        track: 1.66,
-        top: [
-          [2.4, 0.72],
-          [2.32, 0.95],
-          [1.95, 1.06],
-          [1.2, 1.15],
-          [0.45, 1.72],
-          [-1.9, 1.74],
-          [-2.3, 1.5],
-          [-2.4, 0.8],
-        ],
-        belt: 1.18,
-        wsBase: 1.2,
+        wheelR: 0.345,
+        track: 1.6,
+        clearance: 0.15,
+        noseY: 0.66,
+        hoodY: 0.94,
+        beltF: 0.97,
+        beltR: 1.02,
+        deckY: 1.01,
+        tailY: 0.96,
+        roofY: 1.44,
+        roofW: 0.72,
+        wsBase: 0.98,
+        roofFront: 0.05,
+        roofBack: -0.95,
+        rearBase: -1.62,
+        sideRear: -1.12,
+      });
+    case 'hatch':
+      return spec({
+        kind,
+        length: 4.2,
+        width: 1.8,
+        wheelbase: 2.62,
+        wheelR: 0.33,
+        track: 1.55,
+        clearance: 0.15,
+        noseY: 0.66,
+        hoodY: 0.97,
+        beltF: 1.0,
+        beltR: 1.06,
+        deckY: 1.06,
+        tailY: 1.0,
+        roofY: 1.47,
+        roofW: 0.74,
+        wsBase: 0.88,
+        roofFront: 0.05,
+        roofBack: -1.3,
+        rearBase: -1.92,
+        sideRear: -1.55,
+      });
+    case 'suv':
+      return spec({
+        kind,
+        length: 4.85,
+        width: 1.96,
+        wheelbase: 2.9,
+        wheelR: 0.39,
+        track: 1.68,
+        clearance: 0.21,
+        noseY: 0.86,
+        hoodY: 1.12,
+        beltF: 1.15,
+        beltR: 1.2,
+        deckY: 1.2,
+        tailY: 1.12,
+        roofY: 1.75,
+        roofW: 0.78,
+        wsBase: 1.18,
         roofFront: 0.45,
         roofBack: -1.9,
         rearBase: -2.3,
-      };
+        sideRear: -1.95,
+      });
     case 'coupe':
-      return {
+      return spec({
         kind,
-        length: 4.5,
-        width: 1.88,
-        wheelbase: 2.65,
-        wheelR: 0.34,
-        track: 1.6,
-        top: [
-          [2.25, 0.5],
-          [2.18, 0.66],
-          [1.8, 0.76],
-          [0.8, 0.9],
-          [-0.1, 1.28],
-          [-0.8, 1.27],
-          [-1.9, 0.98],
-          [-2.25, 0.62],
-        ],
-        belt: 0.92,
-        wsBase: 0.8,
-        roofFront: -0.1,
-        roofBack: -0.8,
-        rearBase: -1.9,
-      };
+        length: 4.55,
+        width: 1.9,
+        wheelbase: 2.68,
+        wheelR: 0.355,
+        track: 1.62,
+        clearance: 0.13,
+        noseY: 0.6,
+        hoodY: 0.86,
+        beltF: 0.9,
+        beltR: 0.97,
+        deckY: 0.96,
+        tailY: 0.92,
+        roofY: 1.3,
+        roofW: 0.68,
+        wsBase: 0.82,
+        roofFront: -0.18,
+        roofBack: -0.75,
+        rearBase: -1.85,
+        sideRear: -0.95,
+      });
     case 'wagon':
-      return {
+      return spec({
         kind,
-        length: 4.85,
-        width: 1.84,
-        wheelbase: 2.85,
-        wheelR: 0.33,
-        track: 1.58,
-        top: [
-          [2.42, 0.55],
-          [2.35, 0.72],
-          [2.0, 0.82],
-          [1.1, 0.95],
-          [0.3, 1.45],
-          [-2.05, 1.44],
-          [-2.35, 1.2],
-          [-2.42, 0.62],
-        ],
-        belt: 0.98,
-        wsBase: 1.1,
-        roofFront: 0.3,
+        length: 4.9,
+        width: 1.86,
+        wheelbase: 2.88,
+        wheelR: 0.345,
+        track: 1.6,
+        clearance: 0.15,
+        noseY: 0.66,
+        hoodY: 0.95,
+        beltF: 0.98,
+        beltR: 1.04,
+        deckY: 1.04,
+        tailY: 1.0,
+        roofY: 1.46,
+        roofW: 0.74,
+        wsBase: 1.0,
+        roofFront: 0.1,
         roofBack: -2.05,
-        rearBase: -2.35,
-      };
+        rearBase: -2.3,
+        sideRear: -1.95,
+      });
     case 'pickup':
-      return {
+      return spec({
         kind,
-        length: 5.4,
+        length: 5.5,
         width: 2.0,
-        wheelbase: 3.4,
-        wheelR: 0.4,
-        track: 1.7,
-        top: [
-          [2.7, 0.85],
-          [2.62, 1.1],
-          [2.2, 1.18],
-          [1.45, 1.25],
-          [0.85, 1.85],
-          [-0.35, 1.86],
-          [-0.45, 1.25],
-          [-2.62, 1.22],
-          [-2.7, 0.9],
-        ],
-        belt: 1.27,
+        wheelbase: 3.45,
+        wheelR: 0.41,
+        track: 1.72,
+        clearance: 0.24,
+        noseY: 1.0,
+        hoodY: 1.22,
+        beltF: 1.26,
+        beltR: 1.27,
+        deckY: 1.25,
+        tailY: 1.22,
+        roofY: 1.9,
+        roofW: 0.78,
         wsBase: 1.45,
-        roofFront: 0.85,
-        roofBack: -0.35,
-        rearBase: -0.45,
+        roofFront: 0.82,
+        roofBack: -0.3,
+        rearBase: -0.42,
+        sideRear: -0.36,
         bedFront: -0.5,
-      };
+      });
   }
-}
-
-// Monotone-in-z Catmull-Rom interpolation of the top profile.
-function topAt(spec: CarSpec, z: number): number {
-  const t = spec.top;
-  if (z >= t[0][0]) return t[0][1];
-  if (z <= t[t.length - 1][0]) return t[t.length - 1][1];
-  let i = 0;
-  while (i < t.length - 2 && z < t[i + 1][0]) i++;
-  const p0 = t[Math.max(i - 1, 0)],
-    p1 = t[i],
-    p2 = t[i + 1],
-    p3 = t[Math.min(i + 2, t.length - 1)];
-  const u = (p1[0] - z) / (p1[0] - p2[0]);
-  const u2 = u * u,
-    u3 = u2 * u;
-  // Hard corners at the greenhouse break points look better with a
-  // tension that keeps segments nearly linear.
-  const tension = 0.3;
-  const m1 = ((p2[1] - p0[1]) / 2) * tension;
-  const m2 = ((p3[1] - p1[1]) / 2) * tension;
-  return (
-    (2 * u3 - 3 * u2 + 1) * p1[1] +
-    (u3 - 2 * u2 + u) * m1 +
-    (-2 * u3 + 3 * u2) * p2[1] +
-    (u3 - u2) * m2
-  );
 }
 
 export interface MeshData {
@@ -230,243 +239,322 @@ export interface MeshData {
 
 const V_FLOATS = 8;
 
-export function buildCarBody(spec: CarSpec): MeshData {
-  const L = spec.length;
-  const hw = spec.width / 2;
-  const NS = 72; // stations
+function clamp01(x: number) {
+  return Math.min(1, Math.max(0, x));
+}
+function smooth(a: number, b: number, x: number) {
+  const t = clamp01((x - a) / (b - a));
+  return t * t * (3 - 2 * t);
+}
+
+type P3 = [number, number, number];
+
+// Grid of points [station][ring] -> triangles with smooth normals and a
+// per-quad material.
+function emitGrid(
+  push: (p: number[], n: number[], m: number) => void,
+  grid: P3[][],
+  mat: (i: number, j: number) => number,
+  outward: (p: P3) => P3,
+  closedRing: boolean,
+) {
+  const NS = grid.length,
+    NR = grid[0].length;
+  const normals: P3[][] = [];
+  for (let i = 0; i < NS; ++i) {
+    const row: P3[] = [];
+    for (let j = 0; j < NR; ++j) {
+      const a = grid[Math.max(i - 1, 0)][j],
+        b = grid[Math.min(i + 1, NS - 1)][j];
+      const jm = closedRing ? (j - 1 + NR) % NR : Math.max(j - 1, 0);
+      const jp = closedRing ? (j + 1) % NR : Math.min(j + 1, NR - 1);
+      const c = grid[i][jm],
+        d = grid[i][jp];
+      const du = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const dv = [d[0] - c[0], d[1] - c[1], d[2] - c[2]];
+      let n: P3 = [
+        du[1] * dv[2] - du[2] * dv[1],
+        du[2] * dv[0] - du[0] * dv[2],
+        du[0] * dv[1] - du[1] * dv[0],
+      ];
+      const l = Math.hypot(n[0], n[1], n[2]) || 1;
+      n = [n[0] / l, n[1] / l, n[2] / l];
+      const o = outward(grid[i][j]);
+      if (n[0] * o[0] + n[1] * o[1] + n[2] * o[2] < 0)
+        n = [-n[0], -n[1], -n[2]];
+      row.push(n);
+    }
+    normals.push(row);
+  }
+  for (let i = 0; i < NS - 1; ++i) {
+    for (let j = 0; j < NR - 1; ++j) {
+      const m = mat(i, j);
+      if (m < 0) continue;
+      const q = [
+        [i, j],
+        [i + 1, j],
+        [i, j + 1],
+        [i, j + 1],
+        [i + 1, j],
+        [i + 1, j + 1],
+      ];
+      for (const [a, b] of q) push(grid[a][b], normals[a][b], m);
+    }
+  }
+}
+
+export function buildCarBody(sp: CarSpec): MeshData {
   const verts: number[] = [];
-  const axleF = spec.wheelbase / 2,
-    axleR = -spec.wheelbase / 2;
-  const R = spec.wheelR;
-  const END = 0.22; // rounding length at the bumpers
-
-  // Station z positions: dense near the rounded ends.
-  const zs: number[] = [];
-  const ends = 10;
-  for (let i = 0; i < ends; ++i) {
-    const t = i / ends;
-    zs.push(L / 2 - END * (1 - Math.cos((t * Math.PI) / 2)));
-  }
-  const mid = NS - 2 * ends;
-  for (let i = 0; i < mid; ++i) {
-    const t = i / (mid - 1);
-    zs.push(L / 2 - END - t * (L - 2 * END));
-  }
-  for (let i = ends - 1; i >= 0; --i) {
-    const t = i / ends;
-    zs.push(-L / 2 + END * (1 - Math.cos((t * Math.PI) / 2)));
-  }
-  // Pillow factor: 1 in the middle, shrinking to ~0.35 at the extreme ends.
-  const pillow = (z: number) => {
-    const e = Math.abs(z) - (L / 2 - END);
-    if (e <= 0) return 1;
-    const u = Math.min(1, e / END);
-    return 0.35 + 0.65 * Math.sqrt(Math.max(0, 1 - u * u));
-  };
-
-  const bottomAt = (z: number) => {
-    let b = 0.19;
-    const zn = Math.abs(z) / (L / 2);
-    b += (0.14 * Math.max(0, zn - 0.78)) / 0.22; // overhang lift
-    for (const az of [axleF, axleR]) {
-      const dz = Math.abs(z - az);
-      const ar = R + 0.06;
-      if (dz < ar) {
-        const arch = Math.sqrt(ar * ar - dz * dz);
-        b = Math.max(b, R + arch * 0.98);
-      }
-    }
-    return b;
-  };
-  const widthAt = (z: number) => {
-    const zn = z / (L / 2);
-    const e = zn > 0 ? 2.6 : 3.4;
-    let w = hw * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(zn), e)), 1 / e);
-    w = Math.max(w, hw * 0.82);
-    // Fender flares over the wheels.
-    for (const az of [axleF, axleR]) {
-      const dz = Math.abs(z - az);
-      w += 0.02 * Math.max(0, 1 - dz / (R + 0.35));
-    }
-    return w;
-  };
-
-  // Half ring (right side, x < 0 mirrored later): bottom center -> top center.
-  const ring = (z: number): Array<[number, number]> => {
-    const pf = pillow(z);
-    let top = topAt(spec, z);
-    const bed =
-      spec.bedFront !== undefined && z < spec.bedFront && z > -L / 2 + 0.15;
-    if (bed) top = spec.belt - 0.02;
-    // Keep a real fender above the arch (the tyre tucks under it).
-    const bottom0 = Math.min(bottomAt(z), top - 0.2);
-    const midY = (bottom0 + Math.min(top, spec.belt)) / 2;
-    // Pillow the ends toward the mid-height of the lower body.
-    const yb = midY + (bottom0 - midY) * pf;
-    const yt = midY + (top - midY) * (0.55 + 0.45 * pf);
-    const belt = Math.min(spec.belt, yt - 0.02);
-    const w = widthAt(z) * (0.55 + 0.45 * pf);
-    const greenhouse = yt > spec.belt + 0.12 && !bed;
-    const wt = w * 0.72;
-    const sideTop = Math.max(yb + 0.2, belt - 0.12);
-    const pts: Array<[number, number]> = [
-      [0, yb],
-      [w * 0.8, yb],
-      [w * 0.95, yb + 0.04],
-      [w * 0.995, yb + 0.14],
-      [w * 1.01, (yb + 0.14 + sideTop) / 2],
-      [w, sideTop],
-      [w * 0.975, belt - 0.02],
-    ];
-    if (greenhouse) {
-      pts.push(
-        [w * 0.93, belt + 0.02],
-        [(w * 0.93 + wt) / 2 + 0.02, (belt + yt) / 2],
-        [wt, yt - 0.06],
-        [wt * 0.55, yt - 0.012],
-        [0, yt],
-      );
-    } else {
-      pts.push(
-        [w * 0.93, yt - 0.015],
-        [w * 0.8, yt - 0.006],
-        [w * 0.6, yt - 0.002],
-        [w * 0.3, yt],
-        [0, yt + 0.004],
-      );
-    }
-    return pts;
-  };
-  const fullRing = (z: number): Array<[number, number, number]> => {
-    const r = ring(z);
-    const out: Array<[number, number, number]> = [];
-    for (let i = 0; i < r.length; ++i) out.push([-r[i][0], r[i][1], z]);
-    for (let i = r.length - 2; i >= 0; --i) out.push([r[i][0], r[i][1], z]);
-    return out;
-  };
-
-  const rings = zs.map(fullRing);
-  const RN = rings[0].length;
-  const HALF = (RN - 1) / 2; // index of the top center point
-
-  const normalAt = (i: number, j: number): [number, number, number] => {
-    const a = rings[Math.max(i - 1, 0)][j],
-      b = rings[Math.min(i + 1, NS - 1)][j];
-    const c = rings[i][Math.max(j - 1, 0)],
-      d = rings[i][Math.min(j + 1, RN - 1)];
-    const du = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    const dv = [d[0] - c[0], d[1] - c[1], d[2] - c[2]];
-    let n: [number, number, number] = [
-      du[1] * dv[2] - du[2] * dv[1],
-      du[2] * dv[0] - du[0] * dv[2],
-      du[0] * dv[1] - du[1] * dv[0],
-    ];
-    const l = Math.hypot(n[0], n[1], n[2]) || 1;
-    n = [n[0] / l, n[1] / l, n[2] / l];
-    // Orient outward: away from the body's central axis.
-    const p = rings[i][j];
-    const out = [p[0], p[1] - 0.7, p[2] * 0.3];
-    if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0)
-      n = [-n[0], -n[1], -n[2]];
-    return n;
-  };
-
-  const matFor = (i: number, j: number): number => {
-    const z = (zs[i] + zs[i + 1]) / 2;
-    const k = j < HALF ? j : RN - 2 - j; // mirrored segment index (0..HALF-1)
-    if (k === 0) return MAT_UNDER;
-    if (k === 1 || k === 2) return MAT_TRIM;
-    const hasGlass = z < spec.wsBase - 0.04 && z > spec.rearBase + 0.04;
-    if (!hasGlass) return MAT_PAINT;
-    if (k === 7 || k === 8) {
-      // Side windows with A/B/C pillars.
-      const bPillar =
-        Math.abs(z - (spec.roofFront + spec.roofBack) / 2) < 0.055;
-      const aPillar = z > spec.roofFront - 0.02 && z > spec.wsBase - 0.28;
-      const cPillar = z < spec.roofBack + 0.02 && z < spec.rearBase + 0.3;
-      if (!bPillar && !aPillar && !cPillar) return MAT_GLASS;
-      return k === 7 ? MAT_TRIM : MAT_PAINT;
-    }
-    if (k >= 9) {
-      if (z < spec.wsBase - 0.02 && z > spec.roofFront + 0.04) return MAT_GLASS;
-      if (z < spec.roofBack - 0.04 && z > spec.rearBase + 0.02)
-        return MAT_GLASS;
-    }
-    return MAT_PAINT;
-  };
-
   const push = (p: number[], n: number[], m: number) => {
     verts.push(p[0], p[1], p[2], n[0], n[1], n[2], m, 0);
   };
+  const L = sp.length,
+    HW = sp.width / 2,
+    R = sp.wheelR;
+  const axles = [sp.wheelbase / 2, -sp.wheelbase / 2];
+  const nose = L / 2,
+    tail = -L / 2;
+  const pickup = sp.bedFront !== undefined;
 
-  for (let i = 0; i < NS - 1; ++i) {
-    for (let j = 0; j < RN - 1; ++j) {
-      const a = rings[i][j],
-        b = rings[i][j + 1],
-        c = rings[i + 1][j],
-        d = rings[i + 1][j + 1];
-      const m = matFor(i, j);
-      const flat = m === MAT_GLASS;
-      let na = normalAt(i, j),
-        nb = normalAt(i, j + 1),
-        nc = normalAt(i + 1, j),
-        nd = normalAt(i + 1, j + 1);
-      if (flat) {
-        const avg = [0, 1, 2].map(k2 => na[k2] + nb[k2] + nc[k2] + nd[k2]);
-        const l = Math.hypot(avg[0], avg[1], avg[2]) || 1;
-        na = nb = nc = nd = [avg[0] / l, avg[1] / l, avg[2] / l];
-      }
-      push(a, na, m);
-      push(c, nc, m);
-      push(b, nb, m);
-      push(b, nb, m);
-      push(c, nc, m);
-      push(d, nd, m);
+  // ---- Profiles along z ----
+  const belt = (z: number) =>
+    sp.beltR +
+    (sp.beltF - sp.beltR) *
+      clamp01((z - sp.rearBase) / (sp.wsBase - sp.rearBase));
+  const topLine = (z: number) => {
+    if (z >= sp.wsBase) {
+      // Hood: gently convex, rounding over into the nose.
+      const t = clamp01((z - sp.wsBase) / (nose - sp.wsBase));
+      const hood =
+        sp.noseY +
+        (Math.min(sp.hoodY, sp.beltF) - sp.noseY) * (1 - Math.pow(t, 2.4));
+      return hood - 0.05 * smooth(0.9, 1, t);
     }
+    if (z >= sp.rearBase) return belt(z) - 0.005;
+    // Deck, falling off into the tail.
+    const t = clamp01((sp.rearBase - z) / (sp.rearBase - tail));
+    const deck =
+      sp.tailY +
+      (Math.max(sp.deckY, sp.beltR) - sp.tailY) * (1 - Math.pow(t, 3));
+    return deck - 0.04 * smooth(0.85, 1, t);
+  };
+  const halfWidth = (z: number) => {
+    const zn = z / (L / 2);
+    const e = zn > 0 ? 4.5 : 6;
+    let w = HW * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(zn), e)), 1 / e);
+    w = Math.max(w, HW * 0.82);
+    for (const az of axles) {
+      const dz = Math.abs(z - az);
+      w += 0.022 * Math.max(0, 1 - Math.pow(dz / (R + 0.4), 2));
+    }
+    return w;
+  };
+  const archR = R + 0.07;
+  const bottomLine = (z: number, top: number) => {
+    const zn = Math.abs(z) / (L / 2);
+    let b = sp.clearance + 0.1 * smooth(0.72, 1, zn);
+    for (const az of axles) {
+      const dz = Math.abs(z - az);
+      if (dz < archR)
+        b = Math.max(b, R + Math.sqrt(archR * archR - dz * dz) * 0.97);
+    }
+    return Math.min(b, top - 0.22);
+  };
+
+  // ---- Lower body loft ----
+  const zs: number[] = [];
+  const NS = 110;
+  for (let i = 0; i < NS; ++i) {
+    const t = i / (NS - 1);
+    // Denser near both ends.
+    const u = t - (Math.sin(t * Math.PI * 2) / (Math.PI * 2)) * 0.6;
+    zs.push(nose - u * L);
   }
-  // Small end caps close the pillowed ends.
-  for (const [ri, dir] of [
-    [0, 1],
-    [NS - 1, -1],
-  ] as Array<[number, number]>) {
-    const r = rings[ri];
+  const NH = 26; // points per half section
+  const nExp = 5;
+  const section = (z: number, endFactor: number): P3[] => {
+    const top = topLine(z);
+    const bot = bottomLine(z, top);
+    const yc = (top + bot) / 2,
+      hh = ((top - bot) / 2) * (0.35 + 0.65 * endFactor);
+    const w = halfWidth(z) * (0.72 + 0.28 * endFactor);
+    const ring: P3[] = [];
+    // Right side (x < 0) from bottom centre up to top centre, then the left
+    // side back down (closed ring).
+    const half: Array<[number, number]> = [];
+    for (let k = 0; k <= NH; ++k) {
+      const th = -Math.PI / 2 + (k / NH) * Math.PI;
+      const c = Math.cos(th),
+        s = Math.sin(th);
+      let x = w * Math.pow(Math.abs(c), 2 / nExp);
+      const y = yc + hh * Math.sign(s) * Math.pow(Math.abs(s), 2 / nExp);
+      // Slight tumblehome in the upper body and a shoulder crease.
+      const yn = (y - yc) / Math.max(hh, 1e-3);
+      x *= 1 - 0.035 * Math.max(0, yn);
+      x += 0.01 * Math.exp(-Math.pow((y - (top - 0.1)) / 0.03, 2));
+      half.push([x, y]);
+    }
+    for (let k = 0; k <= NH; ++k) ring.push([-half[k][0], half[k][1], z]);
+    for (let k = NH - 1; k >= 0; --k) ring.push([half[k][0], half[k][1], z]);
+    return ring;
+  };
+  const endFactorAt = (z: number) => {
+    const e = Math.min(nose - z, z - tail);
+    return 0.35 + 0.65 * Math.sqrt(clamp01(e / 0.09));
+  };
+  const lower: P3[][] = zs.map(z => section(z, endFactorAt(z)));
+  const RN = lower[0].length;
+  const lowerMat = (i: number, j: number): number => {
+    const z = (zs[i] + zs[i + 1]) / 2;
+    const k = j < NH ? j : RN - 2 - j; // 0 (bottom) .. NH-1 (top)
+    const p = lower[i][j];
+    if (k < 3) return MAT_UNDER;
+    // Open the top of the tub over the cabin (and the pickup bed).
+    const open =
+      (z < sp.wsBase - 0.05 && z > sp.rearBase + 0.05) ||
+      (pickup && z < sp.bedFront! && z > tail + 0.12);
+    if (open && k >= NH - 4) return -1;
+    // Black lower cladding / sills.
+    if (p[1] < bottomLine(z, topLine(z)) + 0.1) return MAT_TRIM;
+    if (z > nose - 0.3) return MAT_FRONT;
+    if (z < tail + 0.3) return MAT_REAR;
+    if (pickup && z < sp.bedFront! && k > NH - 5) return MAT_TRIM;
+    return MAT_PAINT;
+  };
+  emitGrid(push, lower, lowerMat, p => [p[0], p[1] - 0.6, p[2] * 0.25], true);
+  // Fascia end caps.
+  for (const [row, dir] of [
+    [lower[0], 1],
+    [lower[NS - 1], -1],
+  ] as Array<[P3[], number]>) {
     let cx = 0,
       cy = 0;
-    for (const p of r) {
+    for (const p of row) {
       cx += p[0];
       cy += p[1];
     }
-    const center = [cx / r.length, cy / r.length, r[0][2] + 0.005 * dir];
+    const c = [cx / row.length, cy / row.length, row[0][2] + 0.004 * dir];
     const n = [0, 0, dir];
     for (let j = 0; j < RN - 1; ++j) {
-      push(center, n, MAT_PAINT);
-      push(r[j], n, MAT_PAINT);
-      push(r[j + 1], n, MAT_PAINT);
+      push(c, n, dir > 0 ? MAT_FRONT : MAT_REAR);
+      push(row[j], n, dir > 0 ? MAT_FRONT : MAT_REAR);
+      push(row[j + 1], n, dir > 0 ? MAT_FRONT : MAT_REAR);
     }
   }
-  // Pickup bed.
-  if (spec.bedFront !== undefined) {
-    const z0 = spec.bedFront,
-      z1 = -L / 2 + 0.15;
-    const y0 = 0.75,
-      y1 = spec.belt;
-    const w = hw * 0.9;
-    const quad = (p: number[][], n: number[], m: number) => {
-      push(p[0], n, m);
-      push(p[1], n, m);
-      push(p[2], n, m);
-      push(p[0], n, m);
-      push(p[2], n, m);
-      push(p[3], n, m);
-    };
+
+  // ---- Greenhouse loft ----
+  const gz0 = sp.rearBase,
+    gz1 = sp.wsBase;
+  const GS = 70;
+  const gzs: number[] = [];
+  for (let i = 0; i < GS; ++i) gzs.push(gz1 - (i / (GS - 1)) * (gz1 - gz0));
+  const roofLine = (z: number) => {
+    const b = belt(z);
+    if (z >= sp.roofFront) {
+      const t = clamp01((z - sp.roofFront) / (sp.wsBase - sp.roofFront));
+      return b + (sp.roofY - b) * (1 - t * t * (0.6 + 0.4 * t));
+    }
+    if (z >= sp.roofBack) {
+      const t = (z - sp.roofBack) / (sp.roofFront - sp.roofBack);
+      return sp.roofY + 0.025 * Math.sin(t * Math.PI);
+    }
+    const t = clamp01((sp.roofBack - z) / (sp.roofBack - sp.rearBase));
+    return b + (sp.roofY - b) * (1 - Math.pow(t, 1.7));
+  };
+  const GH = 16; // points per half section
+  const gsection = (z: number): P3[] => {
+    const base = belt(z) - 0.015;
+    const top = roofLine(z);
+    const h = Math.max(top - base, 0.001);
+    const w = halfWidth(z);
+    const wb = w * 0.955;
+    const wt = w * sp.roofW;
+    const rc = Math.min(0.11, h * 0.45); // roof corner radius
+    const half: Array<[number, number]> = [];
+    // Side from the base up to the corner (tumblehome), then the rounded
+    // corner, then across the roof to the centre.
+    const sideN = 6,
+      cornerN = 6,
+      roofN = GH - sideN - cornerN;
+    for (let k = 0; k < sideN; ++k) {
+      const t = k / sideN;
+      const y = base + (h - rc) * t;
+      half.push([wb + (wt + rc * 0.4 - wb) * Math.pow(t, 1.3), y]);
+    }
+    for (let k = 0; k < cornerN; ++k) {
+      const a = (k / cornerN) * (Math.PI / 2);
+      half.push([
+        wt - rc * 0.6 + rc * Math.cos(a),
+        top - rc + rc * Math.sin(a) * 0.98,
+      ]);
+    }
+    for (let k = 0; k <= roofN; ++k) {
+      const t = k / roofN;
+      half.push([
+        (wt - rc * 0.6) * (1 - t),
+        top - 0.02 * (1 - t) * (1 - t) * 0 + 0.012 * t,
+      ]);
+    }
+    const ring: P3[] = [];
+    for (let k = 0; k < half.length; ++k)
+      ring.push([-half[k][0], half[k][1], z]);
+    for (let k = half.length - 2; k >= 0; --k)
+      ring.push([half[k][0], half[k][1], z]);
+    return ring;
+  };
+  const green: P3[][] = gzs.map(gsection);
+  const GR = green[0].length;
+  const halfLen = (GR + 1) / 2;
+  const bPillar = (sp.roofFront + Math.max(sp.roofBack, sp.sideRear)) / 2;
+  const greenMat = (i: number, j: number): number => {
+    const z = (gzs[i] + gzs[i + 1]) / 2;
+    const k = j < halfLen - 1 ? j : GR - 2 - j; // 0 at the base, rising to the roof centre
+    if (k === 0) return MAT_TRIM; // window seal on the beltline
+    const side = k < 6;
+    const corner = k >= 6 && k < 12;
+    if (side) {
+      if (k >= 5) return MAT_TRIM; // drip rail / window frame
+      const inSide = z < sp.wsBase - 0.12 && z > sp.sideRear;
+      if (!inSide) return MAT_PAINT; // A / C pillar base
+      if (Math.abs(z - bPillar) < 0.055) return MAT_TRIM; // B pillar
+      return MAT_GLASS;
+    }
+    const windshield = z > sp.roofFront + 0.02;
+    const rearGlass = z < sp.roofBack - 0.02;
+    if (corner) return windshield || rearGlass ? MAT_PAINT : MAT_PAINT;
+    if (windshield) return z > sp.wsBase - 0.04 ? MAT_TRIM : MAT_GLASS;
+    if (rearGlass) return z < sp.rearBase + 0.04 ? MAT_TRIM : MAT_GLASS;
+    return MAT_PAINT; // roof
+  };
+  emitGrid(push, green, greenMat, p => [p[0], p[1] - 0.6, p[2] * 0.2], false);
+
+  // ---- Details ----
+  const quad = (p: number[][], m: number) => {
+    const e1 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
+    const e2 = [p[3][0] - p[0][0], p[3][1] - p[0][1], p[3][2] - p[0][2]];
+    const n = [
+      e1[1] * e2[2] - e1[2] * e2[1],
+      e1[2] * e2[0] - e1[0] * e2[2],
+      e1[0] * e2[1] - e1[1] * e2[0],
+    ];
+    const l = Math.hypot(n[0], n[1], n[2]) || 1;
+    const nn = n.map(x => x / l);
+    for (const k of [0, 1, 2, 0, 2, 3]) push(p[k], nn, m);
+  };
+  // Pickup bed: floor and bulkhead inside the rails.
+  if (pickup) {
+    const z0 = sp.bedFront!,
+      z1 = tail + 0.12;
+    const y0 = 0.85,
+      y1 = sp.beltR - 0.01;
+    const w = HW * 0.86;
     quad(
       [
-        [-w, y0, z0],
-        [w, y0, z0],
         [w, y0, z1],
         [-w, y0, z1],
+        [-w, y0, z0],
+        [w, y0, z0],
       ],
-      [0, 1, 0],
       MAT_TRIM,
     );
     quad(
@@ -476,33 +564,83 @@ export function buildCarBody(spec: CarSpec): MeshData {
         [w, y0, z0],
         [-w, y0, z0],
       ],
-      [0, 0, -1],
       MAT_PAINT,
     );
+    for (const sx of [-1, 1]) {
+      quad(
+        [
+          [sx * w, y1, z1],
+          [sx * w, y1, z0],
+          [sx * w, y0, z0],
+          [sx * w, y0, z1],
+        ],
+        MAT_PAINT,
+      );
+    }
   }
-  // Side mirrors: housing on an arm mounted at the A-pillar base.
+  // Mirrors: housing on an arm at the A-pillar base.
   for (const sx of [-1, 1]) {
-    const z = spec.wsBase - 0.18;
-    const wz = widthAt(z) * 0.95;
-    const y = spec.belt + 0.1;
+    const z = sp.wsBase - 0.2;
+    const wz = halfWidth(z);
+    const y = belt(z) + 0.12;
+    box(push, [sx * (wz + 0.12), y, z], [0.09, 0.055, 0.05], MAT_PAINT);
     box(
       push,
-      [sx * (wz + 0.13), y, z - 0.02],
-      [0.085, 0.055, 0.045],
-      MAT_PAINT,
-    );
-    box(
-      push,
-      [sx * (wz + 0.13), y, z - 0.068],
-      [0.075, 0.045, 0.004],
+      [sx * (wz + 0.12), y, z - 0.052],
+      [0.08, 0.047, 0.003],
       MAT_CHROME,
     );
-    box(push, [sx * (wz + 0.03), y - 0.035, z], [0.06, 0.015, 0.025], MAT_TRIM);
+    box(
+      push,
+      [sx * (wz + 0.03), y - 0.04, z + 0.02],
+      [0.06, 0.012, 0.022],
+      MAT_TRIM,
+    );
   }
-  // License plates.
-  box(push, [0, 0.42, -L / 2 + 0.03], [0.26, 0.065, 0.01], MAT_CHROME);
-  const out = new Float32Array(verts);
-  // Make every triangle's winding agree with its (outward) normal.
+  // Door handles.
+  for (const sx of [-1, 1]) {
+    for (const z of [bPillar + 0.45, bPillar - 0.55]) {
+      if (z < sp.sideRear || z > sp.wsBase) continue;
+      const y = belt(z) - 0.1;
+      box(
+        push,
+        [sx * (halfWidth(z) * 0.985 + 0.006), y, z],
+        [0.008, 0.013, 0.07],
+        MAT_CHROME,
+      );
+    }
+  }
+  // Plates.
+  box(
+    push,
+    [0, sp.headlightY - 0.3, nose + 0.005],
+    [0.26, 0.06, 0.006],
+    MAT_PLATE,
+  );
+  box(
+    push,
+    [0, sp.taillightY - 0.3, tail - 0.005],
+    [0.26, 0.065, 0.006],
+    MAT_PLATE,
+  );
+  // Exhaust tips.
+  if (sp.kind !== 'suv') {
+    for (const sx of [-0.55, 0.55]) {
+      box(
+        push,
+        [sx * HW, sp.clearance + 0.1, tail + 0.1],
+        [0.04, 0.028, 0.06],
+        MAT_CHROME,
+      );
+    }
+  }
+  const out = orient(new Float32Array(verts));
+  return {vertices: out, count: out.length / V_FLOATS};
+}
+
+// Makes every triangle wind counter-clockwise around its vertex normals, so
+// front_facing in the shader tells outside from inside.
+function orient(out: Float32Array): Float32Array {
   for (let t = 0; t < out.length / V_FLOATS; t += 3) {
     const o = t * V_FLOATS;
     const e1 = [0, 1, 2].map(k => out[o + 8 + k] - out[o + k]);
@@ -523,7 +661,7 @@ export function buildCarBody(spec: CarSpec): MeshData {
       }
     }
   }
-  return {vertices: out, count: out.length / V_FLOATS};
+  return out;
 }
 
 function box(
@@ -540,13 +678,13 @@ function box(
     ],
     [
       [-1, 0, 0],
-      [0, 1, 0],
       [0, 0, 1],
+      [0, 1, 0],
     ],
     [
       [0, 1, 0],
-      [1, 0, 0],
       [0, 0, 1],
+      [1, 0, 0],
     ],
     [
       [0, -1, 0],
@@ -560,8 +698,8 @@ function box(
     ],
     [
       [0, 0, -1],
-      [1, 0, 0],
       [0, 1, 0],
+      [1, 0, 0],
     ],
   ];
   for (const [n, u, v] of faces) {
@@ -579,79 +717,171 @@ function box(
   }
 }
 
-// Wheel: tire (tread + sidewalls) and rim disc. Local: axle along x,
-// centered at the origin, unit radius scaled per car in the shader.
+// Wheel (unit radius; axle along x, outer face at +x): a revolved tyre with
+// rounded shoulders, a rim barrel, a disc face with five twin spokes (real
+// geometry), a centre cap, a slotted brake disc and a caliper (which the
+// shader keeps from spinning). Scaled by the wheel radius in the shader.
 export function buildWheel(): MeshData {
-  const verts: number[] = [];
-  const N = 32;
-  const halfW = 0.36; // relative to radius (tire width ~ 0.24 m for r=0.33)
+  const v: number[] = [];
   const push = (p: number[], n: number[], m: number) =>
-    verts.push(p[0], p[1], p[2], n[0], n[1], n[2], m, 0);
-  const rimR = 0.68;
+    v.push(p[0], p[1], p[2], n[0], n[1], n[2], m, 0);
+  const N = 48;
+  // Tyre profile (radius, x) around the outer face -> tread -> inner face.
+  const prof: Array<[number, number]> = [];
+  const hw = 0.33; // half width
+  const rim = 0.7;
+  prof.push([rim, hw * 0.92]);
+  prof.push([0.82, hw * 1.02]);
+  prof.push([0.93, hw * 0.98]);
+  for (let k = 0; k <= 6; ++k) {
+    const a = (k / 6) * Math.PI;
+    // Rounded tread crown.
+    prof.push([0.965 + 0.035 * Math.sin(a), hw * 0.92 * Math.cos(a)]);
+  }
+  prof.push([0.93, -hw * 0.98]);
+  prof.push([0.82, -hw * 1.02]);
+  prof.push([rim, -hw * 0.92]);
+  const ring = (r: number, x: number, a: number) => [
+    x,
+    Math.cos(a) * r,
+    Math.sin(a) * r,
+  ];
   for (let i = 0; i < N; ++i) {
     const a0 = (i / N) * Math.PI * 2,
       a1 = ((i + 1) / N) * Math.PI * 2;
-    const c0 = Math.cos(a0),
-      s0 = Math.sin(a0),
-      c1 = Math.cos(a1),
-      s1 = Math.sin(a1);
-    // Tread (slightly rounded via normals).
-    const q = (x: number, c: number, s: number, r: number) => [x, c * r, s * r];
-    const tn = (c: number, s: number, x: number) => {
-      const l = Math.hypot(c, s, x * 0.6);
-      return [(x * 0.6) / l, c / l, s / l];
-    };
-    push(q(halfW, c0, s0, 1), tn(c0, s0, 1), 7);
-    push(q(-halfW, c0, s0, 1), tn(c0, s0, -1), 7);
-    push(q(halfW, c1, s1, 1), tn(c1, s1, 1), 7);
-    push(q(halfW, c1, s1, 1), tn(c1, s1, 1), 7);
-    push(q(-halfW, c0, s0, 1), tn(c0, s0, -1), 7);
-    push(q(-halfW, c1, s1, 1), tn(c1, s1, -1), 7);
-    for (const sx of [1, -1]) {
-      // Sidewall ring from rimR to 1.
-      const n = [sx, 0, 0];
-      const x = sx * halfW;
-      push(q(x * 0.9, c0, s0, rimR), n, 7);
-      push(q(x, c0, s0, 1), n, 7);
-      push(q(x * 0.9, c1, s1, rimR), n, 7);
-      push(q(x * 0.9, c1, s1, rimR), n, 7);
-      push(q(x, c0, s0, 1), n, 7);
-      push(q(x, c1, s1, 1), n, 7);
-      // Rim disc (recessed).
-      const xr = x * 0.55;
-      push([xr, 0, 0], n, 8);
-      push(q(xr, c0, s0, rimR), n, 8);
-      push(q(xr, c1, s1, rimR), n, 8);
-      // Rim barrel lip.
-      push(q(xr, c0, s0, rimR), [0, -c0, -s0], 8);
-      push(q(x * 0.9, c0, s0, rimR), [0, -c0, -s0], 8);
-      push(q(xr, c1, s1, rimR), [0, -c1, -s1], 8);
-      push(q(xr, c1, s1, rimR), [0, -c1, -s1], 8);
-      push(q(x * 0.9, c0, s0, rimR), [0, -c0, -s0], 8);
-      push(q(x * 0.9, c1, s1, rimR), [0, -c1, -s1], 8);
+    for (let k = 0; k < prof.length - 1; ++k) {
+      const [r0, x0] = prof[k],
+        [r1, x1] = prof[k + 1];
+      // Profile normal (in r-x plane), outward.
+      const dr = r1 - r0,
+        dx = x1 - x0;
+      const nl = Math.hypot(dr, dx) || 1;
+      const nr = dx / nl,
+        nx = -dr / nl;
+      const n = (a: number) => [nx, Math.cos(a) * nr, Math.sin(a) * nr];
+      const P = [
+        ring(r0, x0, a0),
+        ring(r1, x1, a0),
+        ring(r1, x1, a1),
+        ring(r0, x0, a1),
+      ];
+      const Nn = [n(a0), n(a0), n(a1), n(a1)];
+      for (const q of [0, 1, 2, 0, 2, 3]) push(P[q], Nn[q], MAT_TIRE);
     }
-  }
-  const out = new Float32Array(verts);
-  // Orient triangles to their normals.
-  for (let t = 0; t < out.length / V_FLOATS; t += 3) {
-    const o = t * V_FLOATS;
-    const e1 = [0, 1, 2].map(k => out[o + 8 + k] - out[o + k]);
-    const e2 = [0, 1, 2].map(k => out[o + 16 + k] - out[o + k]);
-    const fn = [
-      e1[1] * e2[2] - e1[2] * e2[1],
-      e1[2] * e2[0] - e1[0] * e2[2],
-      e1[0] * e2[1] - e1[1] * e2[0],
+    // Rim barrel (inside the tyre bead), facing inward.
+    const bx0 = hw * 0.92,
+      bx1 = -hw * 0.8;
+    const rb = rim - 0.01;
+    const nb = (a: number) => [0, -Math.cos(a), -Math.sin(a)];
+    const B = [
+      ring(rb, bx0, a0),
+      ring(rb, bx1, a0),
+      ring(rb, bx1, a1),
+      ring(rb, bx0, a1),
     ];
-    const n = [0, 1, 2].map(
-      k => out[o + 3 + k] + out[o + 11 + k] + out[o + 19 + k],
-    );
-    if (fn[0] * n[0] + fn[1] * n[1] + fn[2] * n[2] < 0) {
-      for (let k = 0; k < V_FLOATS; ++k) {
-        const tmp = out[o + 8 + k];
-        out[o + 8 + k] = out[o + 16 + k];
-        out[o + 16 + k] = tmp;
-      }
-    }
+    for (const q of [0, 2, 1, 0, 3, 2])
+      push(B[q], nb(q === 1 || q === 0 ? a0 : a1), MAT_RIM);
+    // Rim lip (outer ring of the face).
+    const lip = [
+      ring(rim, hw * 0.92, a0),
+      ring(0.6, hw * 0.8, a0),
+      ring(0.6, hw * 0.8, a1),
+      ring(rim, hw * 0.92, a1),
+    ];
+    for (const q of [0, 1, 2, 0, 2, 3]) push(lip[q], [1, 0, 0], MAT_RIM);
+    // Recessed dark face between the spokes (the "hole", shows the disc).
+    const face = [
+      ring(0.6, hw * 0.35, a0),
+      ring(0.2, hw * 0.35, a0),
+      ring(0.2, hw * 0.35, a1),
+      ring(0.6, hw * 0.35, a1),
+    ];
+    // Brake disc behind the spokes.
+    const disc = [
+      ring(0.58, hw * 0.1, a0),
+      ring(0.25, hw * 0.1, a0),
+      ring(0.25, hw * 0.1, a1),
+      ring(0.58, hw * 0.1, a1),
+    ];
+    for (const q of [0, 1, 2, 0, 2, 3]) push(disc[q], [1, 0, 0], MAT_DISC);
+    void face;
   }
+  // Five twin spokes: slightly concave, raised above the disc.
+  const spoke = (ang: number, width: number) => {
+    const c = Math.cos(ang),
+      s = Math.sin(ang);
+    const t = [0, -s, c]; // tangent (perpendicular to the radial dir)
+    const rad = [0, c, s];
+    const pts = (r: number, x: number, off: number) => [
+      x,
+      rad[1] * r + t[1] * off,
+      rad[2] * r + t[2] * off,
+    ];
+    const w0 = width,
+      w1 = width * 0.7;
+    const inner = 0.19,
+      outer = 0.62;
+    const xIn = hw * 0.78,
+      xOut = hw * 0.62; // concave dish
+    // Face.
+    const f = [
+      pts(inner, xIn, -w0),
+      pts(outer, xOut, -w1),
+      pts(outer, xOut, w1),
+      pts(inner, xIn, w0),
+    ];
+    for (const q of [0, 1, 2, 0, 2, 3]) push(f[q], [1, 0, 0], MAT_RIM);
+    // Sides (give the spoke depth).
+    for (const sgn of [-1, 1]) {
+      const ww0 = w0 * sgn,
+        ww1 = w1 * sgn;
+      const sd = [
+        pts(inner, xIn, ww0),
+        pts(outer, xOut, ww1),
+        pts(outer, xOut - 0.1, ww1),
+        pts(inner, xIn - 0.1, ww0),
+      ];
+      const nn = [0, t[1] * sgn, t[2] * sgn];
+      for (const q of [0, 1, 2, 0, 2, 3]) push(sd[q], nn, MAT_RIM);
+    }
+  };
+  for (let k = 0; k < 5; ++k) {
+    const a = (k / 5) * Math.PI * 2;
+    spoke(a - 0.1, 0.035);
+    spoke(a + 0.1, 0.035);
+  }
+  // Centre cap (hub).
+  for (let i = 0; i < 20; ++i) {
+    const a0 = (i / 20) * Math.PI * 2,
+      a1 = ((i + 1) / 20) * Math.PI * 2;
+    const P = [
+      [hw * 0.82, 0, 0],
+      ring(0.2, hw * 0.78, a0),
+      ring(0.2, hw * 0.78, a1),
+    ];
+    for (const p of P) push(p, [1, 0, 0], MAT_RIM);
+  }
+  // Caliper (fixed; the shader doesn't spin it): a curved block at the rear top.
+  for (let i = 0; i < 6; ++i) {
+    const a0 = Math.PI * 0.62 + (i / 6) * 0.55,
+      a1 = Math.PI * 0.62 + ((i + 1) / 6) * 0.55;
+    const P = [
+      ring(0.56, hw * 0.3, a0),
+      ring(0.4, hw * 0.3, a0),
+      ring(0.4, hw * 0.3, a1),
+      ring(0.56, hw * 0.3, a1),
+    ];
+    for (const q of [0, 1, 2, 0, 2, 3]) push(P[q], [1, 0, 0], MAT_CALIPER);
+    const T = [
+      ring(0.56, hw * 0.3, a0),
+      ring(0.56, -hw * 0.1, a0),
+      ring(0.56, -hw * 0.1, a1),
+      ring(0.56, hw * 0.3, a1),
+    ];
+    const nt = (a: number) => [0, Math.cos(a), Math.sin(a)];
+    for (const q of [0, 1, 2, 0, 2, 3])
+      push(T[q], nt(q < 2 ? a0 : a1), MAT_CALIPER);
+  }
+  const out = orient(new Float32Array(v));
   return {vertices: out, count: out.length / V_FLOATS};
 }
