@@ -64,14 +64,14 @@ fn windOffset(worldPos: vec3f, weight: f32, phase: f32) -> vec3f {
 // Alpha is sharpened by its screen-space derivative so the cutout stays crisp
 // and keeps its coverage at distance.
 // duv = fwidth(uv) computed by the caller in uniform control flow.
-fn leafAlpha(uv: vec2f, mat: u32, seed: f32, duv: vec2f) -> vec2f {
+fn leafAlpha(uv: vec2f, mat: u32, seed: f32, duv: vec2f, erode: f32) -> vec2f {
   let variant = vec2f(floor(fract(seed * 7.13) * 2.0), floor(fract(seed * 3.71) * 2.0));
   let tuv = (clamp(uv, vec2f(0.01), vec2f(0.99)) + variant) * 0.5;
   let layer = select(0, 1, mat == 2u);
   let lod = clamp(log2(max(max(duv.x, duv.y) * 256.0, 1e-4)), 0.0, 6.0);
   let t = textureSampleLevel(matTex, linSampler, tuv, layer, lod);
   // Lower the cutout threshold at coarse mips to preserve coverage.
-  let thr = mix(0.5, 0.28, saturate(lod / 4.0));
+  let thr = mix(mix(0.5, 0.28, saturate(lod / 4.0)), 1.01, erode);
   return vec2f(select(0.0, 1.0, t.r > thr), t.g);
 }
 
@@ -129,9 +129,34 @@ fn vegMaterial(mat: u32, uv: vec2f, tint: f32, localPos: vec3f) -> VegMat {
 }
 
 // Stable per-pixel dither for LOD cross-fades (changes per frame for TAA).
+// Interleaved gradient noise, advanced by the golden ratio every frame: over
+// consecutive frames each pixel's threshold sweeps [0,1) evenly, so TAA's
+// temporal average of a dithered cross-fade equals the fade amount (this is
+// how Unreal/Unity-style dithered LOD transitions coexist with TAA).
 fn ditherHash(px: vec2f) -> f32 {
-  let f = F.misc2.z;
-  return fract(52.9829189 * fract(dot(px + f * vec2f(5.588, 3.219), vec2f(0.06711056, 0.00583715))));
+  let ign = fract(52.9829189 * fract(dot(px, vec2f(0.06711056, 0.00583715))));
+  return fract(ign + F.misc2.z * 0.61803399);
+}
+
+// Wind weight / per-card random decoded from the vertex wind slot (see
+// MeshBuilder.card: cards store 2 + level + rand).
+fn windWeight(w: f32) -> f32 {
+  return select(w, floor(w - 2.0) / 15.0, w >= 2.0);
+}
+fn cardRand(w: f32) -> f32 {
+  return select(-1.0, fract(w - 2.0), w >= 2.0);
+}
+
+// Instance mesh index (low 8 bits) and LOD0 morph amount (high bits).
+fn instMesh(m: u32) -> u32 { return m & 0xffu; }
+fn instMorph(m: u32) -> f32 { return f32(m >> 8u) / 255.0; }
+
+// Alpha erosion for LOD morphing: cards beyond the simpler LOD's card count
+// dissolve as the tree approaches its switch distance.
+fn cardErode(rand: f32, morph: f32) -> f32 {
+  if (rand < 0.0 || morph <= 0.0) { return 0.0; }
+  let keep = 1.0 - 0.5 * morph;
+  return saturate((rand - keep) / 0.12);
 }
 
 fn fadeDiscard(fade: f32, px: vec2f) -> bool {

@@ -622,7 +622,7 @@ export class Renderer {
     ]);
     F.set('moon', [...sk.moonDir, sk.night]);
     F.set('misc', [ox, oz, w, h]);
-    F.set('misc2', [jx, jy, this.frameIndex % 8, 0]);
+    F.set('misc2', [jx, jy, this.frameIndex % 64, 0]);
     const wind = biome.weather.wind;
     F.set('weather', [
       wind * 0.8,

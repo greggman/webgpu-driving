@@ -96,6 +96,12 @@ export class MeshBuilder {
       c[2] + right[2] * a + up[2] * b,
     ];
     const n2 = normal.map(x => -x);
+    // Cards encode a per-card random value in the wind slot:
+    // 2 + windLevel (0..15) + rand in [0, 0.99). Used for LOD morphing.
+    const h =
+      Math.sin(c[0] * 12.9898 + c[1] * 78.233 + c[2] * 37.719) * 43758.5453;
+    const rnd = (h - Math.floor(h)) * 0.99;
+    wind = 2 + Math.round(Math.min(Math.max(wind, 0), 1) * 15) + rnd;
     const a = this.vert(p(-1, -1), normal, 0, 0, mat, wind);
     const b = this.vert(p(1, -1), normal, 1, 0, mat, wind);
     const cc = this.vert(p(1, 1), normal, 1, 1, mat, wind);

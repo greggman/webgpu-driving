@@ -19,7 +19,7 @@ struct IOut {
 };
 
 fn billboard(vi: u32, inst: Inst, eye: vec3f, o: ptr<function, IOut>) -> vec3f {
-  let mi = meshes[inst.mesh];
+  let mi = meshes[instMesh(inst.mesh)];
   let R = mi.radius * inst.scale;
   let center = inst.pos + vec3f(0.0, mi.centerY * inst.scale, 0.0);
   let toEye = normalize(eye - center);
@@ -52,23 +52,48 @@ struct Cell {
   uv: vec2f,
 };
 
-fn pickCell(viewObj: vec3f, quv: vec2f, px: vec2f) -> vec2f {
-  // Nearest baked view (deterministic; no dither noise).
+// Blend of the four nearest baked views (bilinear over the octahedral view
+// grid, weighted by each view's coverage) so the impostor changes smoothly
+// as the viewing angle sweeps past the baked directions.
+struct ImpSample {
+  albedo: vec3f,
+  alpha: f32,
+  normal: vec4f,
+};
+
+fn sampleImpostor(viewObj: vec3f, quv: vec2f, layer: i32) -> ImpSample {
   let g = hemiOctEncode(viewObj) * OCT_N - 0.5;
-  let cc = clamp(floor(g + 0.5), vec2f(0.0), vec2f(OCT_N - 1.0));
-  _ = px;
-  return (cc + quv) / OCT_N;
+  let base = floor(g);
+  let f = g - base;
+  var col = vec3f(0.0);
+  var alpha = 0.0;
+  var nrm = vec4f(0.0);
+  for (var i = 0; i < 4; i++) {
+    let o = vec2f(f32(i & 1), f32(i >> 1));
+    let w = select(1.0 - f.x, f.x, o.x > 0.5) * select(1.0 - f.y, f.y, o.y > 0.5);
+    let cc = clamp(base + o, vec2f(0.0), vec2f(OCT_N - 1.0));
+    let uv = (cc + quv) / OCT_N;
+    let a = textureSampleLevel(impAlbedo, impSampler, uv, layer, 0.0);
+    let nn = textureSampleLevel(impNormal, impSampler, uv, layer, 0.0);
+    col += a.rgb * a.a * w;
+    alpha += a.a * w;
+    nrm += nn * a.a * w;
+  }
+  var s: ImpSample;
+  s.alpha = alpha;
+  s.albedo = col / max(alpha, 1e-4);
+  s.normal = nrm / max(alpha, 1e-4);
+  return s;
 }
 
 @fragment
 fn fs(in: IOut) -> GBufferOut {
   let inst = insts[in.inst];
   if (fadeDiscard(inst.fade, in.pos.xy)) { discard; }
-  let uv = pickCell(normalize(in.viewObj), in.quv, in.pos.xy);
-  let layer = i32(inst.mesh);
-  let a = textureSampleLevel(impAlbedo, impSampler, uv, layer, 0.0);
-  if (a.a < 0.5) { discard; }
-  let nn = textureSampleLevel(impNormal, impSampler, uv, layer, 0.0);
+  let im = sampleImpostor(normalize(in.viewObj), in.quv, i32(instMesh(inst.mesh)));
+  if (im.alpha < 0.5) { discard; }
+  let a = vec4f(im.albedo, im.alpha);
+  let nn = im.normal;
   let n = normalize(rotY(nn.xyz * 2.0 - 1.0, inst.rot));
   let t = inst.tint - 0.5;
   var s: Surface;
@@ -109,6 +134,7 @@ fn fsShadow(in: IOut) {
   let g = hemiOctEncode(normalize(in.viewObj)) * OCT_N - 0.5;
   let cc = clamp(floor(g + 0.5), vec2f(0.0), vec2f(OCT_N - 1.0));
   let uv = (cc + in.quv) / OCT_N;
-  let a = textureSampleLevel(impAlbedo, impSampler, uv, i32(inst.mesh), 0.0);
+  if (fadeDiscard(inst.fade, in.pos.xy)) { discard; }
+  let a = textureSampleLevel(impAlbedo, impSampler, uv, i32(instMesh(inst.mesh)), 0.0);
   if (a.a < 0.5) { discard; }
 }

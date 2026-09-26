@@ -24,12 +24,13 @@ struct VOut {
   @location(3) local: vec3f,
   @location(4) @interpolate(flat) mat: u32,
   @location(5) @interpolate(flat) inst: u32,
+  @location(6) @interpolate(flat) cardRand: f32,
 };
 
 fn instWorld(v: VIn, inst: Inst) -> vec3f {
   let lp = rotY(v.pos * inst.scale, inst.rot);
   var w = inst.pos + lp;
-  w += windOffset(w, v.wind * (0.4 + 0.6 * inst.scale), inst.tint);
+  w += windOffset(w, windWeight(v.wind) * (0.4 + 0.6 * inst.scale), inst.tint);
   return w;
 }
 
@@ -46,6 +47,7 @@ fn vs(v: VIn, @builtin(instance_index) ii: u32) -> VOut {
   o.local = v.pos;
   o.mat = u32(v.mat + 0.5);
   o.inst = idx;
+  o.cardRand = cardRand(v.wind);
   return o;
 }
 
@@ -61,7 +63,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   let card = isCard(in.mat);
   var leafShade = 1.0;
   if (card) {
-    let la = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv);
+    let la = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv,
+      cardErode(in.cardRand, instMorph(inst.mesh)));
     if (la.x < 0.5) { discard; }
     leafShade = la.y;
   }
@@ -75,7 +78,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   s.rough = m.rough;
   s.metal = 0.0;
   // Crown self-occlusion: darker toward the inside/bottom of the crown.
-  let mi = meshes[inst.mesh];
+  let mi = meshes[instMesh(inst.mesh)];
   var ao = 1.0;
   if (card) {
     let h = saturate(in.local.y / max(mi.height, 0.1));
@@ -105,6 +108,7 @@ struct SOut {
   @location(1) @interpolate(flat) mat: u32,
   @location(2) @interpolate(flat) inst: u32,
   @location(3) local: vec3f,
+  @location(4) @interpolate(flat) cardRand: f32,
 };
 
 @vertex
@@ -117,14 +121,19 @@ fn vsShadow(v: VIn, @builtin(instance_index) ii: u32) -> SOut {
   o.mat = u32(v.mat + 0.5);
   o.inst = idx;
   o.local = v.pos;
+  o.cardRand = cardRand(v.wind);
   return o;
 }
 
 @fragment
 fn fsShadow(in: SOut) {
   let duv = fwidth(in.uv);
+  let inst = insts[in.inst];
+  // Same complementary dither as the main view: one caster while fading.
+  if (fadeDiscard(inst.fade, in.pos.xy)) { discard; }
   if (isCard(in.mat)) {
-    let a = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv);
+    let a = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv,
+      cardErode(in.cardRand, instMorph(inst.mesh)));
     if (a.x < 0.5) { discard; }
   }
 }
@@ -174,7 +183,7 @@ fn fsBake(in: BakeOut, @builtin(front_facing) ff: bool) -> BakeTargets {
   let card = isCard(in.mat);
   var shade = 1.0;
   if (card) {
-    let la = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv);
+    let la = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv, 0.0);
     if (la.x < 0.5) { discard; }
     shade = la.y;
   }

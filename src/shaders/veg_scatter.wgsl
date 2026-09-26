@@ -177,9 +177,9 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
   inst.rot = rand01(pcg(h0 + 5u)) * 6.2831853;
   inst.tint = rand01(pcg(h0 + 6u));
   inst.mesh = mesh;
-  // LOD selection. Each instance switches at its own hashed distance (+-15%)
-  // so transitions are spread out and never need screen-space dithering
-  // (which fights TAA's neighbourhood clamp and reads as a checkerboard).
+  // LOD selection. Each instance switches at its own hashed distance (+-15%),
+  // cross-fading over a short band (dithered, resolved by TAA), and LOD0
+  // trees morph toward LOD1 (extra leaf cards dissolve) before the switch.
   let jit = 0.85 + 0.3 * rand01(pcg(h0 + 7u));
   let l0 = SP.lod0 * (0.6 + 0.4 * scale) * jit;
   let l1 = SP.lod1 * (0.6 + 0.4 * scale) * jit;
@@ -189,11 +189,29 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
   let edge = SP.maxDist * (0.9 + 0.1 * jit);
   inst.scale *= smoothstep(edge, edge * 0.85, dist);
   if (inst.scale <= 0.01) { return; }
-  if (d3 < l0) {
+  let b0 = clamp(l0 * 0.07, 3.0, 10.0);
+  let b1 = clamp(l1 * 0.07, 6.0, 20.0);
+  let morph = saturate((d3 - 0.55 * l0) / (0.45 * l0));
+  let meshIdx = mesh;
+  // LOD0 (with morph), fading out across [l0 - b0/2, l0 + b0/2].
+  if (d3 < l0 + b0 * 0.5) {
+    let t = saturate((d3 - (l0 - b0 * 0.5)) / b0);
+    inst.fade = select(0.0, -t, t > 0.0);
+    inst.mesh = meshIdx | (u32(morph * 255.0) << 8u);
     emit(base, inst);
-  } else if (d3 < l1) {
+  }
+  inst.mesh = meshIdx;
+  // LOD1: fades in at l0, out at l1 (toward the impostor).
+  if (d3 > l0 - b0 * 0.5 && d3 < l1 + b1 * 0.5) {
+    let tin = saturate((d3 - (l0 - b0 * 0.5)) / b0);
+    let tout = saturate((d3 - (l1 - b1 * 0.5)) / b1);
+    inst.fade = select(tin, -tout, tout > 0.0);
+    if (tin >= 1.0 && tout <= 0.0) { inst.fade = 0.0; }
     emit(base + 1u, inst);
-  } else if (SP.impostors != 0u) {
+  }
+  if (SP.impostors != 0u && d3 > l1 - b1 * 0.5) {
+    let tin = saturate((d3 - (l1 - b1 * 0.5)) / b1);
+    inst.fade = select(tin, 0.0, tin >= 1.0);
     emit(base + 2u, inst);
   }
 }
