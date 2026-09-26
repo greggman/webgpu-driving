@@ -1,0 +1,74 @@
+[
+  {
+    "name": "sedan-front34",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "front34"
+    }
+  },
+  {
+    "name": "sedan-rear34",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "rear34"
+    }
+  },
+  {
+    "name": "sedan-side",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "side"
+    }
+  },
+  {
+    "name": "sedan-front",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "front"
+    }
+  },
+  {
+    "name": "sedan-top34",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "top34"
+    }
+  },
+  {
+    "name": "sedan-wheel",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "wheel"
+    }
+  }
+]

@@ -372,8 +372,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     }
     // Main grille: shape per kind, chrome / gloss surround.
     if (lp.z > halfL - 0.35 && ln.z > 0.25) {
-      var y0 = -0.2; var y1 = 0.0; var wt = 0.42; var wb = 0.34;
-      cell = 0u;
+                  var y0 = -0.26; var y1 = 0.02; var wt = 0.42; var wb = 0.38;
+            cell = 1u;
       if (style == 1u) { y0 = -0.07; y1 = 0.0; wt = 0.4; wb = 0.36; }
       if (style == 2u) { y0 = -0.26; y1 = 0.05; wt = 0.46; wb = 0.46; cell = 1u; }
       if (style == 3u) { y0 = -0.3; y1 = -0.1; wt = 0.5; wb = 0.62; cell = 1u; }
@@ -400,11 +400,12 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Fog lamp pods in the bumper corners.
     if (style != 3u && lp.z > halfL - 0.45 && ln.z > 0.2) {
       let fd = length(vec2f((ax - 0.8) * halfW, gy + 0.36));
-      if (fd < 0.045) { part = select(5u, 6u, fd < 0.032); }
+            if (fd < 0.035) { part = select(5u, 6u, fd < 0.025); }
     }
   }
   if (body && lp.z < 0.0) {
-    if (lp.z < -halfL + 0.5 && ln.z < -0.1) {
+        // Tail lamps on the rear face, wrapping onto the rear quarters.
+    if (lp.z < -halfL + 0.5 && (ln.z < -0.1 || (ax > 0.9 && lp.z < -halfL + 0.35))) {
       let dy = lp.y - ty;
       var lamp = false;
       var bezel = false;
@@ -417,8 +418,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
         lamp = ax < 0.96 && abs(dy - 0.04) < 0.028;
         bezel = ax < 0.98 && abs(dy - 0.04) < 0.04;
       } else {
-        lamp = (ax > 0.58 && ax < 0.96 && dy > -0.05 && dy < 0.075) || (ax <= 0.58 && abs(dy - 0.045) < 0.016);
-        bezel = ax > 0.55 && ax < 0.98 && dy > -0.065 && dy < 0.09;
+                lamp = (ax > 0.55 && ax < 0.99 && dy > -0.06 && dy < 0.1) || (ax <= 0.58 && abs(dy - 0.045) < 0.016);
+        bezel = false;
       }
       if (lamp) { part = 2u; } else if (bezel) { part = 4u; }
     }
@@ -473,10 +474,10 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     if (style == 2u || style == 4u || style == 5u) {
       lines = 1.0 - smoothstep(0.1, 0.3, abs(fract(dy * 16.0) - 0.5));
     }
-    s.albedo = vec3f(0.16, 0.01, 0.012);
+        s.albedo = vec3f(0.3, 0.015, 0.012);
     s.rough = 0.05;
     coat = 1.0;
-    let glow = 0.3 + 5.0 * lightsOn + 14.0 * brake;
+    let glow = 1.2 + 5.0 * lightsOn + 14.0 * brake;
     emissive = vec3f(1.0, 0.04, 0.02) * glow * (0.3 + 0.7 * lines);
   } else if (part == 3u) {
     // Grille insert, recessed: bright walls, dark cells, shadowed toward
@@ -511,11 +512,11 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     coat = 1.0;
   } else if (part == 6u) {
     // Fog lamp lens.
-    s.albedo = vec3f(0.5);
+        s.albedo = vec3f(0.06);
     s.metal = 1.0;
     s.rough = 0.1;
     coat = 1.0;
-    emissive = vec3f(1.0, 0.95, 0.85) * (0.1 + 6.0 * lightsOn);
+    emissive = vec3f(1.0, 0.95, 0.85) * 6.0 * lightsOn;
   } else if (part == 7u) {
     s.albedo = vec3f(0.005);
     s.rough = 0.9;
@@ -633,9 +634,11 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Alloy rim: bright machined spoke faces, darker barrel and cap.
     let r = length(lp.yz);
     let face = saturate(abs(ln.x) * 2.0 - 0.6);
-    s.albedo = mix(vec3f(0.18), vec3f(0.72), face);
+        s.albedo = mix(vec3f(0.06), vec3f(0.72), face);
     s.metal = 1.0;
-    s.rough = mix(0.45, 0.18, face);
+    s.rough = mix(0.45, 0.25, face);
+    // Polished lip at the rim edge.
+    if (abs(r - 0.69) < 0.012 && abs(ln.x) > 0.5) { s.albedo = vec3f(0.95); s.rough = 0.1; }
     if (r < 0.2) { s.albedo = vec3f(0.08); s.rough = 0.3; }
     if (abs(r - 0.1) < 0.01) { s.albedo = vec3f(0.8); }
     coat = 0.5;
