@@ -9,6 +9,7 @@ import {vehiclePose, Pose} from './sim/pose';
 import {CameraState, Director, SHOT_KINDS, ShotKind} from './camera/director';
 import {computeSky} from './world/sky';
 import {carSpec} from './gen/car';
+import {Tumbleweeds} from './sim/tumbleweeds';
 
 export interface Params {
   biome: BiomeId;
@@ -58,6 +59,7 @@ export class App {
   road!: Road;
   traffic!: Traffic;
   director!: Director;
+  tumbleweeds: Tumbleweeds | null = null;
   time = 0;
   private last = 0;
   private prevCam: CameraState | null = null;
@@ -120,6 +122,10 @@ export class App {
         this.director.setShotTime(this.params.shotTime);
     }
     this.renderer.setWorld(this.road, this.biome);
+    this.tumbleweeds =
+      this.biome.scatter.tumbleweeds > 0
+        ? new Tumbleweeds(this.road, this.params.seed, 7)
+        : null;
     this.prevCam = null;
     this.prevPoses.clear();
     // Let traffic settle into a natural arrangement before we start.
@@ -186,6 +192,12 @@ export class App {
     this.time += dt;
     this.idle += dtReal;
     if (dt > 0) this.traffic.update(dt);
+    if (this.tumbleweeds) {
+      this.tumbleweeds.update(dt, this.traffic.player.s, this.time);
+      this.renderer.props.dynamic = this.tumbleweeds.instances(this.time);
+    } else {
+      this.renderer.props.dynamic = [];
+    }
 
     // Poses.
     const cars: WorldCar[] = [];
@@ -242,6 +254,7 @@ export class App {
       dt: dtReal,
       cars,
       playerS: player.s,
+      playerD: player.d,
       player: pp,
       headlights: lights,
       frozen: this.params.freeze,

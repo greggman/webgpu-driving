@@ -77,7 +77,7 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
     let rise = vec3f((r3 - 0.5) * 1.5, 0.6 + r2 * 0.8, (r1 - 0.5) * 1.5) + vec3f(F.weather.x, 0.0, F.weather.y) * 1.5;
     center = src.xyz + spread + rise * age;
     size = P.size * (0.5 + age * 1.8) * (0.6 + 0.8 * r4);
-    alpha = saturate(src.w / 12.0) * (1.0 - age / life) * smoothstep(0.0, 0.15, age) * 0.35;
+    alpha = saturate(src.w / 12.0) * (1.0 - age / life) * smoothstep(0.0, 0.25, age) * 0.3;
     vel = rise;
   } else {
     let L = P.volume;

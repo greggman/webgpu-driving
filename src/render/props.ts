@@ -32,6 +32,7 @@ const KINDS: PropKind[] = [
   'sign',
   'delineator',
   'mailbox',
+  'tumbleweed',
 ];
 const MAX_INST = 16384;
 const LIN_SLOTS = 80;
@@ -48,6 +49,7 @@ interface WorldInst {
   stretch: number;
   scale: number;
   tint: number;
+  roll?: number;
 }
 
 interface ChunkProps {
@@ -85,6 +87,8 @@ export class Props {
   private draws: Array<{kind: PropKind; first: number; count: number}> = [];
   private visibleLin: ChunkProps[] = [];
   private shadowLin: ChunkProps[] = [];
+  // Per-frame dynamic props (tumbleweeds), world coordinates.
+  dynamic: WorldInst[] = [];
 
   constructor(
     private device: GPUDevice,
@@ -531,6 +535,11 @@ export class Props {
         });
       }
     }
+    for (const i of this.dynamic) {
+      let l = byKind.get(i.kind);
+      if (!l) byKind.set(i.kind, (l = []));
+      l.push(i);
+    }
     this.draws = [];
     let n = 0;
     for (const kind of KINDS) {
@@ -540,7 +549,16 @@ export class Props {
       for (const i of l) {
         if (n >= MAX_INST) break;
         this.instData.set(
-          [i.x - ox, i.y, i.z - oz, i.yaw, i.stretch, i.scale, i.tint, 0],
+          [
+            i.x - ox,
+            i.y,
+            i.z - oz,
+            i.yaw,
+            i.stretch,
+            i.scale,
+            i.tint,
+            i.roll ?? 0,
+          ],
           n * 8,
         );
         n++;

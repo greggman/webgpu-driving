@@ -25,7 +25,8 @@ export type PropKind =
   | 'silo'
   | 'sign'
   | 'delineator'
-  | 'mailbox';
+  | 'mailbox'
+  | 'tumbleweed';
 
 export function box(
   mb: MeshBuilder,
@@ -242,6 +243,41 @@ export function buildProp(kind: PropKind): {
       box(mb, [0, 0.55, 0], [0.05, 0.6, 0.02], PM_WHITE);
       box(mb, [0, 0.95, 0.025], [0.035, 0.08, 0.005], PM_REFLECTOR);
       break;
+    case 'tumbleweed': {
+      // A tangled ball of thin curved twigs.
+      let seed = 12345;
+      const rnd = () => {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        return seed / 0x7fffffff;
+      };
+      for (let i = 0; i < 70; ++i) {
+        const pts: number[][] = [];
+        const a0 = rnd() * Math.PI * 2,
+          b0 = Math.acos(2 * rnd() - 1);
+        const a1 = a0 + (rnd() - 0.5) * 2.5,
+          b1 = b0 + (rnd() - 0.5) * 2.0;
+        const r = 0.28 + rnd() * 0.14;
+        for (let k = 0; k <= 4; ++k) {
+          const t = k / 4;
+          const a = a0 + (a1 - a0) * t,
+            b = b0 + (b1 - b0) * t;
+          const rr = r * (0.8 + 0.2 * Math.sin(t * Math.PI));
+          pts.push([
+            Math.sin(b) * Math.cos(a) * rr,
+            Math.cos(b) * rr,
+            Math.sin(b) * Math.sin(a) * rr,
+          ]);
+        }
+        mb.tube(
+          pts,
+          pts.map(() => 0.008),
+          3,
+          PM_DARKWOOD,
+          () => 0,
+        );
+      }
+      break;
+    }
     case 'mailbox':
       box(mb, [0, 0.55, 0], [0.04, 0.55, 0.04], PM_WOOD);
       box(mb, [0, 1.15, 0.1], [0.12, 0.12, 0.25], PM_METAL);

@@ -48,6 +48,7 @@ export interface SceneState {
   dt: number;
   cars: WorldCar[];
   playerS: number;
+  playerD: number;
   player: Pose;
   headlights: boolean;
   frozen: boolean;
@@ -252,7 +253,6 @@ export class Renderer {
       this.frameIndex === 0
     ) {
       if (nx !== this.originX || nz !== this.originZ) {
-        this.particles.shift(nx - this.originX, nz - this.originZ);
         this.originX = nx;
         this.originZ = nz;
         this.roadBase = -1e9; // force road texture re-upload
@@ -493,19 +493,17 @@ export class Renderer {
     this.cars.setCars(carDraws);
     this.vegetation.update(scene, eye, planes, ox, oz);
     {
-      const p = scene.player;
-      const rear = loc([
-        p.pos[0] - p.fwd[0] * 2.2,
-        p.pos[1],
-        p.pos[2] - p.fwd[2] * 2.2,
-      ]);
       const pe = scene.prevCamera ? scene.prevCamera.eye : cam.eye;
       const dt = Math.max(scene.dt, 1e-3);
       const camVel = [0, 1, 2].map(k => (cam.eye[k] - pe[k]) / dt);
+      const sp = scene.player.speed;
+      const road = this.road!;
       this.particles.update(
-        scene.time,
-        rear,
-        p.speed,
+        age => {
+          const q = road.pointAt(scene.playerS - 2.2 - sp * age, scene.playerD);
+          return loc(q.pos);
+        },
+        sp,
         scene.frozen ? [0, 0, 0] : camVel,
       );
     }

@@ -8,7 +8,7 @@ struct PropInst {
   stretch: f32, // y scale
   scale: f32,
   tint: f32,
-  pad: f32,
+  roll: f32, // rotation about the local x axis (tumbleweeds)
 };
 
 @group(1) @binding(0) var<storage, read> props: array<PropInst>;
@@ -32,8 +32,15 @@ struct POut {
   @location(5) @interpolate(flat) tint: f32,
 };
 
+fn rotX(v: vec3f, a: f32) -> vec3f {
+  let c = cos(a);
+  let s = sin(a);
+  return vec3f(v.x, v.y * c - v.z * s, v.y * s + v.z * c);
+}
+
 fn propWorld(v: VIn, p: PropInst) -> vec3f {
-  let lp = vec3f(v.pos.x * p.scale, v.pos.y * p.stretch, v.pos.z * p.scale);
+  var lp = vec3f(v.pos.x * p.scale, v.pos.y * p.stretch, v.pos.z * p.scale);
+  if (p.roll != 0.0) { lp = rotX(lp, p.roll); }
   return p.pos + rotY(lp, p.yaw);
 }
 
@@ -50,7 +57,7 @@ fn vs(v: VIn, @builtin(instance_index) ii: u32) -> POut {
   let w = propWorld(v, p);
   o.pos = F.viewProj * vec4f(w, 1.0);
   o.world = w;
-  o.normal = rotY(v.normal, p.yaw);
+  o.normal = rotY(select(v.normal, rotX(v.normal, p.roll), p.roll != 0.0), p.yaw);
   o.uv = v.uv;
   o.local = v.pos;
   o.mat = u32(v.mat + 0.5);

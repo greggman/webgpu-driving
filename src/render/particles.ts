@@ -30,9 +30,7 @@ export class Particles {
   private layout: GPUBindGroupLayout;
   private hist: GPUBuffer;
   private histData = new Float32Array(HIST * 4);
-  private histTimes: number[] = [];
   private systems: System[] = [];
-  private lastTime = -1;
 
   constructor(
     private device: GPUDevice,
@@ -104,7 +102,6 @@ export class Particles {
   setWorld(biome: Biome) {
     for (const s of this.systems) s.ubuf.destroy();
     this.systems = [];
-    this.histTimes = [];
     const add = (
       kind: number,
       count: number,
@@ -147,26 +144,12 @@ export class Particles {
       add(2, 900, 0, 0.5, 0, 2.6, [0.62, 0.48, 0.34, 1]);
   }
 
-  // carRear: world position of the player's rear axle (local coords).
-  update(time: number, carRear: number[], speed: number, camVel: number[]) {
-    // Car history for dust (sampled every ~40 ms, newest first).
-    if (this.histTimes.length === 0) {
-      for (let i = 0; i < HIST; ++i) {
-        this.histData.set(
-          [carRear[0], carRear[1] + 0.3, carRear[2], speed],
-          i * 4,
-        );
-      }
-    }
-    if (time !== this.lastTime) {
-      this.lastTime = time;
-      const last = this.histTimes[0];
-      if (last === undefined || time - last > 2.6 / HIST) {
-        this.histTimes.unshift(time);
-        this.histData.copyWithin(4, 0, (HIST - 1) * 4);
-        this.histData.set([carRear[0], carRear[1] + 0.3, carRear[2], speed], 0);
-        if (this.histTimes.length > HIST) this.histTimes.pop();
-      }
+  // trail(age) gives the (local) position of the player's rear wheels `age`
+  // seconds ago, derived from the road so it also works with frozen time.
+  update(trail: (age: number) => number[], speed: number, camVel: number[]) {
+    for (let i = 0; i < HIST; ++i) {
+      const p = trail((i / HIST) * 2.6);
+      this.histData.set([p[0], p[1] + 0.3, p[2], speed], i * 4);
     }
     this.device.queue.writeBuffer(this.hist, 0, this.histData);
     for (const s of this.systems) {
@@ -183,14 +166,6 @@ export class Particles {
       f.set([camVel[0], camVel[1], camVel[2], 0], 8);
       f.set(s.color, 12);
       this.device.queue.writeBuffer(s.ubuf, 0, buf);
-    }
-  }
-
-  // Needs an origin shift when the world rebases (history is local).
-  shift(dx: number, dz: number) {
-    for (let i = 0; i < HIST; ++i) {
-      this.histData[i * 4] -= dx;
-      this.histData[i * 4 + 2] -= dz;
     }
   }
 
