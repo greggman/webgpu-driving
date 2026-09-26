@@ -141,6 +141,8 @@ fn fs(in: VOut) -> GBufferOut {
     let ft = fogTransmittance(far);
     col = mix(fogColor(dir), col, ft);
   }
+  // Volumetric fog in front of the sky (to the end of the froxel volume).
+  col = applyVolumetric(F.cam.xyz + dir * 219.0, col);
   var o: GBufferOut;
   o.color = vec4f(col, 1.0);
   let c = F.viewProjNJ * vec4f(dir, 0.0);

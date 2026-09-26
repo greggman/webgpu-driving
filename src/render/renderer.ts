@@ -27,12 +27,25 @@ import {Vegetation} from './vegetation';
 import {Props} from './props';
 import {Water} from './water';
 import {Particles} from './particles';
+import volSrc from '../shaders/volumetric.wgsl';
+import {FRAME_PRELUDE} from './shaders';
+import {shaderModule} from '../gpu/gpu';
 
 const REBASE = 1024;
 export const DEBUG = new Set(
   (new URLSearchParams(location.search).get('debug') ?? '').split(','),
 );
 const MAX_LIGHTS = 64;
+// Volumetric fog per environment: density (1/m), anisotropy, height falloff.
+const VOLUME: Record<string, [number, number, number]> = {
+  country: [0.0005, 0.65, 40],
+  desert: [0.0003, 0.7, 60],
+  coast: [0.0006, 0.6, 40],
+  forest: [0.0045, 0.72, 35],
+  snow: [0, 0.5, 50],
+  lahonda: [0.0025, 0.65, 45],
+  night: [0.0022, 0.5, 30],
+};
 
 export interface WorldCar {
   draw: Omit<CarDraw, 'model' | 'prevModel'>;
@@ -91,11 +104,15 @@ export class Renderer {
   private lightsBuf: GPUBuffer;
   private lightsData = new Float32Array(MAX_LIGHTS * 12);
   private emptyBG: GPUBindGroup;
+  private volTex: GPUTexture;
+  private volPipe: GPUComputePipeline;
+  private volBG!: GPUBindGroup;
   originX = 0;
   originZ = 0;
   frameIndex = 0;
   private prevViewProj = new Float32Array(16);
   exposureBias = 1;
+  private volumeOn = false;
   stats = {terrainNodes: 0, roadChunks: 0, cars: 0};
   readonly profiler: Profiler;
 
@@ -116,6 +133,25 @@ export class Renderer {
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
     });
     this.atmosphere = new Atmosphere(d, this.frame);
+    this.volTex = d.createTexture({
+      label: 'volumetric-fog-froxels',
+      size: [160, 90, 64],
+      dimension: '3d',
+      format: 'rgba16float',
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.volPipe = d.createComputePipeline({
+      label: 'volumetric-fog',
+      layout: 'auto',
+      compute: {
+        module: shaderModule(
+          d,
+          FRAME_PRELUDE + '\n' + volSrc,
+          'volumetric-fog',
+        ),
+        entryPoint: 'main',
+      },
+    });
     this.terrain = new TerrainRenderer(
       d,
       this.frame,
@@ -208,11 +244,26 @@ export class Renderer {
       {binding: 10, resource: {buffer: this.lightsBuf}},
       {binding: 11, resource: this.vegetation.materialView},
       {binding: 12, resource: this.atmosphere.cloudTex.createView()},
+      {binding: 13, resource: this.volTex.createView()},
     ];
     this.frameBG = d.createBindGroup({
       label: 'frame-bg',
       layout: this.frameLayout,
       entries: entries(this.shadows.map.createView({dimension: '2d-array'})),
+    });
+    this.volBG = d.createBindGroup({
+      label: 'volumetric-fog-bg',
+      layout: this.volPipe.getBindGroupLayout(0),
+      entries: [
+        {binding: 0, resource: {buffer: this.frame.buffer}},
+        {
+          binding: 7,
+          resource: this.shadows.map.createView({dimension: '2d-array'}),
+        },
+        {binding: 8, resource: cmp},
+        {binding: 10, resource: {buffer: this.lightsBuf}},
+        {binding: 13, resource: this.volTex.createView()},
+      ],
     });
     this.shadowFrameBG = d.createBindGroup({
       label: 'frame-bg-shadowpass',
@@ -446,6 +497,9 @@ export class Renderer {
       biome.sky.turbidity,
     ]);
     this.atmosphere.setMie(biome.sky.turbidity);
+    const vol = VOLUME[biome.id] ?? [0, 0.6, 50];
+    this.volumeOn = vol[0] > 0 && !DEBUG.has('novol');
+    F.set('volume', [vol[0], vol[1], vol[2], this.volumeOn ? 1 : 0]);
 
     // Lights.
     const nLights = this.updateLights(scene, loc);
@@ -543,6 +597,18 @@ export class Renderer {
       this.props.drawShadow(pass);
       if (i < 3) this.cars.drawShadow(pass);
       pass.end();
+    }
+
+    // Volumetric fog (needs this frame's shadow maps).
+    if (this.volumeOn) {
+      const vp = enc.beginComputePass({
+        label: 'volumetric-fog',
+        timestampWrites: ts('volumetrics'),
+      });
+      vp.setPipeline(this.volPipe);
+      vp.setBindGroup(0, this.volBG);
+      vp.dispatchWorkgroups(20, 12);
+      vp.end();
     }
 
     // Main pass.

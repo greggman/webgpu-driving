@@ -11,6 +11,7 @@
 @group(0) @binding(10) var<storage, read> lightsBuf: array<Light>;
 @group(0) @binding(11) var matTex: texture_2d_array<f32>;
 @group(0) @binding(12) var cloudTex: texture_2d<f32>;
+@group(0) @binding(13) var volTex: texture_3d<f32>;
 
 struct Light {
   pos: vec4f,   // xyz local, w = range
@@ -106,6 +107,18 @@ fn fogTransmittance(worldPos: vec3f) -> f32 {
     od = dens * e0 * dist;
   }
   return exp(-max(od, 0.0));
+}
+
+// Froxel volumetric fog lookup (see volumetric.wgsl).
+fn applyVolumetric(worldPos: vec3f, color: vec3f) -> vec3f {
+  if (F.volume.w < 0.5) { return color; }
+  let clip = F.viewProjNJ * vec4f(worldPos, 1.0);
+  let ndc = clip.xy / clip.w;
+  let uv = vec2f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+  let viewZ = -(F.view * vec4f(worldPos, 1.0)).z;
+  let s = log(max(viewZ, 0.5) / 0.5) / log(220.0 / 0.5);
+  let v = textureSampleLevel(volTex, linSampler, vec3f(clamp(uv, vec2f(0.0), vec2f(1.0)), clamp(s, 0.0, 1.0) - 0.5 / 64.0), 0.0);
+  return color * v.a + v.rgb;
 }
 
 fn applyFog(worldPos: vec3f, color: vec3f) -> vec3f {

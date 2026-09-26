@@ -31,6 +31,7 @@ const FRAME_FIELDS: Array<[string, number]> = [
   ['grade2', 4],
   ['car', 4],
   ['fog', 4],
+  ['volume', 4],
 ];
 
 export type FrameField =
@@ -62,7 +63,8 @@ export type FrameField =
   | 'grade'
   | 'grade2'
   | 'car'
-  | 'fog';
+  | 'fog'
+  | 'volume';
 
 const OFFSETS = new Map<string, number>();
 let total = 0;
@@ -156,6 +158,11 @@ export const FRAME_LAYOUT_ENTRIES: GPUBindGroupLayoutEntry[] = [
     binding: 11,
     visibility: ALL_STAGES,
     texture: {sampleType: 'float', viewDimension: '2d-array'},
+  },
+  {
+    binding: 13,
+    visibility: ALL_STAGES,
+    texture: {sampleType: 'float', viewDimension: '3d'},
   },
   {
     binding: 12,

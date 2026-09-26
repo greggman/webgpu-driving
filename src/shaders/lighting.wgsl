@@ -185,7 +185,7 @@ fn localLights(s: Surface, worldPos: vec3f, v: vec3f) -> vec3f {
 fn finishColor(col: vec3f, worldPos: vec3f) -> vec3f {
   let ap = aerialPerspective(worldPos);
   let c = col * ap.a + ap.rgb;
-  return applyFog(worldPos, c);
+  return applyVolumetric(worldPos, applyFog(worldPos, c));
 }
 
 // Motion vector (current - previous, in UV units) for a world position.

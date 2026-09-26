@@ -30,6 +30,7 @@ struct Frame {
   grade2: vec4f,          // contrast, vignette, grain, letterbox
   car: vec4f,             // player car pos (local) xyz, heading
   fog: vec4f,             // density at base, falloff height, base height, mie scale
+  volume: vec4f,          // volumetric fog density, anisotropy g, height falloff, enabled
 };
 
 @group(0) @binding(0) var<uniform> F: Frame;
