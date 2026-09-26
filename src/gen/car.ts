@@ -62,6 +62,10 @@ export interface CarSpec {
   roofBack: number;
   rearBase: number; // rear glass base (z)
   sideRear: number; // where the side glass ends (z)
+  boxy: number; // superellipse exponent of the lower body section
+  cladding: boolean; // black plastic arch / sill cladding
+  quarter: boolean; // rear quarter window behind the C pillar
+  flare: number; // rear fender flare (m)
   headlightY: number;
   taillightY: number;
   bedFront?: number; // pickup bed start (z)
@@ -92,6 +96,10 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'sedan':
       return spec({
         kind,
+        boxy: 5,
+        cladding: false,
+        quarter: false,
+        flare: 0.025,
         length: 4.82,
         width: 1.86,
         wheelbase: 2.85,
@@ -99,23 +107,27 @@ export function carSpec(kind: CarKind): CarSpec {
         track: 1.6,
         clearance: 0.15,
         noseY: 0.66,
-        hoodY: 0.94,
+        hoodY: 0.9,
         beltF: 0.97,
         beltR: 1.02,
-        deckY: 1.01,
+        deckY: 1.04,
         tailY: 0.96,
         roofY: 1.44,
         roofW: 0.72,
         wsBase: 0.98,
         roofFront: 0.05,
-        roofBack: -0.95,
-        rearBase: -1.62,
-        sideRear: -1.12,
+        roofBack: -0.85,
+        rearBase: -1.45,
+        sideRear: -1.0,
       });
     case 'hatch':
       return spec({
         kind,
-        length: 4.2,
+        boxy: 5,
+        cladding: false,
+        quarter: false,
+        flare: 0.03,
+        length: 4.08,
         width: 1.8,
         wheelbase: 2.62,
         wheelR: 0.33,
@@ -131,21 +143,25 @@ export function carSpec(kind: CarKind): CarSpec {
         roofW: 0.74,
         wsBase: 0.88,
         roofFront: 0.05,
-        roofBack: -1.3,
-        rearBase: -1.92,
-        sideRear: -1.55,
+        roofBack: -1.38,
+        rearBase: -1.86,
+        sideRear: -1.45,
       });
     case 'suv':
       return spec({
         kind,
+        boxy: 7,
+        cladding: true,
+        quarter: true,
+        flare: 0.03,
         length: 4.85,
         width: 1.96,
         wheelbase: 2.9,
-        wheelR: 0.39,
+        wheelR: 0.405,
         track: 1.68,
-        clearance: 0.21,
-        noseY: 0.86,
-        hoodY: 1.12,
+        clearance: 0.24,
+        noseY: 0.95,
+        hoodY: 1.14,
         beltF: 1.15,
         beltR: 1.2,
         deckY: 1.2,
@@ -161,6 +177,10 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'coupe':
       return spec({
         kind,
+        boxy: 4.5,
+        cladding: false,
+        quarter: false,
+        flare: 0.05,
         length: 4.55,
         width: 1.9,
         wheelbase: 2.68,
@@ -173,17 +193,21 @@ export function carSpec(kind: CarKind): CarSpec {
         beltR: 0.97,
         deckY: 0.96,
         tailY: 0.92,
-        roofY: 1.3,
+        roofY: 1.26,
         roofW: 0.68,
         wsBase: 0.82,
         roofFront: -0.18,
         roofBack: -0.75,
         rearBase: -1.85,
-        sideRear: -0.95,
+        sideRear: -0.85,
       });
     case 'wagon':
       return spec({
         kind,
+        boxy: 5.5,
+        cladding: false,
+        quarter: true,
+        flare: 0.025,
         length: 4.9,
         width: 1.86,
         wheelbase: 2.88,
@@ -207,14 +231,18 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'pickup':
       return spec({
         kind,
+        boxy: 9,
+        cladding: true,
+        quarter: false,
+        flare: 0.03,
         length: 5.5,
         width: 2.0,
         wheelbase: 3.45,
-        wheelR: 0.41,
+        wheelR: 0.42,
         track: 1.72,
-        clearance: 0.24,
-        noseY: 1.0,
-        hoodY: 1.22,
+        clearance: 0.27,
+        noseY: 1.08,
+        hoodY: 1.24,
         beltF: 1.26,
         beltR: 1.27,
         deckY: 1.25,
@@ -333,6 +361,7 @@ export function buildCarBody(sp: CarSpec): MeshData {
     if (z >= sp.rearBase) return belt(z) - 0.005;
     // Deck, falling off into the tail.
     const t = clamp01((sp.rearBase - z) / (sp.rearBase - tail));
+    if (pickup) return sp.deckY - 0.02 * smooth(0.96, 1, t);
     const deck =
       sp.tailY +
       (Math.max(sp.deckY, sp.beltR) - sp.tailY) * (1 - Math.pow(t, 3));
@@ -340,16 +369,17 @@ export function buildCarBody(sp: CarSpec): MeshData {
   };
   const halfWidth = (z: number) => {
     const zn = z / (L / 2);
-    const e = zn > 0 ? 4.5 : 6;
+    const e = zn > 0 ? 4.5 : pickup ? 14 : 6;
     let w = HW * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(zn), e)), 1 / e);
     w = Math.max(w, HW * 0.82);
     for (const az of axles) {
       const dz = Math.abs(z - az);
-      w += 0.022 * Math.max(0, 1 - Math.pow(dz / (R + 0.4), 2));
+      const f = az > 0 ? 0.022 : sp.flare;
+      w += f * Math.max(0, 1 - Math.pow(dz / (R + 0.45), 2));
     }
     return w;
   };
-  const archR = R + 0.07;
+  const archR = R + 0.045;
   const bottomLine = (z: number, top: number) => {
     const zn = Math.abs(z) / (L / 2);
     let b = sp.clearance + 0.1 * smooth(0.72, 1, zn);
@@ -371,13 +401,14 @@ export function buildCarBody(sp: CarSpec): MeshData {
     zs.push(nose - u * L);
   }
   const NH = 26; // points per half section
-  const nExp = 5;
+  const nExp = sp.boxy;
   const section = (z: number, endFactor: number): P3[] => {
     const top = topLine(z);
     const bot = bottomLine(z, top);
     const yc = (top + bot) / 2,
-      hh = ((top - bot) / 2) * (0.35 + 0.65 * endFactor);
-    const w = halfWidth(z) * (0.72 + 0.28 * endFactor);
+      hh = ((top - bot) / 2) * (0.75 + 0.25 * endFactor);
+    const w = halfWidth(z) * (0.9 + 0.1 * endFactor);
+    const hood = z > sp.wsBase;
     const ring: P3[] = [];
     // Right side (x < 0) from bottom centre up to top centre, then the left
     // side back down (closed ring).
@@ -387,11 +418,25 @@ export function buildCarBody(sp: CarSpec): MeshData {
       const c = Math.cos(th),
         s = Math.sin(th);
       let x = w * Math.pow(Math.abs(c), 2 / nExp);
-      const y = yc + hh * Math.sign(s) * Math.pow(Math.abs(s), 2 / nExp);
-      // Slight tumblehome in the upper body and a shoulder crease.
+      let y = yc + hh * Math.sign(s) * Math.pow(Math.abs(s), 2 / nExp);
+      // Tumblehome in the upper body, a sharp shoulder crease below the
+      // beltline and a concave sculpt line low on the doors.
       const yn = (y - yc) / Math.max(hh, 1e-3);
       x *= 1 - 0.035 * Math.max(0, yn);
-      x += 0.01 * Math.exp(-Math.pow((y - (top - 0.1)) / 0.03, 2));
+      const sh = top - 0.12;
+      x +=
+        0.014 *
+        Math.exp(-Math.abs(y - sh) / 0.012) *
+        smooth(0.3, 0.6, yn + 0.5);
+      x -=
+        0.01 * Math.exp(-Math.pow((y - (bot + (top - bot) * 0.3)) / 0.06, 2));
+      if (hood && s > 0) {
+        // Hood: centre lowered between two creases running to the lamps.
+        const xr = x / w;
+        const f = smooth(sp.wsBase, sp.wsBase + 0.15, z);
+        y -= 0.035 * f * Math.max(0, 1 - Math.pow(xr / 0.55, 2));
+        y += 0.008 * f * Math.exp(-Math.pow((xr - 0.58) / 0.05, 2));
+      }
       half.push([x, y]);
     }
     for (let k = 0; k <= NH; ++k) ring.push([-half[k][0], half[k][1], z]);
@@ -400,7 +445,7 @@ export function buildCarBody(sp: CarSpec): MeshData {
   };
   const endFactorAt = (z: number) => {
     const e = Math.min(nose - z, z - tail);
-    return 0.35 + 0.65 * Math.sqrt(clamp01(e / 0.09));
+    return Math.sqrt(clamp01(e / 0.06));
   };
   const lower: P3[][] = zs.map(z => section(z, endFactorAt(z)));
   const RN = lower[0].length;
@@ -415,7 +460,10 @@ export function buildCarBody(sp: CarSpec): MeshData {
       (pickup && z < sp.bedFront! && z > tail + 0.12);
     if (open && k >= NH - 4) return -1;
     // Black lower cladding / sills.
-    if (p[1] < bottomLine(z, topLine(z)) + 0.1) return MAT_TRIM;
+    const bot = bottomLine(z, topLine(z));
+    if (sp.cladding && p[1] < bot + 0.1) return MAT_TRIM;
+    const between = Math.abs(z) < sp.wheelbase / 2 - archR;
+    if (between && p[1] < bot + 0.05) return MAT_TRIM;
     if (z > nose - 0.3) return MAT_FRONT;
     if (z < tail + 0.3) return MAT_REAR;
     if (pickup && z < sp.bedFront! && k > NH - 5) return MAT_TRIM;
@@ -514,14 +562,25 @@ export function buildCarBody(sp: CarSpec): MeshData {
     const corner = k >= 6 && k < 12;
     if (side) {
       if (k >= 5) return MAT_TRIM; // drip rail / window frame
-      const inSide = z < sp.wsBase - 0.12 && z > sp.sideRear;
-      if (!inSide) return MAT_PAINT; // A / C pillar base
-      if (Math.abs(z - bPillar) < 0.055) return MAT_TRIM; // B pillar
+      if (z > sp.wsBase - 0.12) return MAT_PAINT; // A pillar base
+      if (sp.quarter && z < sp.sideRear - 0.1 && z > sp.rearBase + 0.2)
+        return k === 1 || k === 4 ? MAT_TRIM : MAT_GLASS; // quarter window
+      if (z < sp.sideRear) return MAT_PAINT; // C pillar
+      if (sp.kind !== 'coupe' && Math.abs(z - bPillar) < 0.055) return MAT_TRIM; // B pillar
       return MAT_GLASS;
     }
     const windshield = z > sp.roofFront + 0.02;
     const rearGlass = z < sp.roofBack - 0.02;
-    if (corner) return windshield || rearGlass ? MAT_PAINT : MAT_PAINT;
+    if (corner) {
+      // The windscreen and backlight wrap into the roof corner; the lower
+      // part of the corner is the A / C pillar.
+      if ((windshield || rearGlass) && k >= 9) {
+        if (windshield && z > sp.wsBase - 0.04) return MAT_TRIM;
+        if (rearGlass && z < sp.rearBase + 0.04) return MAT_TRIM;
+        return k === 9 ? MAT_TRIM : MAT_GLASS;
+      }
+      return MAT_PAINT;
+    }
     if (windshield) return z > sp.wsBase - 0.04 ? MAT_TRIM : MAT_GLASS;
     if (rearGlass) return z < sp.rearBase + 0.04 ? MAT_TRIM : MAT_GLASS;
     return MAT_PAINT; // roof
@@ -541,13 +600,13 @@ export function buildCarBody(sp: CarSpec): MeshData {
     const nn = n.map(x => x / l);
     for (const k of [0, 1, 2, 0, 2, 3]) push(p[k], nn, m);
   };
-  // Pickup bed: floor and bulkhead inside the rails.
+  // Pickup bed: floor, bulkhead, inner walls, rail caps and tailgate.
   if (pickup) {
-    const z0 = sp.bedFront!,
-      z1 = tail + 0.12;
-    const y0 = 0.85,
-      y1 = sp.beltR - 0.01;
-    const w = HW * 0.86;
+    const z0 = sp.bedFront! - 0.04,
+      z1 = tail + 0.1;
+    const y0 = sp.clearance + 0.55,
+      y1 = sp.beltR + 0.005;
+    const w = HW * 0.84;
     quad(
       [
         [w, y0, z1],
@@ -557,12 +616,30 @@ export function buildCarBody(sp: CarSpec): MeshData {
       ],
       MAT_TRIM,
     );
+    // Floor ribs.
+    for (let r = -3; r <= 3; ++r) {
+      box(
+        push,
+        [r * w * 0.28, y0 + 0.012, (z0 + z1) / 2],
+        [0.03, 0.012, (z0 - z1) / 2],
+        MAT_TRIM,
+      );
+    }
     quad(
       [
         [-w, y1, z0],
         [w, y1, z0],
         [w, y0, z0],
         [-w, y0, z0],
+      ],
+      MAT_PAINT,
+    );
+    quad(
+      [
+        [w, y1, z1],
+        [-w, y1, z1],
+        [-w, y0, z1],
+        [w, y0, z1],
       ],
       MAT_PAINT,
     );
@@ -576,25 +653,86 @@ export function buildCarBody(sp: CarSpec): MeshData {
         ],
         MAT_PAINT,
       );
+      // Rail cap.
+      box(
+        push,
+        [sx * (HW * 0.9), y1 + 0.012, (z0 + z1) / 2 - 0.04],
+        [HW * 0.08, 0.014, (z0 - z1) / 2 + 0.04],
+        MAT_TRIM,
+      );
+    }
+    box(push, [0, y1 + 0.012, z1 - 0.02], [HW * 0.84, 0.014, 0.07], MAT_TRIM);
+  }
+  // Roof rails.
+  if (sp.kind === 'suv' || sp.kind === 'wagon') {
+    const n = 14;
+    const za = sp.roofFront - 0.05,
+      zb = sp.roofBack + 0.1;
+    for (const sx of [-1, 1]) {
+      for (let q = 0; q < n; ++q) {
+        const zq = za + ((zb - za) * (q + 0.5)) / n;
+        const x = sx * halfWidth(zq) * sp.roofW * 0.82;
+        box(
+          push,
+          [x, roofLine(zq) + 0.055, zq],
+          [0.018, 0.014, Math.abs(zb - za) / n / 2 + 0.004],
+          MAT_CHROME,
+        );
+      }
+      for (const zf of [za + 0.05, zb - 0.05]) {
+        const x = sx * halfWidth(zf) * sp.roofW * 0.82;
+        box(push, [x, roofLine(zf) + 0.025, zf], [0.02, 0.03, 0.05], MAT_TRIM);
+      }
     }
   }
-  // Mirrors: housing on an arm at the A-pillar base.
+  // Mirrors: a rounded housing (lofted ellipses) on an arm from the door
+  // sail, with the glass facing back.
   for (const sx of [-1, 1]) {
-    const z = sp.wsBase - 0.2;
-    const wz = halfWidth(z);
-    const y = belt(z) + 0.12;
-    box(push, [sx * (wz + 0.12), y, z], [0.09, 0.055, 0.05], MAT_PAINT);
-    box(
+    const z = sp.wsBase - 0.16;
+    const wz = halfWidth(z) * 0.96;
+    const y = belt(z) + 0.1;
+    const mw = 0.2,
+      mh = 0.1,
+      md = 0.09;
+    const x0 = sx * (wz + 0.07);
+    const grid: P3[][] = [];
+    const NX = 10,
+      NA = 16;
+    for (let a = 0; a <= NX; ++a) {
+      const t = a / NX; // across the housing
+      const sc = Math.pow(
+        Math.sin(Math.PI * Math.min(1, 0.08 + t * 0.92)),
+        0.35,
+      );
+      const row: P3[] = [];
+      for (let b = 0; b <= NA; ++b) {
+        const th = (b / NA) * Math.PI * 2;
+        const cz = Math.cos(th),
+          sy = Math.sin(th);
+        // Flat back (glass side), rounded front.
+        const dz = cz > 0 ? cz * md : cz * 0.012;
+        row.push([
+          x0 + sx * (t - 0.5) * mw,
+          y + sy * mh * 0.5 * sc,
+          z - 0.02 + dz * sc,
+        ]);
+      }
+      grid.push(row);
+    }
+    emitGrid(
       push,
-      [sx * (wz + 0.12), y, z - 0.052],
-      [0.08, 0.047, 0.003],
-      MAT_CHROME,
+      grid,
+      () => MAT_PAINT,
+      p => [p[0] - x0, p[1] - y, p[2] - z + 0.02],
+      true,
     );
+    box(push, [x0, y, z - 0.034], [mw * 0.46, mh * 0.44, 0.003], MAT_CHROME);
+    // Arm.
     box(
       push,
-      [sx * (wz + 0.03), y - 0.04, z + 0.02],
-      [0.06, 0.012, 0.022],
-      MAT_TRIM,
+      [sx * (wz + 0.035), y - 0.035, z - 0.01],
+      [0.05, 0.022, 0.04],
+      MAT_PAINT,
     );
   }
   // Door handles.
@@ -628,9 +766,9 @@ export function buildCarBody(sp: CarSpec): MeshData {
     for (const sx of [-0.55, 0.55]) {
       box(
         push,
-        [sx * HW, sp.clearance + 0.1, tail + 0.1],
-        [0.04, 0.028, 0.06],
-        MAT_CHROME,
+        [sx * HW, sp.clearance + 0.1, tail + 0.12],
+        [0.038, 0.026, 0.05],
+        MAT_TRIM,
       );
     }
   }
@@ -821,8 +959,8 @@ export function buildWheel(): MeshData {
       w1 = width * 0.7;
     const inner = 0.19,
       outer = 0.62;
-    const xIn = hw * 0.78,
-      xOut = hw * 0.62; // concave dish
+    const xIn = hw * 0.45,
+      xOut = hw * 0.8; // concave dish: hub set back from the lip
     // Face.
     const f = [
       pts(inner, xIn, -w0),
@@ -838,8 +976,8 @@ export function buildWheel(): MeshData {
       const sd = [
         pts(inner, xIn, ww0),
         pts(outer, xOut, ww1),
-        pts(outer, xOut - 0.1, ww1),
-        pts(inner, xIn - 0.1, ww0),
+        pts(outer, xOut - 0.12, ww1),
+        pts(inner, xIn - 0.12, ww0),
       ];
       const nn = [0, t[1] * sgn, t[2] * sgn];
       for (const q of [0, 1, 2, 0, 2, 3]) push(sd[q], nn, MAT_RIM);
@@ -855,11 +993,21 @@ export function buildWheel(): MeshData {
     const a0 = (i / 20) * Math.PI * 2,
       a1 = ((i + 1) / 20) * Math.PI * 2;
     const P = [
-      [hw * 0.82, 0, 0],
-      ring(0.2, hw * 0.78, a0),
-      ring(0.2, hw * 0.78, a1),
+      [hw * 0.52, 0, 0],
+      ring(0.2, hw * 0.47, a0),
+      ring(0.2, hw * 0.47, a1),
     ];
     for (const p of P) push(p, [1, 0, 0], MAT_RIM);
+  }
+  // Lug nuts.
+  for (let k = 0; k < 5; ++k) {
+    const a = ((k + 0.5) / 5) * Math.PI * 2;
+    box(
+      push,
+      [hw * 0.53, Math.cos(a) * 0.14, Math.sin(a) * 0.14],
+      [0.03, 0.022, 0.022],
+      MAT_CHROME,
+    );
   }
   // Caliper (fixed; the shader doesn't spin it): a curved block at the rear top.
   for (let i = 0; i < 6; ++i) {

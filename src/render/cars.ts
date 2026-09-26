@@ -253,7 +253,10 @@ export class CarRenderer {
       this.data.set(
         [
           spec.wsBase,
-          (spec.roofFront + spec.roofBack) / 2,
+          // B pillar (door shut line); coupes have one long door.
+          spec.kind === 'coupe'
+            ? spec.wsBase - 0.08
+            : (spec.roofFront + spec.roofBack) / 2,
           spec.rearBase,
           spec.belt,
         ],
@@ -269,7 +272,10 @@ export class CarRenderer {
         [...km.interior.wheelCenter, km.interior.wheelTilt],
         o + 56,
       );
-      this.data.set([0.37, spec.belt - 0.01, 0, 0], o + 60);
+      this.data.set(
+        [0.37, spec.belt - 0.01, CAR_KINDS.indexOf(c.kind), spec.clearance],
+        o + 60,
+      );
       if (c.interior) this.interiorDraw = {kind: c.kind, index: i};
       const last = this.ranges[this.ranges.length - 1];
       if (last && last.kind === c.kind) last.count++;

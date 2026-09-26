@@ -11,7 +11,7 @@ struct Car {
   p3: vec4f,      // windshield base z, B-pillar z, rear glass base z, beltline y
   p4: vec4f,      // interior view (1), speed km/h, rpm, steering wheel angle
   p5: vec4f,      // steering wheel center xyz, tilt
-  p6: vec4f,      // driver x, dash top y, -, -
+  p6: vec4f,      // driver x, dash top y, style (kind index), ground clearance
 };
 
 @group(1) @binding(0) var<storage, read> cars: array<Car>;
@@ -297,76 +297,151 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   let hy = c.p2.z; // headlight centre height
   let ty = c.p2.w; // tail light centre height
   let body = mat == 0u || mat == 3u || mat == 4u;
-  var part = 0u; // 1 headlight, 2 tail light, 3 grille, 4 black plastic
+  var part = 0u; // 1 headlight, 2 tail light, 3 grille, 4 black plastic, 5 chrome
+  let style = u32(c.p6.z + 0.5); // sedan hatch suv coupe wagon pickup
+  let gx = ax;
+  let gy = lp.y - hy;
+  var cell = 0u; // grille pattern: 0 slats, 1 honeycomb, 2 big rectangles
+  var recess = 1.0;
   if (body && lp.z > 0.0) {
-    // Swept headlight units in the upper corners of the nose.
-    let hu = (ax - 0.5) / 0.4;
-    let top = 0.04 + 0.035 * saturate(hu);
-    if (lp.z > halfL - 0.55 && ln.z > 0.08 && hu > 0.0 && hu < 1.0 && lp.y > hy - 0.045 && lp.y < hy + top) {
+    // Headlight units in the upper corners of the nose, wrapping around
+    // onto the fender.
+    let hu = (ax - 0.5) / 0.42;
+    var top = 0.05 + 0.035 * saturate(hu);
+    var bot = -0.05;
+    if (style == 2u || style == 5u) { top = 0.07; bot = -0.06; }
+    if (style == 3u) { top = 0.035 + 0.04 * saturate(hu); bot = -0.035; }
+    let front = ln.z > 0.08 || (ax > 0.88 && lp.z > halfL - 0.32);
+    if (lp.z > halfL - 0.6 && front && hu > 0.0 && hu < 1.1 && gy > bot && gy < top) {
       part = 1u;
     }
-    if (lp.z > halfL - 0.3 && ln.z > 0.3 && ax < 0.46 && lp.y < hy + 0.03 && lp.y > hy - 0.24) { part = 3u; }
-    // Lower intake and splitter.
-    if (lp.z > halfL - 0.3 && ln.z > 0.3 && ax < 0.7 && lp.y < hy - 0.29 && lp.y > hy - 0.42) { part = 3u; }
-    if (lp.z > halfL - 0.4 && lp.y < hy - 0.42) { part = 4u; }
+    // Main grille: shape per kind, chrome / gloss surround.
+    if (lp.z > halfL - 0.35 && ln.z > 0.25) {
+      var y0 = -0.2; var y1 = 0.0; var wt = 0.42; var wb = 0.34;
+      cell = 0u;
+      if (style == 1u) { y0 = -0.07; y1 = 0.0; wt = 0.4; wb = 0.36; }
+      if (style == 2u) { y0 = -0.26; y1 = 0.05; wt = 0.46; wb = 0.46; cell = 1u; }
+      if (style == 3u) { y0 = -0.3; y1 = -0.1; wt = 0.5; wb = 0.62; cell = 1u; }
+      if (style == 4u) { cell = 1u; }
+      if (style == 5u) { y0 = -0.32; y1 = 0.07; wt = 0.5; wb = 0.5; cell = 2u; }
+      let t = saturate((gy - y0) / (y1 - y0));
+      let gw = mix(wb, wt, t);
+      let inside = gy > y0 && gy < y1 && gx < gw;
+      let edge = min(min(gy - y0, y1 - gy), (gw - gx) * halfW);
+      if (inside) {
+        part = select(3u, 5u, edge < 0.014 && style != 3u);
+        recess = smoothstep(0.0, 0.05, edge);
+      }
+      // Lower intake below a body-colour bumper bar.
+      let li0 = select(-0.42, -0.36, style == 3u);
+      let lw = select(0.62, 0.72, style == 1u);
+      if (style != 3u && gy > li0 && gy < y0 - 0.07 && gx < lw && gy < -0.12) {
+        part = 3u;
+        cell = select(1u, 2u, style == 5u);
+        recess = smoothstep(0.0, 0.04, min(gy - li0, (lw - gx) * halfW));
+      }
+    }
+    if (lp.z > halfL - 0.4 && gy < -0.44) { part = 4u; }
   }
   if (body && lp.z < 0.0) {
     if (lp.z < -halfL + 0.5 && ln.z < -0.1) {
-      let corner = ax > 0.58 && ax < 0.97 && lp.y > ty - 0.05 && lp.y < ty + 0.075;
-      let bar = ax <= 0.58 && abs(lp.y - (ty + 0.045)) < 0.018;
-      if (corner || bar) { part = 2u; }
+      let dy = lp.y - ty;
+      var lamp = false;
+      var bezel = false;
+      if (style == 2u || style == 4u || style == 5u) {
+        // Tall vertical clusters at the corners.
+        lamp = ax > 0.72 && ax < 0.97 && dy > -0.12 && dy < 0.14;
+        bezel = ax > 0.69 && ax < 0.99 && dy > -0.14 && dy < 0.16;
+      } else if (style == 3u) {
+        // Full-width light blade.
+        lamp = ax < 0.96 && abs(dy - 0.04) < 0.028;
+        bezel = ax < 0.98 && abs(dy - 0.04) < 0.04;
+      } else {
+        lamp = (ax > 0.58 && ax < 0.96 && dy > -0.05 && dy < 0.075) || (ax <= 0.58 && abs(dy - 0.045) < 0.016);
+        bezel = ax > 0.55 && ax < 0.98 && dy > -0.065 && dy < 0.09;
+      }
+      if (lamp) { part = 2u; } else if (bezel) { part = 4u; }
     }
     // Rear diffuser.
     if (lp.z < -halfL + 0.4 && lp.y < ty - 0.48) { part = 4u; }
   }
   if (part == 1u) {
     // Clear cover over a dark chrome housing: two projector lenses and an
-    // LED daytime-running-light strip along the lower / outer edge.
+    // LED daytime-running-light signature along the lower / outer edge.
     let px = ax * halfW;
-    let dy = lp.y - hy;
-    s.albedo = vec3f(0.035);
+    let dy = gy;
+    s.albedo = vec3f(0.03);
     s.metal = 1.0;
-    s.rough = 0.18;
+    s.rough = 0.15;
     coat = 1.0;
     var lens = 0.0;
     var ring = 0.0;
     for (var k = 0; k < 2; k++) {
-      let cx = halfW * (0.62 + 0.16 * f32(k));
-      let d = length(vec2f(px - cx, dy - 0.008));
-      lens = max(lens, 1.0 - smoothstep(0.022, 0.026, d));
-      ring = max(ring, smoothstep(0.024, 0.028, d) * (1.0 - smoothstep(0.034, 0.038, d)));
+      let cx = halfW * (0.62 + 0.17 * f32(k));
+      let d = length(vec2f(px - cx, dy - 0.01));
+      lens = max(lens, 1.0 - smoothstep(0.024, 0.028, d));
+      ring = max(ring, smoothstep(0.026, 0.03, d) * (1.0 - smoothstep(0.038, 0.042, d)));
     }
-    s.albedo = mix(s.albedo, vec3f(0.75), ring);
-    s.rough = mix(s.rough, 0.08, ring);
-    let hu = (ax - 0.5) / 0.4;
-    let drl = (1.0 - smoothstep(0.004, 0.008, abs(dy + 0.032))) * step(0.05, hu)
-      + (1.0 - smoothstep(0.006, 0.012, abs(hu - 0.95) * halfW * 0.4)) * step(dy, 0.06);
+    // Reflector bowls behind the lenses.
+    let bowl = 1.0 - smoothstep(0.03, 0.06, abs(dy - 0.01));
+    s.albedo = mix(s.albedo, vec3f(0.35), bowl * 0.5);
+    s.albedo = mix(s.albedo, vec3f(0.8), ring);
+    s.rough = mix(s.rough, 0.06, ring);
+    let hu = (ax - 0.5) / 0.42;
+    var drl = (1.0 - smoothstep(0.004, 0.008, abs(dy + 0.035))) * step(0.03, hu) * step(hu, 1.05);
+    if (style == 2u || style == 5u) {
+      // C-shaped signature.
+      drl = max(drl, (1.0 - smoothstep(0.004, 0.008, abs(hu - 0.08) * halfW * 0.42)) * step(abs(dy), 0.05));
+      drl = max(drl, (1.0 - smoothstep(0.004, 0.008, abs(dy - 0.055))) * step(0.03, hu) * step(hu, 0.5));
+    } else {
+      drl = max(drl, (1.0 - smoothstep(0.006, 0.012, abs(hu - 0.97) * halfW * 0.42)) * step(dy, 0.06));
+    }
     let white = vec3f(1.0, 0.97, 0.92);
     emissive = white * (saturate(drl) * (2.5 + 6.0 * lightsOn) + lens * (0.05 + 40.0 * lightsOn));
     s.albedo = mix(s.albedo, vec3f(0.9), saturate(drl));
   } else if (part == 2u) {
     // Layered tail lamp: smoked outer lens, bright inner light-guide lines.
     let brake = c.p1.y;
-    let lines = 1.0 - smoothstep(0.1, 0.25, abs(fract((lp.y - ty) * 38.0) - 0.5));
-    let edge = 1.0 - smoothstep(0.0, 0.02, min(abs(lp.y - (ty - 0.05)), abs(lp.y - (ty + 0.075))));
-    s.albedo = vec3f(0.18, 0.01, 0.012);
-    s.rough = 0.06;
+    let dy = lp.y - ty;
+    var lines = 1.0 - smoothstep(0.1, 0.25, abs(fract(dy * 38.0) - 0.5));
+    if (style == 2u || style == 4u || style == 5u) {
+      lines = 1.0 - smoothstep(0.1, 0.3, abs(fract(dy * 16.0) - 0.5));
+    }
+    s.albedo = vec3f(0.16, 0.01, 0.012);
+    s.rough = 0.05;
     coat = 1.0;
     let glow = 0.3 + 5.0 * lightsOn + 14.0 * brake;
-    emissive = vec3f(1.0, 0.04, 0.02) * glow * (0.25 + 0.75 * max(lines, edge * 0.8));
+    emissive = vec3f(1.0, 0.04, 0.02) * glow * (0.3 + 0.7 * lines);
   } else if (part == 3u) {
-    // Honeycomb grille with depth: bright cell walls, dark recessed cells.
-    let q = vec2f(lp.x, lp.y) * 42.0;
-    let r = vec2f(1.0, 1.732);
-    let h = r * 0.5;
-    let a = (q - r * floor(q / r)) - h;
-    let b = (q - h - r * floor((q - h) / r)) - h;
-    let g = select(b, a, dot(a, a) < dot(b, b));
-    let hexD = max(abs(g.x) * 0.866 + abs(g.y) * 0.5, abs(g.y));
-    let wall = smoothstep(0.36, 0.44, hexD);
-    s.albedo = mix(vec3f(0.004), vec3f(0.06), wall);
-    s.rough = mix(0.8, 0.25, wall);
-    s.ao = 1.0;
+    // Grille insert, recessed: bright walls, dark cells, shadowed toward
+    // the surround.
+    var wall = 0.0;
+    if (cell == 1u) {
+      let q = vec2f(lp.x, lp.y) * 42.0;
+      let r = vec2f(1.0, 1.732);
+      let h = r * 0.5;
+      let a = (q - r * floor(q / r)) - h;
+      let b = (q - h - r * floor((q - h) / r)) - h;
+      let g = select(b, a, dot(a, a) < dot(b, b));
+      let hexD = max(abs(g.x) * 0.866 + abs(g.y) * 0.5, abs(g.y));
+      wall = smoothstep(0.36, 0.44, hexD);
+    } else if (cell == 2u) {
+      let q = vec2f(lp.x * 9.0, lp.y * 14.0);
+      let f = abs(fract(q) - 0.5);
+      wall = smoothstep(0.36, 0.42, max(f.x, f.y));
+    } else {
+      wall = smoothstep(0.3, 0.4, abs(fract(lp.y * 30.0) - 0.5));
+    }
+    let bright = select(0.06, 0.5, cell == 0u || cell == 2u);
+    s.albedo = mix(vec3f(0.003), vec3f(bright), wall);
+    s.metal = select(0.0, 1.0, cell != 1u) * wall;
+    s.rough = mix(0.8, 0.2, wall);
+    s.ao = mix(0.4, 1.0, recess);
+  } else if (part == 5u) {
+    s.albedo = vec3f(0.85);
+    s.metal = 1.0;
+    s.rough = 0.12;
+    coat = 1.0;
   } else if (part == 4u) {
     s.albedo = vec3f(0.02);
     s.rough = 0.55;
@@ -378,7 +453,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     s.n = normalize(n + fn2 * 0.06 * c.color.w);
     s.albedo = c.color.rgb;
     s.metal = c.color.w;
-    s.rough = 0.34;
+    s.rough = 0.26;
     coat = 1.0;
     // Road grime toward the bottom.
     let grime = saturate((0.45 - lp.y) * 3.0) * c.p1.w;
@@ -392,6 +467,21 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     if (ln.y > 0.5) {
       seam = min(seam, abs(lp.z - (c.p3.x + 0.03)));
       seam = min(seam, abs(ax - 0.9) * halfW);
+      // Trunk lid (sedan, coupe) front edge.
+      if (style == 0u || style == 3u) { seam = min(seam, abs(lp.z - (c.p3.z - 0.05))); }
+    }
+    if (ln.z < -0.3) {
+      // Trunk / tailgate opening on the rear face.
+      if (ax < 0.8) { seam = min(seam, abs(lp.y - (ty - 0.13))); }
+      if (lp.y > ty - 0.13) { seam = min(seam, abs(ax - 0.8) * halfW); }
+      // Recessed plate pocket.
+      let pp = vec2f(abs(lp.x) - 0.3, abs(lp.y - (ty - 0.3)) - 0.09);
+      if (max(pp.x, pp.y) < 0.0) { s.ao = 0.55; }
+      seam = min(seam, abs(max(pp.x, pp.y)));
+    }
+    if (style == 5u) {
+      // Gap between the cab and the bed.
+      if (ax > 0.8) { seam = min(seam, abs(lp.z - (c.p3.z - 0.09)) * 0.4); }
     }
     let line = 1.0 - smoothstep(0.002, 0.006, seam);
     s.albedo *= 1.0 - 0.85 * line;
