@@ -14,8 +14,10 @@ struct PP {
   life: f32,        // dust lifetime (s)
   histCount: u32,
   pad: u32,
-  camVel: vec4f,    // camera velocity (local, m/s)
+    camVel: vec4f,    // camera velocity (local, m/s)
   color: vec4f,
+  carPos: vec4f,    // player car position (local), half length
+  carFwd: vec4f,    // player car forward, half width
 };
 
 @group(1) @binding(0) var<uniform> P: PP;
@@ -86,8 +88,17 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
     vel = wind + swirl + vec3f(0.0, -P.fall * (0.7 + 0.6 * r3), 0.0);
     let base = vec3f(r1, r2, r3) * L * 7.0;
     center = wrapAround(base + vel * t, F.cam.xyz + P.camVel.xyz * 0.25, L);
-    let dcam = distance(center, F.cam.xyz);
-    alpha = saturate(1.0 - dcam / (L * 0.5)) * smoothstep(1.0, 4.0, dcam) * 0.75;
+        let dcam = distance(center, F.cam.xyz);
+    // Flakes come right up to the camera (that's what sells the speed);
+    // none inside the player's car (interior cameras).
+    alpha = saturate(1.0 - dcam / (L * 0.5)) * smoothstep(0.25, 0.9, dcam) * 0.75;
+    let rel = center - P.carPos.xyz;
+    let fw = normalize(vec3f(P.carFwd.x, 0.0, P.carFwd.z));
+    let along = dot(rel, fw);
+    let side = dot(rel, vec3f(fw.z, 0.0, -fw.x));
+    if (abs(along) < P.carPos.w && abs(side) < P.carFwd.w && rel.y > -0.3 && rel.y < 2.1) {
+      alpha = 0.0;
+    }
   }
   // Motion stretch relative to the camera.
   let relVel = vel - P.camVel.xyz;

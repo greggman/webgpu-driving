@@ -118,7 +118,7 @@ export class Particles {
     ) => {
       const ubuf = this.device.createBuffer({
         label: `particles-params-${kind}`,
-        size: 64,
+        size: 96,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       });
       const bg = this.device.createBindGroup({
@@ -151,14 +151,20 @@ export class Particles {
 
   // trail(age) gives the (local) position of the player's rear wheels `age`
   // seconds ago, derived from the road so it also works with frozen time.
-  update(trail: (age: number) => number[], speed: number, camVel: number[]) {
+  update(
+    trail: (age: number) => number[],
+    speed: number,
+    camVel: number[],
+    carPos: number[],
+    carFwd: number[],
+  ) {
     for (let i = 0; i < HIST; ++i) {
       const p = trail((i / HIST) * 2.6);
       this.histData.set([p[0], p[1] + 0.3, p[2], speed], i * 4);
     }
     this.device.queue.writeBuffer(this.hist, 0, this.histData);
     for (const s of this.systems) {
-      const buf = new ArrayBuffer(64);
+      const buf = new ArrayBuffer(96);
       const u = new Uint32Array(buf);
       const f = new Float32Array(buf);
       u[0] = s.kind;
@@ -170,6 +176,8 @@ export class Particles {
       u[6] = HIST;
       f.set([camVel[0], camVel[1], camVel[2], 0], 8);
       f.set(s.color, 12);
+      f.set([carPos[0], carPos[1], carPos[2], 2.9], 16);
+      f.set([carFwd[0], carFwd[1], carFwd[2], 1.05], 20);
       this.device.queue.writeBuffer(s.ubuf, 0, buf);
     }
   }

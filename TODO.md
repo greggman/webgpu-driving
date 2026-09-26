@@ -42,7 +42,7 @@
 [ ] The desert biome needs tire marks behind the cars as well as dust
     behind other cars.
 
-[ ] The snow flake motion in the snow storm seems unrelated to the car's motion.
+[x] The snow flake motion in the snow storm seems unrelated to the car's motion.
 
     Given the speed of the car the snow should be passing the camera at a higher speed.
 

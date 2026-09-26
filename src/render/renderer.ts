@@ -924,6 +924,8 @@ export class Renderer {
         },
         sp,
         scene.frozen ? [0, 0, 0] : camVel,
+        loc(scene.player.pos),
+        scene.player.fwd,
       );
     }
     this.props.update(scene.playerS, ox, oz, planes, this.roadMesh!);
