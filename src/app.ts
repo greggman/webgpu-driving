@@ -48,7 +48,7 @@ const SHOWROOM_VIEWS: Record<string, [number[], number[], number]> = {
   side: [[0.2, 7.0, 0.95], [0.2, 0, 0.7], 36],
   wheel: [[2.5, 1.95, 0.5], [1.35, 0.8, 0.38], 40],
   top34: [[4.2, -4.2, 3.6], [0, 0, 0.45], 36],
-    front: [[7.5, 0.0, 1.0], [0, 0, 0.7], 30],
+  front: [[7.5, 0.0, 1.0], [0, 0, 0.7], 30],
   // Near-orthographic "blueprint" views (long lens from far away).
   'bp-side': [[0, 40, 0.75], [0, 0, 0.75], 4.2],
   'bp-front': [[40, 0, 0.75], [0, 0, 0.75], 4.2],
