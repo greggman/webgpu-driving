@@ -64,7 +64,16 @@ export class Shadows {
     }
   }
 
-  // camPos/fwd/up/right in local space; fovY, aspect.
+  // Which cascades are re-rendered this frame. Far cascades change slowly
+  // on screen, so (as in most AAA engines) they update at a lower rate:
+  // cascade 2 every other frame, cascade 3 every fourth; a cached cascade
+  // keeps the matrix it was rendered with, so lookups stay consistent.
+  readonly dirty: boolean[] = [true, true, true, true];
+  private frame = 0;
+  private lastKey = '';
+
+  // camPos/fwd/up/right in local space; fovY, aspect. `key` changes force
+  // every cascade to refresh (origin rebase, camera cut, sun moved).
   update(
     camPos: number[],
     fwd: number[],
@@ -73,7 +82,15 @@ export class Shadows {
     fovY: number,
     aspect: number,
     lightDir: number[],
+    key = '',
   ) {
+    const f = this.frame++;
+    const all = key !== this.lastKey || f < 4;
+    this.lastKey = key;
+    this.dirty[0] = true;
+    this.dirty[1] = true;
+    this.dirty[2] = all || f % 2 === 0;
+    this.dirty[3] = all || f % 4 === 1;
     const tanY = Math.tan(fovY / 2),
       tanX = tanY * aspect;
     let near = 0.1;
@@ -124,8 +141,10 @@ export class Shadows {
       // orthoReverseZ expects view-space z going negative; our lookAt has the
       // camera looking down -z, so near/far are distances along -z.
       const vp = multiply(proj, view);
-      this.matrices[i].set(vp);
-      this.device.queue.writeBuffer(this.vpBuf, i * 256, vp);
+      if (this.dirty[i]) {
+        this.matrices[i].set(vp);
+        this.device.queue.writeBuffer(this.vpBuf, i * 256, vp);
+      }
       near = far * 0.85;
     }
     void invert;

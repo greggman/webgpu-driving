@@ -34,7 +34,7 @@
 
 [x] Pressing a number to switch biomes should not change the camera mode
 
-[ ] Forest biome is slow
+[x] Forest biome is slow
 
     I get that it has lots of trees. But a AAA game would have no problem
     displaying a scene like this. What would they do to make it performant?

@@ -892,7 +892,25 @@ export class Renderer {
     this.roadMesh!.update(scene.playerS, planes);
 
     // Shadows.
-    this.shadows.update(eye, f, right, upv, cam.fov, aspect, sk.lightDir);
+    // Cached far cascades are invalid after an origin rebase, a camera cut
+    // or a sun move.
+    const shadowKey = [
+      ox,
+      oz,
+      cam.shot,
+      this.post.resetHistory,
+      ...sk.lightDir.map(v => v.toFixed(3)),
+    ].join();
+    this.shadows.update(
+      eye,
+      f,
+      right,
+      upv,
+      cam.fov,
+      aspect,
+      sk.lightDir,
+      shadowKey,
+    );
     const shadowMats = new Float32Array(64);
     for (let i = 0; i < CASCADES; ++i)
       shadowMats.set(this.shadows.matrices[i], i * 16);
@@ -957,7 +975,7 @@ export class Renderer {
         scene.cars.map(c => ({
           id: c.id,
           s: c.s - c.dir * c.length * 0.3,
-                    d: c.d,
+          d: c.d,
           track: c.track,
           dir: c.dir,
         })),
@@ -985,6 +1003,7 @@ export class Renderer {
 
     // Shadow cascades.
     for (let i = 0; i < CASCADES; ++i) {
+      if (!this.shadows.dirty[i]) continue;
       const pass = enc.beginRenderPass({
         label: `shadow-cascade-${i}`,
         timestampWrites: ts('shadows'),
