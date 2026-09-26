@@ -1208,6 +1208,8 @@ export class Renderer {
 
     this.encodeHzb(enc);
     this.post.aoEnabled = this.graphics.ssao;
+    this.post.ssrEnabled =
+      biome.weather.wetness > 0 || (biome.weather.rain ?? 0) > 0 || biome.ocean;
     this.vegetation.grassEnabled = this.graphics.grass;
     this.vegetation.lowPower = this.graphics.lowPower;
     this.post.encode(

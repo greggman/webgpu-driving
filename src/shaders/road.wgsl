@@ -160,13 +160,41 @@ fn fs(in: VOut) -> GBufferOut {
     spec = 0.5 + 2.5 * max(paint, yellow) * F.moon.w;
   }
 
-  // Wet road: darker, glossier, puddles in low spots.
-  if (wet > 0.0) {
-    let puddle = smoothstep(0.55, 0.7, big + mid * 0.2) * wet;
-    albedo *= mix(1.0, 0.6, wet);
-    rough = mix(rough, 0.25, wet * 0.6);
-    rough = mix(rough, 0.03, puddle);
-    n = normalize(mix(n, normalize(in.normal), puddle));
+    // Wet road: water fills the pores (the surface goes much darker) and a
+  // thin water coat lies on top: a sharp, mirror-like layer that reflects
+  // the sky, the lights and (via SSR) the scene. Thicker in the wheel ruts
+  // and low spots (puddles), rippled by the rain.
+  var coat = 0.0;
+  var nCoat = normalize(in.normal);
+  if (wet > 0.0 && in.mat < 1.5) {
+    let laneC = fract((d + halfW) / laneW) * laneW;
+    let ruts = saturate(lineMask(laneC, laneW * 0.28, 0.35, 0.3) + lineMask(laneC, laneW * 0.72, 0.35, 0.3));
+    let puddle = smoothstep(0.52, 0.66, big + mid * 0.25);
+    albedo *= mix(1.0, 0.42, wet);
+    coat = wet * saturate(0.55 + 0.25 * ruts + 0.5 * puddle);
+    n = normalize(mix(n, nCoat, coat * 0.7));
+    // Rain ripples: expanding rings from drops landing in the water.
+    let rain = F.weather2.x;
+    if (rain > 0.0) {
+      let cellSz = 0.22;
+      let cp = world2 / cellSz;
+      let ci = floor(cp);
+      var rip = vec2f(0.0);
+      for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+          let cc = ci + vec2f(f32(x), f32(y));
+          let hh = pcg(bitcast<u32>(i32(cc.x)) + pcg(bitcast<u32>(i32(cc.y))));
+          let ph = fract(F.cam.w * (0.9 + rand01(hh) * 0.6) + rand01(pcg(hh + 1u)));
+          let c = cc + vec2f(rand01(pcg(hh + 2u)), rand01(pcg(hh + 3u)));
+          let q = cp - c;
+          let dq = length(q);
+          let ringR = ph * 0.9;
+          let ring = exp(-pow((dq - ringR) * 14.0, 2.0)) * (1.0 - ph) * step(ph, 0.95);
+          rip += q / max(dq, 1e-3) * ring;
+        }
+      }
+      nCoat = normalize(nCoat + vec3f(rip.x, 0.0, rip.y) * 0.35 * rain * saturate(1.0 - dist / 40.0));
+    }
   }
   // Snow: packed snow at the edges and between wheel tracks.
   if (snow > 0.0 && in.mat < 0.5) {
@@ -186,8 +214,35 @@ fn fs(in: VOut) -> GBufferOut {
   sf.ao = 1.0;
   sf.spec = spec;
   sf.sss = 0.0;
-  let sh = sunShadow(wp, n) * cloudShadow(wp);
+    let sh = sunShadow(wp, n) * cloudShadow(wp);
   var col = shadeSurface(sf, wp, sh);
+  var gbRough = sf.rough;
+  var gbN = n;
+  if (coat > 0.0) {
+    // Water coat: Fresnel-weighted mirror of the environment plus sharp
+    // highlights from the sun / moon and every nearby light (oncoming
+    // headlights, tail lights), over the darkened base.
+    let v = normalize(F.cam.xyz - wp);
+    let nv = saturate(dot(nCoat, v));
+    let fres = 0.02 + 0.98 * pow(1.0 - nv, 5.0);
+    let r = reflect(-v, nCoat);
+    var w: Surface;
+    w.albedo = vec3f(0.0);
+    w.n = nCoat;
+    w.rough = 0.05;
+    w.metal = 0.0;
+    w.ao = 1.0;
+    w.spec = 0.5;
+    w.sss = 0.0;
+    let l = F.sun.xyz;
+    let h = normalize(v + l);
+    let glint = D_GGX(saturate(dot(nCoat, h)), 0.0025) * V_SmithGGX(max(nv, 1e-3), saturate(dot(nCoat, l)), 0.0025) * fres;
+    let refl = envRadiance(r, 0.03) * fres + F.sunColor.rgb * min(glint, 400.0) * sh * saturate(dot(nCoat, l)) + localLights(w, wp, v);
+    col = col * (1.0 - fres * coat) + refl * coat;
+    // Mark the coat for screen-space reflections (roughness < 0.09).
+    gbRough = mix(0.09, 0.02, coat);
+    gbN = nCoat;
+  }
   col = finishColor(col, wp);
-  return gbuffer(col, wp, wp, n, sf.rough);
+  return gbuffer(col, wp, wp, gbN, gbRough);
 }

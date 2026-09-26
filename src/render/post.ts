@@ -13,6 +13,7 @@ import exposureSrc from '../shaders/post/exposure.wgsl';
 import aoSrc from '../shaders/post/ao.wgsl';
 import mbSrc from '../shaders/post/motionblur.wgsl';
 import dofSrc from '../shaders/post/dof.wgsl';
+import ssrSrc from '../shaders/post/ssr.wgsl';
 import {FrameData} from './frameData';
 import {HDR_FORMAT, Targets} from './targets';
 
@@ -36,6 +37,12 @@ export class Post {
   private bloomMips: GPUTexture[] = [];
   private sampler: GPUSampler;
   private aoPipe!: GPURenderPipeline;
+  private ssrPipe!: GPURenderPipeline;
+  private ssrCompPipe!: GPURenderPipeline;
+  private ssrBG!: GPUBindGroup;
+  private ssrCompBG!: GPUBindGroup;
+  // Screen-space reflections (wet roads, water); on when the world has any.
+  ssrEnabled = false;
   private taaPipe!: GPURenderPipeline;
   private mbPipe!: GPURenderPipeline;
   private dofPipe!: GPURenderPipeline;
@@ -106,6 +113,19 @@ export class Post {
       alpha: {srcFactor: 'zero', dstFactor: 'one', operation: 'add'},
     });
     mk('taa', mod(taaSrc, 'taa'), 'fs', HDR_FORMAT, p => (this.taaPipe = p));
+    const ssrMod = mod(ssrSrc, 'ssr');
+    mk('ssr', ssrMod, 'fs', HDR_FORMAT, p => (this.ssrPipe = p));
+    mk(
+      'ssr-composite',
+      ssrMod,
+      'fsComposite',
+      HDR_FORMAT,
+      p => (this.ssrCompPipe = p),
+      {
+        color: {srcFactor: 'one', dstFactor: 'one', operation: 'add'},
+        alpha: {srcFactor: 'zero', dstFactor: 'one', operation: 'add'},
+      },
+    );
     mk(
       'motion-blur',
       mod(mbSrc, 'motion-blur'),
@@ -205,6 +225,15 @@ export class Post {
       fb,
       {binding: 1, resource: t.depth.createView()},
       {binding: 2, resource: t.normal.createView()},
+    ]);
+    this.ssrBG = bg('ssr-bg', this.ssrPipe, [
+      fb,
+      {binding: 1, resource: t.depth.createView()},
+      {binding: 2, resource: t.normal.createView()},
+      {binding: 3, resource: t.color.createView()},
+    ]);
+    this.ssrCompBG = bg('ssr-composite-bg', this.ssrCompPipe, [
+      {binding: 4, resource: this.postA.createView()},
     ]);
     this.taaBGs = [0, 1].map(i =>
       bg(`taa-bg-${i}`, this.taaPipe, [
@@ -342,6 +371,17 @@ export class Post {
         this.targets.color.createView(),
         this.aoPipe,
         this.aoBG,
+        'load',
+      );
+    }
+    if (this.ssrEnabled) {
+      // Reflections into postA (free until motion blur), then added in.
+      pass('ssr', this.postA.createView(), this.ssrPipe, this.ssrBG);
+      pass(
+        'ssr-composite',
+        this.targets.color.createView(),
+        this.ssrCompPipe,
+        this.ssrCompBG,
         'load',
       );
     }
