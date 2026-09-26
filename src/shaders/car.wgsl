@@ -377,7 +377,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     }
     // Main grille: shape per kind, chrome / gloss surround.
     if (lp.z > halfL - 0.35 && ln.z > 0.25) {
-                              var y0 = -0.23; var y1 = 0.0; var wt = 0.47; var wb = 0.52;
+                                    // Trapezoid narrowing toward the bottom (Accord / Camry).
+      var y0 = -0.25; var y1 = 0.0; var wt = 0.5; var wb = 0.38;
       cell = 0u;
       if (style == 1u) { y0 = -0.07; y1 = 0.0; wt = 0.4; wb = 0.36; }
       if (style == 2u) { y0 = -0.26; y1 = 0.05; wt = 0.46; wb = 0.46; cell = 1u; }

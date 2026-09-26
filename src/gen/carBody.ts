@@ -73,6 +73,9 @@ export interface BodyCurves {
   // Crease sharpness (0 soft .. 1 crisp) at the lower-door line, the
   // shoulder and the beltline.
   creases?: {door?: number; shoulder?: number; belt?: number};
+  // Two raised hood lines from the headlamp tops toward the A-pillar bases:
+  // x as a fraction of width, raised `height` m, crease sharpness 0..1.
+  hoodLines?: {x: number; height: number; crease: number};
   cabin: {
     windscreenBase: number; // z where the windscreen meets the cowl
     roofFront: number; // z of the windscreen header
@@ -204,7 +207,7 @@ function spline2(
 // Samples per span, bottom centre -> roof centre:
 // underside, sill, lower door, door->shoulder, shoulder->belt, side glass,
 // roof rail curve, roof.
-const SPAN_COUNTS = [4, 4, 6, 7, 5, 12, 6, 7];
+const SPAN_COUNTS = [4, 4, 8, 9, 7, 12, 6, 9];
 const SPAN_GLASS = 5;
 
 export interface BodyGeom {
@@ -283,6 +286,21 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       ? Math.min(Math.max(doorLine(z), rk + 0.01), sh - 0.01)
       : rk + (sh - rk) * 0.45;
     const tp = Math.max(g.top(z), bot + 0.02);
+    // Mid point between the rail and the centre line; over the hood it can
+    // carry the hood lines.
+    let hoodPt: [number, number] = [rx * 0.5, ry + (tp - ry) * 0.82];
+    let hoodCrease = 0;
+    if (c.hoodLines && z > cab.windscreenBase) {
+      const hl = c.hoodLines;
+      const f =
+        sm(cab.windscreenBase, cab.windscreenBase + 0.15, z) *
+        sm(nose, nose - 0.35, z);
+      hoodPt = [
+        hoodPt[0] + (W * hl.x - hoodPt[0]) * f,
+        hoodPt[1] + hl.height * f,
+      ];
+      hoodCrease = hl.crease * f;
+    }
     const pts: Array<[number, number]> = [
       [0, bot],
       [W * c.rockerIn * 0.82, bot + (rk - bot) * 0.15],
@@ -291,7 +309,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       [W, sh],
       [bx, bl],
       [rx, ry + 0.0005],
-      [rx * 0.5, ry + (tp - ry) * 0.82],
+      hoodPt,
       [0, tp],
     ];
     const cr = c.creases ?? {};
@@ -302,6 +320,8 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       cr.door ?? 0,
       cr.shoulder ?? 0,
       cr.belt ?? 0,
+      0,
+      hoodCrease,
     ]);
   };
 
@@ -449,7 +469,14 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     }
     return end;
   };
-  emitGrid(push, grid, mat, p => [p[0], p[1] - 0.6, p[2] * 0.25], true);
+  // Crease rows (sample index within the half ring) get split normals.
+  const cr = c.creases ?? {};
+  const creaseK = new Set<number>();
+  if ((cr.door ?? 0) >= 0.5) creaseK.add(spanStart[3]);
+  if ((cr.shoulder ?? 0) >= 0.5) creaseK.add(spanStart[4]);
+  if ((cr.belt ?? 0) >= 0.5) creaseK.add(spanStart[5]);
+  if ((c.hoodLines?.crease ?? 0) >= 0.5) creaseK.add(spanStart[7]);
+  emitSkin(push, grid, mat, H, creaseK);
 
   // Wheel-well liners (dark half tubes) closing the trimmed arches.
   for (const az of axles) {
@@ -554,4 +581,60 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
 
   const out = orient(new Float32Array(verts));
   return {vertices: out, count: out.length / 8};
+}
+
+// Emits the skin grid [station][ring] with smooth normals, except along
+// crease rows (half-ring sample indices in `creaseK`), where the faces on
+// either side get their own one-sided normals so the highlight breaks.
+function emitSkin(
+  push: (p: number[], n: number[], m: number) => void,
+  grid: P3[][],
+  mat: (i: number, j: number) => number,
+  H: number,
+  creaseK: Set<number>,
+) {
+  const NS = grid.length,
+    NR = grid[0].length;
+  const kOf = (j: number) => (j < H ? j : 2 * H - 2 - j);
+  const sub = (a: P3, b: P3) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const normalAt = (i: number, j: number, side: -1 | 0 | 1): number[] => {
+    const a = grid[Math.max(i - 1, 0)][j],
+      b = grid[Math.min(i + 1, NS - 1)][j];
+    const jm = (j - 1 + NR) % NR,
+      jp = (j + 1) % NR;
+    const c0 = side > 0 ? grid[i][j] : grid[i][jm];
+    const c1 = side < 0 ? grid[i][j] : grid[i][jp];
+    const du = sub(b, a),
+      dv = sub(c1, c0);
+    let n = [
+      du[1] * dv[2] - du[2] * dv[1],
+      du[2] * dv[0] - du[0] * dv[2],
+      du[0] * dv[1] - du[1] * dv[0],
+    ];
+    const l = Math.hypot(n[0], n[1], n[2]) || 1;
+    n = n.map(x => x / l);
+    const p = grid[i][j];
+    const o = [p[0], p[1] - 0.6, p[2] * 0.25];
+    if (n[0] * o[0] + n[1] * o[1] + n[2] * o[2] < 0) n = n.map(x => -x);
+    return n;
+  };
+  // Normal of vertex (i, j) as used by a quad lying toward ring index
+  // j + dir (dir = +1 or -1 along the ring).
+  const vn = (i: number, j: number, dir: 1 | -1) =>
+    creaseK.has(kOf(j)) ? normalAt(i, j, dir) : normalAt(i, j, 0);
+  for (let i = 0; i < NS - 1; ++i) {
+    for (let j = 0; j < NR - 1; ++j) {
+      const m = mat(i, j);
+      if (m < 0) continue;
+      const q: Array<[number, number, 1 | -1]> = [
+        [i, j, 1],
+        [i + 1, j, 1],
+        [i, j + 1, -1],
+        [i, j + 1, -1],
+        [i + 1, j, 1],
+        [i + 1, j + 1, -1],
+      ];
+      for (const [a, b, d] of q) push(grid[a][b], vn(a, b, d), m);
+    }
+  }
 }
