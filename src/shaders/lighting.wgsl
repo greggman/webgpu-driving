@@ -149,12 +149,26 @@ fn shadeSurface(s: Surface, worldPos: vec3f, shadowIn: f32) -> vec3f {
   return col;
 }
 
-// Local lights (headlights, tail lights, street lamps) — simple loop over the
-// small light list (<= 64 lights).
+// Local lights (headlights, tail lights): clustered forward shading. The
+// fragment finds its froxel cluster (see clusters.wgsl) and loops only over
+// the lights binned there.
+fn clusterIndex(worldPos: vec3f) -> u32 {
+  let clip = F.viewProjNJ * vec4f(worldPos, 1.0);
+  let ndc = clip.xy / clip.w;
+  let uv = clamp(vec2f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5), vec2f(0.0), vec2f(0.9999));
+  let viewZ = max(-(F.view * vec4f(worldPos, 1.0)).z, 0.3);
+  let k = u32(clamp(log(viewZ / 0.3) / log(600.0 / 0.3) * 24.0, 0.0, 23.0));
+  let ij = vec2u(uv * vec2f(16.0, 9.0));
+  return ((k * 9u + ij.y) * 16u + ij.x) * 32u;
+}
+
 fn localLights(s: Surface, worldPos: vec3f, v: vec3f) -> vec3f {
-  let count = u32(F.lights.x);
+  if (F.lights.x < 0.5) { return vec3f(0.0); }
+  let base = clusterIndex(worldPos);
+  let count = clusterLights[base];
   var col = vec3f(0.0);
-  for (var i = 0u; i < count; i++) {
+  for (var j = 0u; j < count; j++) {
+    let i = clusterLights[base + 1u + j];
     let L = lightsBuf[i];
     let d = L.pos.xyz - worldPos;
     let dist2 = dot(d, d);

@@ -136,7 +136,8 @@ export class Director {
 
   private pickShot(sCar = 0): ShotKind {
     const ahead = this.roadAhead(sCar);
-    if (ahead && ahead !== this.shot.kind && this.rng.next() < 0.6) return ahead;
+    if (ahead && ahead !== this.shot.kind && this.rng.next() < 0.6)
+      return ahead;
     const base: Record<ShotKind, number> = {
       chase: 1.5,
       helicopter: 1.3,

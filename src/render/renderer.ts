@@ -28,6 +28,7 @@ import {Props} from './props';
 import {Water} from './water';
 import {Particles} from './particles';
 import volSrc from '../shaders/volumetric.wgsl';
+import clusterSrc from '../shaders/clusters.wgsl';
 import {FRAME_PRELUDE} from './shaders';
 import {shaderModule} from '../gpu/gpu';
 
@@ -107,6 +108,9 @@ export class Renderer {
   private volTex: GPUTexture;
   private volPipe: GPUComputePipeline;
   private volBG!: GPUBindGroup;
+  private clusterBuf: GPUBuffer;
+  private clusterPipe: GPUComputePipeline;
+  private clusterBG!: GPUBindGroup;
   originX = 0;
   originZ = 0;
   frameIndex = 0;
@@ -139,6 +143,23 @@ export class Renderer {
       dimension: '3d',
       format: 'rgba16float',
       usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.clusterBuf = d.createBuffer({
+      label: 'light-clusters',
+      size: 16 * 9 * 24 * 32 * 4,
+      usage: GPUBufferUsage.STORAGE,
+    });
+    this.clusterPipe = d.createComputePipeline({
+      label: 'light-cluster-build',
+      layout: 'auto',
+      compute: {
+        module: shaderModule(
+          d,
+          FRAME_PRELUDE + '\n' + clusterSrc,
+          'light-clusters',
+        ),
+        entryPoint: 'build',
+      },
     });
     this.volPipe = d.createComputePipeline({
       label: 'volumetric-fog',
@@ -245,11 +266,21 @@ export class Renderer {
       {binding: 11, resource: this.vegetation.materialView},
       {binding: 12, resource: this.atmosphere.cloudTex.createView()},
       {binding: 13, resource: this.volTex.createView()},
+      {binding: 14, resource: {buffer: this.clusterBuf}},
     ];
     this.frameBG = d.createBindGroup({
       label: 'frame-bg',
       layout: this.frameLayout,
       entries: entries(this.shadows.map.createView({dimension: '2d-array'})),
+    });
+    this.clusterBG = d.createBindGroup({
+      label: 'light-cluster-bg',
+      layout: this.clusterPipe.getBindGroupLayout(0),
+      entries: [
+        {binding: 0, resource: {buffer: this.frame.buffer}},
+        {binding: 10, resource: {buffer: this.lightsBuf}},
+        {binding: 14, resource: {buffer: this.clusterBuf}},
+      ],
     });
     this.volBG = d.createBindGroup({
       label: 'volumetric-fog-bg',
@@ -597,6 +628,18 @@ export class Renderer {
       this.props.drawShadow(pass);
       if (i < 3) this.cars.drawShadow(pass);
       pass.end();
+    }
+
+    // Clustered light culling.
+    {
+      const cp = enc.beginComputePass({
+        label: 'light-clusters',
+        timestampWrites: ts('clusters'),
+      });
+      cp.setPipeline(this.clusterPipe);
+      cp.setBindGroup(0, this.clusterBG);
+      cp.dispatchWorkgroups(4, 3, 6);
+      cp.end();
     }
 
     // Volumetric fog (needs this frame's shadow maps).

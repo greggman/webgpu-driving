@@ -160,6 +160,11 @@ export const FRAME_LAYOUT_ENTRIES: GPUBindGroupLayoutEntry[] = [
     texture: {sampleType: 'float', viewDimension: '2d-array'},
   },
   {
+    binding: 14,
+    visibility: ALL_STAGES,
+    buffer: {type: 'read-only-storage'},
+  },
+  {
     binding: 13,
     visibility: ALL_STAGES,
     texture: {sampleType: 'float', viewDimension: '3d'},
