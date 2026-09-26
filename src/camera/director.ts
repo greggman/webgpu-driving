@@ -281,8 +281,11 @@ export class Director {
     switch (s.kind) {
       case 'chase': {
         const sway = Math.sin(t * 0.4 + s.seed * 10) * 0.8;
-        eye = at(-7.5, sway, 2.3);
-        target = at(3, 0, 0.9);
+        // carLen: distance from the pose to the rear of the vehicle (or
+        // semi rig); further back and higher for long vehicles.
+        const big = Math.max(0, carLen - 2.4);
+        eye = at(-(carLen + 5.1 + big * 0.5), sway, 2.3 + big * 0.25);
+        target = at(3, 0, 0.9 + big * 0.08);
         fov = 52 * DEG;
         smooth = 4;
         break;
@@ -451,7 +454,7 @@ export class Director {
       eye[2] - subject[2],
     );
     if (s.kind === 'wheel') aperture = 0.06;
-    void carLen;
+
     return {eye, target, up, fov, focus, aperture, interior, shot: s.kind};
   }
 

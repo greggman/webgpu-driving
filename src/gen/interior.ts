@@ -1,7 +1,7 @@
 // Procedural car cabin (dashboard, instrument binnacle with gauges, center
 // screen and console, steering wheel, seats, mirror, floor). Car-local frame:
 // +z forward, +y up, +x left (US left-hand drive: driver at x > 0).
-import {CarSpec, MeshData} from './car';
+import {CarSpec, MeshData, driverZ} from './car';
 
 export const MI_DASH = 10;
 export const MI_GAUGE = 11;
@@ -18,6 +18,43 @@ export interface Interior extends MeshData {
 }
 
 export function buildInterior(spec: CarSpec): Interior {
+  if (spec.kind === 'trailer')
+    return {
+      vertices: new Float32Array(0),
+      count: 0,
+      wheelCenter: [0.37, 1, 0],
+      wheelTilt: 0,
+    };
+  if (spec.kind === 'semi' || spec.kind === 'bus') {
+    // A car-style cockpit moved up behind the (far forward) windscreen,
+    // plus rows of seats down a bus.
+    const ws = 0.95;
+    const cab = buildInterior({
+      ...spec,
+      kind: 'sedan',
+      wsBase: ws,
+      roofFront: 0.05,
+      roofBack: -0.95,
+      rearBase: -1.6,
+    });
+    const dz = spec.wsBase - ws;
+    const out: number[] = Array.from(cab.vertices);
+    for (let i = 2; i < out.length; i += 8) out[i] += dz;
+    if (spec.kind === 'bus') {
+      const extra = buildBusSeats(spec);
+      for (const x of extra) out.push(x);
+    }
+    return {
+      vertices: new Float32Array(out),
+      count: out.length / 8,
+      wheelCenter: [
+        cab.wheelCenter[0],
+        cab.wheelCenter[1],
+        cab.wheelCenter[2] + dz,
+      ],
+      wheelTilt: cab.wheelTilt,
+    };
+  }
   const v: number[] = [];
   const push = (p: number[], n: number[], m: number) =>
     v.push(p[0], p[1], p[2], n[0], n[1], n[2], m, 0);
@@ -188,7 +225,7 @@ export function buildInterior(spec: CarSpec): Interior {
   // Seats (tan leather).
   const oy = belt - 1.0; // taller cars sit higher
   // Front seats follow the driver's eye (under the roof's middle).
-  const sz = (spec.roofFront + spec.roofBack) / 2 - 0.15 + 0.6;
+  const sz = driverZ(spec) + 0.6;
   for (const sx of [dx, -dx]) {
     box([sx, 0.45 + oy, -0.55 + sz], [0.25, 0.07, 0.26], MI_SEAT);
     box([sx, 0.82 + oy, -0.86 + sz], [0.25, 0.34, 0.07], MI_SEAT, -0.28);
@@ -305,4 +342,67 @@ export function buildInterior(spec: CarSpec): Interior {
     wheelCenter: wc,
     wheelTilt: tilt,
   };
+}
+
+// Pairs of seats down both sides of a bus (cushion + back), as flat-shaded
+// boxes in the interior vertex format.
+function buildBusSeats(spec: CarSpec): number[] {
+  const v: number[] = [];
+  const box = (c: number[], h: number[]) => {
+    const faces: Array<[number[], number[], number[]]> = [
+      [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      [
+        [-1, 0, 0],
+        [0, 0, 1],
+        [0, 1, 0],
+      ],
+      [
+        [0, 1, 0],
+        [0, 0, 1],
+        [1, 0, 0],
+      ],
+      [
+        [0, -1, 0],
+        [1, 0, 0],
+        [0, 0, 1],
+      ],
+      [
+        [0, 0, 1],
+        [1, 0, 0],
+        [0, 1, 0],
+      ],
+      [
+        [0, 0, -1],
+        [0, 1, 0],
+        [1, 0, 0],
+      ],
+    ];
+    for (const [n, u, w] of faces) {
+      const p = (a: number, b: number) => [
+        c[0] + (n[0] + u[0] * a + w[0] * b) * h[0],
+        c[1] + (n[1] + u[1] * a + w[1] * b) * h[1],
+        c[2] + (n[2] + u[2] * a + w[2] * b) * h[2],
+      ];
+      for (const [a, b] of [
+        [-1, -1],
+        [1, -1],
+        [1, 1],
+        [-1, -1],
+        [1, 1],
+        [-1, 1],
+      ])
+        v.push(...p(a, b), ...n, MI_SEAT, 0);
+    }
+  };
+  for (let z = spec.wsBase - 2.7; z > spec.rearBase + 0.7; z -= 0.85) {
+    for (const sx of [-1, 1]) {
+      box([sx * 0.78, 0.92, z], [0.44, 0.06, 0.22]);
+      box([sx * 0.78, 1.3, z - 0.22], [0.44, 0.34, 0.05]);
+    }
+  }
+  return v;
 }

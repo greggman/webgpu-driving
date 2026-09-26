@@ -809,7 +809,7 @@ export class Renderer {
           (0.6 + 0.8 * hash(3));
       }
     }
-        if (DEBUG.has('lightning') && rate > 0) flash = 1;
+    if (DEBUG.has('lightning') && rate > 0) flash = 1;
     F.set('weather2', [rain, flash, Math.sin(strikeAz), Math.cos(strikeAz)]);
     const precip = rain > 0 || biome.weather.snow > 0;
     this.glassFxOn = cam.interior && rain > 0;
@@ -846,7 +846,7 @@ export class Renderer {
       0,
       ...P.sand,
       0,
-            ...P.foliage,
+      ...P.foliage,
       P.autumn ?? 0,
       ...P.flower,
       P.snow,

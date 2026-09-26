@@ -3,8 +3,9 @@
 import {shaderModule} from '../gpu/gpu';
 import {deferRenderPipeline} from '../gpu/pipelines';
 import {
-  CAR_KINDS,
+  MESH_KINDS,
   CarKind,
+  buildTrailer,
   buildCarBody,
   buildWheel,
   carSpec,
@@ -60,9 +61,9 @@ export class CarRenderer {
   readonly layout: GPUBindGroupLayout;
 
   constructor(private device: GPUDevice) {
-    for (const kind of CAR_KINDS) {
+    for (const kind of MESH_KINDS) {
       const spec = carSpec(kind);
-      const m = buildCarBody(spec);
+      const m = kind === 'trailer' ? buildTrailer() : buildCarBody(spec);
       const buf = device.createBuffer({
         label: `car-body-${kind}`,
         size: m.vertices.byteLength,
@@ -272,7 +273,7 @@ export class CarRenderer {
 
   setCars(list: CarDraw[]) {
     const sorted = [...list].sort(
-      (a, b) => CAR_KINDS.indexOf(a.kind) - CAR_KINDS.indexOf(b.kind),
+      (a, b) => MESH_KINDS.indexOf(a.kind) - MESH_KINDS.indexOf(b.kind),
     );
     this.ranges = [];
     this.interiorDraw = null;
@@ -317,10 +318,18 @@ export class CarRenderer {
         o + 56,
       );
       this.data.set(
-        [0.37, spec.belt - 0.01, CAR_KINDS.indexOf(c.kind), 0],
+        [0.37, spec.belt - 0.01, MESH_KINDS.indexOf(c.kind), 0],
         o + 60,
       );
-      this.data.set([spec.axleShift, spec.clearance, 0, 0], o + 64);
+      this.data.set(
+        [
+          spec.axleShift,
+          spec.clearance,
+          spec.wheelWidth ?? 1,
+          spec.thirdAxle ?? 0,
+        ],
+        o + 64,
+      );
       if (c.interior) this.interiorDraw = {kind: c.kind, index: i};
       const last = this.ranges[this.ranges.length - 1];
       if (last && last.kind === c.kind) last.count++;
@@ -390,7 +399,8 @@ export class CarRenderer {
     }
     pass.setPipeline(wheel);
     pass.setVertexBuffer(0, this.wheel.buf);
-    pass.draw(this.wheel.count, this.total * 4, 0, 0);
+    // Up to three axles per vehicle (unused ones collapse in the shader).
+    pass.draw(this.wheel.count, this.total * 6, 0, 0);
     // Cabins (seen through the glass); not needed in the shadow maps.
     if (body === this.bodyPipe) {
       pass.setPipeline(body);

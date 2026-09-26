@@ -9,7 +9,7 @@
 //  * lane changes only start when the target lane has safe gaps;
 //  * a final hard constraint pass clamps any pair that gets closer than the
 //    minimum gap (and stops head-on pairs), so overlap can never happen.
-import {CarKind, CAR_KINDS} from '../gen/car';
+import {CarKind, CAR_KINDS, semiLayout} from '../gen/car';
 import {Rng, clamp} from '../math/noise';
 import {Biome} from '../world/biome';
 
@@ -176,9 +176,22 @@ export class Traffic {
           this.rng.range(0.65, 1.05) *
           (lane === this.lanes - 1 && this.lanes > 1 ? 1.15 : 1)
         : cruise * this.rng.range(0.8, 1.1);
-    const kind = this.rng.pick(CAR_KINDS);
+    let r =
+      this.rng.next() * CAR_KINDS.reduce((a, k) => a + KIND_WEIGHTS[k], 0);
+    let kind = CAR_KINDS[0];
+    for (const k of CAR_KINDS) {
+      r -= KIND_WEIGHTS[k];
+      if (r <= 0) {
+        kind = k;
+        break;
+      }
+    }
+    // Dirt roads: no semis or buses.
+    if (this.biome.road.dirt && (kind === 'semi' || kind === 'bus'))
+      kind = 'pickup';
     const color = this.rng.pick(PAINTS);
-    this.vehicles.push(this.make(kind, color, dir, s, d, desired));
+    const heavy = kind === 'semi' || kind === 'bus' ? 0.85 : 1;
+    this.vehicles.push(this.make(kind, color, dir, s, d, desired * heavy));
   }
 
   // Leader: nearest laterally-overlapping vehicle ahead of v in v's travel
@@ -450,6 +463,20 @@ export class Traffic {
   }
 }
 
-function carLength(kind: CarKind): number {
+export function carLength(kind: CarKind): number {
+  if (kind === 'semi') return semiLayout().total;
+  if (kind === 'bus') return 12.2;
   return kind === 'pickup' ? 5.4 : kind === 'hatch' ? 4.1 : 4.8;
 }
+
+// Traffic mix (relative weights).
+const KIND_WEIGHTS: Record<string, number> = {
+  sedan: 3,
+  hatch: 2,
+  suv: 3,
+  coupe: 1,
+  wagon: 2,
+  pickup: 1.5,
+  semi: 1,
+  bus: 0.4,
+};

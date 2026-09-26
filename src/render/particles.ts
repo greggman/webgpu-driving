@@ -149,7 +149,7 @@ export class Particles {
     const rain = biome.weather.rain ?? 0;
     if (rain > 0)
       add(3, Math.round(200000 * rain), 40, 0.006, 9, 0, [0.75, 0.8, 0.9, 0.7]);
-        if (biome.id === 'autumn') {
+    if (biome.id === 'autumn') {
       add(1, 2500, 45, 0.05, 0.8, 0, [0.62, 0.22, 0.04, 1]);
       add(4, 9000, 160, 0.055, 0, 0, [0.6, 0.22, 0.04, 1]);
     }

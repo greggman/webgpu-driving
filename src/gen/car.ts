@@ -17,7 +17,18 @@
 // Local frame: +z forward, +y up, +x left; origin on the ground midway
 // between the axles.
 
-export type CarKind = 'sedan' | 'hatch' | 'suv' | 'coupe' | 'wagon' | 'pickup';
+export type CarKind =
+  | 'sedan'
+  | 'hatch'
+  | 'suv'
+  | 'coupe'
+  | 'wagon'
+  | 'pickup'
+  | 'semi'
+  | 'bus'
+  | 'trailer';
+// Drivable vehicles (traffic and the player's choice). A semi tows a
+// 'trailer', which is only drawn (see TRAILER below).
 export const CAR_KINDS: CarKind[] = [
   'sedan',
   'hatch',
@@ -25,7 +36,42 @@ export const CAR_KINDS: CarKind[] = [
   'coupe',
   'wagon',
   'pickup',
+  'semi',
+  'bus',
 ];
+// Everything with a mesh (render order / style index in the shader).
+export const MESH_KINDS: CarKind[] = [...CAR_KINDS, 'trailer'];
+
+// Semi rig geometry: the traffic sim treats a vehicle as symmetric about
+// its arc length s, so for a semi s is the middle of the whole rig; the
+// tractor and trailer centres are offset from it.
+export const TRAILER = {
+  length: 14.6,
+  width: 2.6,
+  kingpin: 1.0, // kingpin behind the trailer's front face
+  axles: [-5.2, -6.45], // tandem, from the trailer centre
+  wheelR: 0.5,
+};
+export function semiLayout() {
+  const tr = carSpec('semi');
+  const fifth = -tr.wheelbase / 2 + tr.axleShift - 0.66; // over the tandem
+  const trailerCenter = fifth - (TRAILER.length / 2 - TRAILER.kingpin);
+  const front = tr.length / 2;
+  const rear = trailerCenter - TRAILER.length / 2;
+  const mid = (front + rear) / 2;
+  return {
+    total: front - rear,
+    tractor: -mid, // tractor centre relative to the rig's middle
+    trailer: trailerCenter - mid,
+  };
+}
+
+// Driver eye z (car-local): the middle of the roof for cars; trucks and
+// buses sit right behind the windscreen.
+export function driverZ(sp: CarSpec): number {
+  if (sp.kind === 'semi' || sp.kind === 'bus') return sp.wsBase - 1.55;
+  return (sp.roofFront + sp.roofBack) / 2 - 0.15;
+}
 
 // Material ids (see car.wgsl). 10-17 are cabin materials (interior.ts).
 export const MAT_PAINT = 0;
@@ -66,6 +112,8 @@ export interface CarSpec {
   cladding: boolean; // black plastic arch / sill cladding
   quarter: boolean; // rear quarter window behind the C pillar
   flare: number; // rear fender flare (m)
+  thirdAxle?: number; // z of an extra (tandem) axle
+  wheelWidth?: number; // wheel width scale (dual tyres)
   axleShift: number; // both axles moved forward by this (shorter front overhang)
 
   headlightY: number;
@@ -263,6 +311,98 @@ export function carSpec(kind: CarKind): CarSpec {
         rearBase: -0.42,
         sideRear: -0.36,
         bedFront: -0.5,
+      });
+    case 'semi':
+      // Conventional tractor: long hood, tall cab with a sleeper; the
+      // frame and fifth wheel extend behind the body over the tandem.
+      return spec({
+        kind,
+        axleShift: -0.6,
+        boxy: 12,
+        cladding: false,
+        quarter: false,
+        flare: 0.03,
+        thirdAxle: -4.22,
+        wheelWidth: 1.7,
+        length: 5.8,
+        width: 2.5,
+        wheelbase: 4.6,
+        wheelR: 0.52,
+        track: 2.0,
+        clearance: 0.5,
+        noseY: 1.4,
+        hoodY: 1.8,
+        beltF: 1.95,
+        beltR: 2.0,
+        deckY: 2.0,
+        tailY: 1.95,
+        roofY: 3.35,
+        roofW: 0.92,
+        wsBase: 0.55,
+        roofFront: -0.05,
+        roofBack: -2.55,
+        rearBase: -2.85,
+        sideRear: -0.95,
+      });
+    case 'bus':
+      return spec({
+        kind,
+        axleShift: 0.4,
+        boxy: 14,
+        cladding: false,
+        quarter: false,
+        flare: 0.0,
+        wheelWidth: 1.4,
+        length: 12.2,
+        width: 2.55,
+        wheelbase: 6.2,
+        wheelR: 0.5,
+        track: 2.05,
+        clearance: 0.3,
+        noseY: 1.15,
+        hoodY: 1.2,
+        beltF: 1.25,
+        beltR: 1.3,
+        deckY: 1.3,
+        tailY: 1.25,
+        roofY: 3.25,
+        roofW: 0.97,
+        wsBase: 5.98,
+        roofFront: 5.72,
+        roofBack: -5.85,
+        rearBase: -6.02,
+        sideRear: -5.7,
+      });
+    case 'trailer':
+      // Only its spec is used for the shader (lamps, wheels); the mesh is
+      // buildTrailer().
+      return spec({
+        kind,
+        axleShift: (TRAILER.axles[0] + TRAILER.axles[1]) / 2,
+        boxy: 20,
+        cladding: false,
+        quarter: false,
+        flare: 0,
+        wheelWidth: 1.7,
+        length: TRAILER.length,
+        width: TRAILER.width,
+        wheelbase: TRAILER.axles[0] - TRAILER.axles[1],
+        wheelR: TRAILER.wheelR,
+        track: 2.05,
+        clearance: 1.2,
+        noseY: 3.9,
+        hoodY: 4.0,
+        beltF: 4.0,
+        beltR: 4.0,
+        deckY: 4.0,
+        tailY: 1.35,
+        roofY: 4.1,
+        roofW: 1,
+        wsBase: 7.3,
+        roofFront: 7.3,
+        roofBack: -7.3,
+        rearBase: -7.3,
+        sideRear: -7.3,
       });
   }
 }
@@ -509,7 +649,7 @@ export function buildCarBody(sp: CarSpec): MeshData {
   // ---- Greenhouse loft ----
   const gz0 = sp.rearBase,
     gz1 = sp.wsBase;
-  const GS = 70;
+  const GS = Math.max(70, Math.round((sp.wsBase - sp.rearBase) * 22));
   const gzs: number[] = [];
   for (let i = 0; i < GS; ++i) gzs.push(gz1 - (i / (GS - 1)) * (gz1 - gz0));
   const roofLine = (z: number) => {
@@ -585,6 +725,12 @@ export function buildCarBody(sp: CarSpec): MeshData {
       if (sp.quarter && z < sp.sideRear - 0.1 && z > sp.rearBase + 0.2)
         return k === 1 || k === 4 ? MAT_TRIM : MAT_GLASS; // quarter window
       if (z < sp.sideRear) return MAT_PAINT; // C pillar
+      if (sp.kind === 'bus') {
+        // Window pillars every 1.3 m and the entry door up front.
+        const q = (z - sp.rearBase) / 1.3;
+        if (Math.abs(q - Math.round(q)) * 1.3 < 0.06) return MAT_TRIM;
+        return MAT_GLASS;
+      }
       if (sp.kind !== 'coupe' && Math.abs(z - bPillar) < 0.055) return MAT_TRIM; // B pillar
       return MAT_GLASS;
     }
@@ -763,6 +909,74 @@ export function buildCarBody(sp: CarSpec): MeshData {
       );
     }
   }
+  // Semi tractor: frame rails, fifth wheel, fuel tanks, exhaust stacks,
+  // rear fenders over the tandem, and an air deflector on the sleeper.
+  if (sp.kind === 'semi') {
+    const zb = tail,
+      ze = (sp.thirdAxle ?? -4.2) - 0.75;
+    const fr = sp.clearance + 0.55;
+    for (const sx of [-1, 1])
+      box(
+        push,
+        [sx * 0.45, fr, (zb + ze) / 2],
+        [0.1, 0.16, (zb - ze) / 2],
+        MAT_UNDER,
+      );
+    const fifth = -sp.wheelbase / 2 + sp.axleShift - 0.66;
+    box(push, [0, fr + 0.22, fifth], [0.7, 0.05, 0.75], MAT_TRIM);
+    box(
+      push,
+      [0, fr + 0.14, (zb + ze) / 2],
+      [0.55, 0.04, (zb - ze) / 2],
+      MAT_UNDER,
+    );
+    for (const sx of [-1, 1]) {
+      // Chrome fuel tanks under the doors.
+      box(
+        push,
+        [sx * (HW - 0.3), sp.clearance + 0.35, -0.9],
+        [0.3, 0.3, 0.7],
+        MAT_CHROME,
+      );
+      // Exhaust stacks behind the cab.
+      box(
+        push,
+        [sx * (HW - 0.2), 2.6, tail - 0.1],
+        [0.08, 1.1, 0.08],
+        MAT_CHROME,
+      );
+      // Quarter fenders and mud flaps over / behind the tandem.
+      const rR = sp.wheelR;
+      for (const az of [
+        -sp.wheelbase / 2 + sp.axleShift,
+        sp.thirdAxle ?? -4.2,
+      ]) {
+        box(
+          push,
+          [sx * (sp.track / 2), 2 * rR + 0.1, az],
+          [0.32, 0.03, rR + 0.08],
+          MAT_TRIM,
+        );
+      }
+      box(
+        push,
+        [sx * (sp.track / 2), rR, ze + 0.1],
+        [0.3, rR * 0.8, 0.02],
+        MAT_UNDER,
+      );
+    }
+    // Roof air deflector over the sleeper.
+    box(
+      push,
+      [0, sp.roofY + 0.25, sp.roofBack + 0.5],
+      [HW * 0.85, 0.25, 0.5],
+      MAT_PAINT,
+    );
+  }
+  if (sp.kind === 'bus') {
+    // Roof air-conditioning unit.
+    box(push, [0, sp.roofY + 0.14, -1.2], [0.8, 0.14, 1.6], MAT_TRIM);
+  }
   // Plates.
   box(
     push,
@@ -857,6 +1071,55 @@ function box(
     push(p(1, 1), n, m);
     push(p(-1, 1), n, m);
   }
+}
+
+// 53 ft box trailer (drawn behind a semi tractor): van body, rear doors and
+// lamp sill, under-frame, side skirts, landing gear and rear bumper.
+export function buildTrailer(): MeshData {
+  const verts: number[] = [];
+  const push = (p: number[], n: number[], m: number) => {
+    verts.push(p[0], p[1], p[2], n[0], n[1], n[2], m, 0);
+  };
+  const L = TRAILER.length / 2,
+    W = TRAILER.width / 2;
+  const y0 = 1.4,
+    y1 = 4.05;
+  box(push, [0, (y0 + y1) / 2, 0], [W, (y1 - y0) / 2, L], MAT_PAINT);
+  // Corner posts and top rails.
+  for (const sx of [-1, 1]) {
+    box(push, [sx * (W + 0.005), y1 - 0.04, 0], [0.02, 0.05, L], MAT_CHROME);
+    box(push, [sx * (W + 0.005), y0 + 0.04, 0], [0.02, 0.05, L], MAT_CHROME);
+    box(
+      push,
+      [sx * (W - 0.05), (y0 + y1) / 2, -L - 0.01],
+      [0.06, (y1 - y0) / 2, 0.02],
+      MAT_CHROME,
+    );
+  }
+  // Rear doors (split) and the lamp sill below them.
+  box(
+    push,
+    [0, (y0 + y1) / 2, -L - 0.012],
+    [0.012, (y1 - y0) / 2 - 0.05, 0.01],
+    MAT_TRIM,
+  );
+  box(push, [0, y0 - 0.15, -L + 0.05], [W - 0.05, 0.15, 0.06], MAT_REAR);
+  // Under-frame and cross members.
+  box(push, [0, y0 - 0.12, 0.3], [0.5, 0.12, L - 0.4], MAT_UNDER);
+  // Side skirts (aero) between the landing gear and the tandem.
+  for (const sx of [-1, 1])
+    box(push, [sx * (W - 0.1), 0.95, 0.2], [0.02, 0.4, 3.6], MAT_TRIM);
+  // Landing gear.
+  for (const sx of [-1, 1])
+    box(push, [sx * 0.8, 0.8, L - 2.4], [0.06, 0.6, 0.06], MAT_UNDER);
+  // Rear under-ride bumper.
+  box(push, [0, 0.6, -L + 0.2], [W - 0.2, 0.06, 0.06], MAT_TRIM);
+  for (const sx of [-1, 1])
+    box(push, [sx * (W - 0.4), 0.9, -L + 0.3], [0.05, 0.35, 0.05], MAT_UNDER);
+  // Rear plate.
+  box(push, [0.8, y0 - 0.2, -L - 0.03], [0.16, 0.06, 0.006], MAT_PLATE);
+  const out = orient(new Float32Array(verts));
+  return {vertices: out, count: out.length / V_FLOATS};
 }
 
 // Wheel (unit radius; axle along x, outer face at +x): a revolved tyre with

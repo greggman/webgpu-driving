@@ -18,7 +18,7 @@ hillsides; fallen leaves on the road that the car blows away).
 | ← / → (A / D) | change lanes (only when it's safe; you can't crash) |
 | ↑ / ↓ (W / S) | speed up / slow down |
 | C | cycle camera: auto director, then each shot in turn (kept when switching environments) |
-| V | cycle the player's car |
+| V | cycle the player's vehicle (6 cars, a semi truck with trailer, a bus) |
 | drag / wheel (touch: drag / pinch) | orbit camera around the car, dolly in / out |
 | ← → ↑ ↓ (orbit camera) | move the orbit focus around the car (Shift+↑/↓: up / down; within 10 m) |
 | R (or the ↻ button, top right) | generate a new world (new seed) |
@@ -34,6 +34,7 @@ Useful for sharing a view and for deterministic screenshots:
 - `biome=country|desert|coast|forest|snow|lahonda|night|arizona|autumn` (without it, a random environment
   and seed are chosen; the page never writes it into the URL, so shared links stay plain)
 - `seed=N`: world seed
+- `car=sedan|hatch|suv|coupe|wagon|pickup|semi|bus`: the player's vehicle
 - `s=N`: start distance along the road (m)
 - `tod=H`: time of day (hours)
 - `cam=chase|helicopter|drone|roadside|dolly|wheel|interior|passenger|topdown|hood|front|custom`

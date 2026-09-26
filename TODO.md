@@ -79,7 +79,7 @@
 
     And in settings. They don't need names. Can just be Car 1, Car 2, Car 3, etc.
 
-[ ] Add more car types (maybe wait until the car looks good)
+[x] Add more car types (maybe wait until the car looks good)
 
     * Pickup Trucks
     * Semi Trucks

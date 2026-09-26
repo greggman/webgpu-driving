@@ -12,7 +12,7 @@ struct Car {
   p4: vec4f,      // interior view (1), speed km/h, rpm, steering wheel angle
   p5: vec4f,      // steering wheel center xyz, tilt
   p6: vec4f,      // driver x, dash top y, style (kind index), -
-  p7: vec4f,      // axle z shift, ground clearance, -, -
+    p7: vec4f,      // axle z shift, ground clearance, wheel width scale, third axle z (0 = none)
 };
 
 @group(1) @binding(0) var<storage, read> cars: array<Car>;
@@ -76,10 +76,15 @@ fn vsBody(v0: VIn, @builtin(instance_index) ii: u32) -> VOut {
 fn wheelLocal(p: vec3f, ci: u32, wi: u32, mat: f32) -> vec3f {
   let c = cars[ci];
   let R = c.p0.z;
-  let front = wi < 2u;
+    // Wheels 0-1 front axle, 2-3 rear, 4-5 an extra (tandem) axle.
+  let axle = wi / 2u;
+  let front = axle == 0u;
   let side = select(-1.0, 1.0, (wi & 1u) == 1u);
-  // Mirror the wheel for the left side so the rim faces outward.
-  var q = vec3f(p.x * side, p.y, p.z) * R;
+    // Mirror the wheel for the left side so the rim faces outward; dual
+  // tyres on trucks are one wider wheel.
+  var q = vec3f(p.x * side * c.p7.z, p.y, p.z) * R;
+  // No third axle: collapse those wheels to a point.
+  if (axle == 2u && c.p7.w == 0.0) { q = vec3f(0.0); }
   // Brake calipers are fixed to the knuckle.
   let a = select(c.p0.w, 0.0, mat > 21.5);
   let ca = cos(a);
@@ -91,14 +96,16 @@ fn wheelLocal(p: vec3f, ci: u32, wi: u32, mat: f32) -> vec3f {
     let ss = sin(st);
     q = vec3f(q.x * cs + q.z * ss, q.y, -q.x * ss + q.z * cs);
   }
-  let off = vec3f(side * (c.p0.y * 0.5), R, select(-0.5, 0.5, front) * c.p0.x + c.p7.x);
+    var z = select(-0.5, 0.5, front) * c.p0.x + c.p7.x;
+  if (axle == 2u) { z = c.p7.w; }
+  let off = vec3f(side * (c.p0.y * 0.5), R, z);
   return q + off;
 }
 
 @vertex
 fn vsWheel(v: VIn, @builtin(instance_index) ii: u32) -> VOut {
-  let ci = ii / 4u;
-  let wi = ii % 4u;
+    let ci = ii / 6u;
+  let wi = ii % 6u;
   let c = cars[ci];
   let lp = wheelLocal(v.pos, ci, wi, v.mat);
   let side = select(-1.0, 1.0, (wi & 1u) == 1u);
@@ -140,9 +147,9 @@ fn fsShadow(in: CSOut) {
 
 @vertex
 fn vsWheelShadow(v: VIn, @builtin(instance_index) ii: u32) -> CSOut {
-  let ci = ii / 4u;
+    let ci = ii / 6u;
   var o: CSOut;
-  o.pos = shadowVP * (cars[ci].model * vec4f(wheelLocal(v.pos, ci, ii % 4u, v.mat), 1.0));
+  o.pos = shadowVP * (cars[ci].model * vec4f(wheelLocal(v.pos, ci, ii % 6u, v.mat), 1.0));
   o.mat = 7u;
   return o;
 }

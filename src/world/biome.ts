@@ -8,7 +8,7 @@ export type BiomeId =
   | 'forest'
   | 'snow'
   | 'lahonda'
-    | 'night'
+  | 'night'
   | 'arizona'
   | 'autumn';
 
@@ -66,7 +66,7 @@ export interface Palette {
   rock: [number, number, number];
   sand: [number, number, number];
   snow: number; // 0..1 snow cover
-    foliage: [number, number, number];
+  foliage: [number, number, number];
   flower: [number, number, number];
   autumn?: number; // 0..1 broadleaf autumn colours
 }
@@ -656,8 +656,8 @@ export const BIOME_ORDER: BiomeId[] = [
   'coast',
   'forest',
   'snow',
-    'lahonda',
-    'night',
+  'lahonda',
+  'night',
   'arizona',
   'autumn',
 ];

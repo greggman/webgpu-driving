@@ -4,11 +4,11 @@ import {Gpu} from './gpu/gpu';
 import {Renderer, WorldCar} from './render/renderer';
 import {BIOMES, BIOME_ORDER, Biome, BiomeId} from './world/biome';
 import {Road} from './world/road';
-import {Traffic} from './sim/traffic';
+import {Traffic, Vehicle} from './sim/traffic';
 import {vehiclePose, Pose} from './sim/pose';
 import {CameraState, Director, SHOT_KINDS, ShotKind} from './camera/director';
 import {computeSky} from './world/sky';
-import {CAR_KINDS, CarKind, carSpec} from './gen/car';
+import {CAR_KINDS, CarKind, carSpec, driverZ, semiLayout} from './gen/car';
 import {Tumbleweeds} from './sim/tumbleweeds';
 import {SettingsPanel, loadStoredSettings} from './ui/settings';
 import {
@@ -195,9 +195,11 @@ export class App {
   private updateDriverEye() {
     const ps = carSpec(this.traffic.player.kind);
     this.director.driverEye = [
-      (ps.roofFront + ps.roofBack) / 2 - 0.15,
+      driverZ(ps),
       0.37,
-      Math.min(ps.belt + 0.27, ps.roofY - 0.14),
+      ps.kind === 'bus'
+        ? ps.belt + 0.7
+        : Math.min(ps.belt + 0.27, ps.roofY - 0.14),
     ];
   }
 
@@ -248,9 +250,9 @@ export class App {
   private setupShowroom() {
     const t = this.traffic;
     const p = t.player;
-    const kinds = ['sedan', 'hatch', 'suv', 'coupe', 'wagon', 'pickup'];
-    if (this.params.car && kinds.includes(this.params.car)) {
-      p.kind = this.params.car as typeof p.kind;
+    if (this.params.car && CAR_KINDS.includes(this.params.car as CarKind)) {
+      t.setPlayerKind(this.params.car as CarKind);
+      this.updateDriverEye();
     }
     if (this.params.paint && PAINTS[this.params.paint])
       p.color = PAINTS[this.params.paint];
@@ -266,8 +268,18 @@ export class App {
       this.director.cut(p.s, 'interior');
     } else {
       const v = SHOWROOM_VIEWS[view] ?? SHOWROOM_VIEWS.front34;
-      this.director.customEye = v[0] as [number, number, number];
-      this.director.customTarget = v[1] as [number, number, number];
+      // Scale the framing to the vehicle; a semi rig is framed around its
+      // middle (the pose is the tractor's).
+      const sp = carSpec(p.kind);
+      const k = view === 'wheel' ? 1 : Math.max(1, p.length / 4.8);
+      const ky = view === 'wheel' ? 1 : Math.max(1, sp.roofY / 1.45);
+      const mid = p.kind === 'semi' ? -semiLayout().tractor : 0;
+      this.director.customEye = [v[0][0] * k + mid, v[0][1] * k, v[0][2] * ky];
+      this.director.customTarget = [
+        v[1][0] * k + mid,
+        v[1][1] * k,
+        v[1][2] * ky,
+      ];
       this.director.customFov = v[2];
       this.director.forced = 'custom';
       this.director.cut(p.s, 'custom');
@@ -299,6 +311,8 @@ export class App {
     this.mark('road done');
     const s0 = this.params.s ?? 800;
     this.traffic = new Traffic(this.biome, this.params.seed, s0);
+    if (!this.playerKind && CAR_KINDS.includes(this.params.car as CarKind))
+      this.playerKind = this.params.car as CarKind;
     if (this.playerKind) this.traffic.setPlayerKind(this.playerKind);
     const keepForced = this.director?.forced ?? null;
     this.director = new Director(
@@ -445,6 +459,61 @@ export class App {
     window.addEventListener('keyup', e => this.keys.delete(e.key));
   }
 
+  // The trailer behind a semi: its own pose along the lane (with its own
+  // body springs), drawn as a separate vehicle part.
+  private trailers = new Map<number, Vehicle>();
+  private trailerFor(
+    v: Vehicle,
+    dt: number,
+    lights: boolean,
+    offset: number,
+  ): WorldCar {
+    let t = this.trailers.get(v.id);
+    if (!t) {
+      t = {...v, roll: 0, rollVel: 0, pitch: 0, pitchVel: 0};
+      this.trailers.set(v.id, t);
+    }
+    t.s = v.s + v.dir * offset;
+    t.d = v.d;
+    t.dir = v.dir;
+    t.speed = v.speed;
+    t.accel = v.accel;
+    t.latVel = v.latVel;
+    const spec = carSpec('trailer');
+    const pose = vehiclePose(
+      this.road,
+      t,
+      Math.max(dt, 1 / 120),
+      spec.wheelbase,
+    );
+    pose.steer = 0;
+    const id = v.id + 1e6;
+    const prev = this.prevPoses.get(id) ?? null;
+    this.prevPoses.set(id, pose);
+    const white = [0.75, 0.76, 0.77, 0.05] as [number, number, number, number];
+    return {
+      draw: {
+        kind: 'trailer',
+        color: v.id % 3 === 0 ? v.color : white,
+        spin: v.spin * (carSpec('semi').wheelR / spec.wheelR),
+        steer: 0,
+        brake: v.brake,
+        lights: lights ? 1 : 0,
+        dirt: 0.3,
+      },
+      pose,
+      prevPose: prev,
+      player: false,
+      id,
+      s: t.s,
+      d: t.d,
+      dir: t.dir,
+      length: spec.length,
+      track: spec.track,
+      speed: v.speed,
+    };
+  }
+
   // Drag (mouse / one finger) orbits the car, wheel / pinch dollies; the
   // first drag switches to the orbit camera starting from the current view.
   private installOrbit() {
@@ -561,14 +630,21 @@ export class App {
       this.biome.headlights ||
       this.biome.sky.timeOfDay > 19.5 ||
       this.biome.sky.timeOfDay < 5.5;
+    const semi = semiLayout();
     for (const v of this.traffic.vehicles) {
       const spec = carSpec(v.kind);
+      // A semi's s is the middle of the rig: the tractor sits ahead of it.
+      const s0 = v.s;
+      if (v.kind === 'semi') v.s = s0 + v.dir * semi.tractor;
       const pose = vehiclePose(
         this.road,
         v,
         Math.max(dt, 1 / 120),
         spec.wheelbase,
       );
+      v.s = s0;
+      if (v.kind === 'semi')
+        cars.push(this.trailerFor(v, dt, lights, semi.trailer));
       if (dt > 0) v.spin += (v.speed * dt) / spec.wheelR;
       const prev = this.prevPoses.get(v.id) ?? null;
       this.prevPoses.set(v.id, pose);
@@ -588,10 +664,10 @@ export class App {
         prevPose: prev,
         player: v === player,
         id: v.id,
-        s: v.s,
+        s: v.kind === 'semi' ? v.s + v.dir * semi.tractor : v.s,
         d: v.d,
         dir: v.dir,
-        length: v.length,
+        length: v.kind === 'semi' ? spec.length : v.length,
         track: carSpec(v.kind).track,
         speed: v.speed,
       });
@@ -602,7 +678,11 @@ export class App {
       this.params.freeze && this.params.shotTime === null ? 0 : dt,
       pp,
       player.s,
-      carSpec(player.kind).length,
+      // Pose centre to the rear of the vehicle (a semi's pose is the
+      // tractor's; its trailer trails behind).
+      player.kind === 'semi'
+        ? semi.tractor + semi.total / 2
+        : player.length / 2,
     );
     const camera = camera0;
     this.renderer.exposureBias = camera.interior ? 0.45 : 1;
