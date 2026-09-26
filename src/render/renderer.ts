@@ -617,6 +617,7 @@ export class Renderer {
     this.vegetation.setWorld(biome, road);
     this.props.setWorld(biome, road);
     this.water.enabled = biome.ocean;
+    if (biome.ocean) this.water.setWind(biome.weather.wind);
     this.particles.setWorld(biome);
   }
 
@@ -929,6 +930,7 @@ export class Renderer {
     this.terrain.encodeClipmapUpdates(enc);
     if (DEBUG.has('probe')) this.terrain.probe(enc, eye[0], eye[2]);
     this.atmosphere.update(enc);
+    this.water.encode(enc, scene.time);
     this.encodeEnvMap(enc);
     this.vegetation.encodeCompute(enc, this.frameBG);
 

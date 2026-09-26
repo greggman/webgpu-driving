@@ -1,0 +1,31 @@
+* Don't pick a static camera below the car?
+
+  Quite often the auto camera picks a static point below the car in a spot
+  where the car will be invisible. For example the camera is in a valley
+  and the car above so the camera effectively looks at nothing. Another
+  example, the camera is below a bridge so again can not see the car.
+  Another example, the camera is behind a fence and the fence blocks most
+  of the view of the car.
+  
+  Any solution is find. One idea, spend no
+  more than 1 once per frame, looking for a suitable position. Check if the
+  position will see the car. If not, check some new random position next frame,
+  don't switch the camera until you find a good position.
+
+* The telephone poles are rotated 90 degrees the wrong direction?
+
+  I think the post at the top of the telephone pole is supposed to be
+  perpendicular to wires it is carrying. Currently they are parallel
+
+* The windshield wipers are way too small for the window they are wiping
+
+  Further, it would be nice to actually wipe the windows and maybe even warp
+  the view outside through the water on the windows.
+
+  The wiper is on in night drive biome even though there is no rain
+
+* pressing C should probably cycle the camera through the modes. I think now
+  it randomly choses. That means the user can't get to the camera they want.
+  (though they can choose a camera in the settings)
+
+* Pressing a number to switch biomes should not change the camera mode
