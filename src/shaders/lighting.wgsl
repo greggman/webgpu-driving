@@ -64,8 +64,11 @@ fn cloudDensity(p: vec2f) -> f32 {
   let n = textureSampleLevel(cloudTex, repSampler, uv, 0.0);
   let detail = textureSampleLevel(cloudTex, repSampler, uv * 4.3 + vec2f(0.31, 0.17), 0.0).g;
   let base = n.r * 0.75 + detail * 0.25;
-  let cov = F.sky.x;
-  return saturate((base - (1.0 - cov)) / max(0.35, 1e-3) );
+    let cov = F.sky.x;
+  let d = saturate((base - (1.0 - cov)) / max(0.35, 1e-3) );
+  // Storm / overcast: a continuous deck with thicker and thinner patches.
+  let deck = smoothstep(0.7, 0.95, cov) * (0.55 + 0.45 * base);
+  return max(d, deck);
 }
 
 // 2D cloud layer as seen along a view ray (shared by the sky pass and the

@@ -77,8 +77,9 @@ fn fs(in: VOut) -> GBufferOut {
     // Concrete barrier / deck.
     albedo = vec3f(0.55, 0.54, 0.5) * (0.8 + 0.3 * mid) * (0.9 + 0.2 * fine);
     rough = 0.8;
-  } else if (in.mat > 1.5) {
-    // Gravel shoulder skirt.
+    } else if (in.mat > 1.5) {
+    // Gravel shoulder skirt (dirt roads blend straight into the terrain).
+    if (dirt) { discard; }
     albedo = pal(3) * (0.75 + 0.5 * fine);
     rough = 0.95;
   } else if (dirt) {
@@ -87,8 +88,16 @@ fn fs(in: VOut) -> GBufferOut {
     let rut = lineMask(abs(d), rutC - 0.8, 0.28, 0.2) + lineMask(abs(d), rutC + 0.8, 0.28, 0.2);
     albedo = pal(3) * (0.85 + 0.25 * mid) * (0.85 + 0.3 * fine);
     albedo *= 1.0 - 0.18 * saturate(rut);
-    let edge = smoothstep(halfW - 1.2, halfW, abs(d));
-    albedo = mix(albedo, pal(0) * 0.9, edge * 0.5);
+        // Ragged edge: the road dissolves into the dirt shoulder along an
+    // irregular line (tyres wander, gravel spreads), with tufts and
+    // pebbles near it.
+    let wob = fbm2(world2 * 0.45, 3) * 1.4 + vnoise(world2 * 2.3) * 0.5 + fine * 0.35;
+    let edgeLine = halfW - 0.2 - wob;
+    if (abs(d) > edgeLine) { discard; }
+    let nearEdge = smoothstep(edgeLine - 1.2, edgeLine, abs(d));
+    let tuft = step(0.72, vnoise(world2 * 3.1)) * nearEdge;
+    albedo = mix(albedo, pal(0) * 0.8, tuft * 0.6);
+    albedo *= 1.0 - 0.25 * nearEdge * step(0.8, vnoise(world2 * 9.0));
     rough = 0.95;
     // Bumpy normal.
     let gs = noised(world2 * 5.0).yz * 5.0 * 0.03 + noised(world2 * 17.0 + 3.3).yz * 17.0 * 0.006;

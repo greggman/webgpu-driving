@@ -141,6 +141,9 @@ export class App {
     document
       .getElementById('next-car')!
       .addEventListener('click', () => this.traffic && this.nextCar());
+    document
+      .getElementById('next-world')!
+      .addEventListener('click', () => this.traffic && this.nextBiome());
     document.getElementById('regen')!.addEventListener('click', () => {
       void this.regenerate();
     });
@@ -244,6 +247,15 @@ export class App {
     const k = (i + 1) % CAR_KINDS.length;
     this.setPlayerCar(CAR_KINDS[k]);
     this.toast(`Car ${k + 1}`);
+  }
+
+  // Cycle the environments (B / world button).
+  nextBiome() {
+    if (this.busy) return;
+    const i = BIOME_ORDER.indexOf(this.biome.id);
+    const next = BIOME_ORDER[(i + 1) % BIOME_ORDER.length];
+    this.toast(BIOMES[next].name);
+    this.switchTo(next);
   }
 
   private toastTimer = 0;
@@ -469,6 +481,9 @@ export class App {
           break;
         case 'v':
           this.nextCar();
+          break;
+        case 'b':
+          this.nextBiome();
           break;
         case 'p':
           t.autopilot = !t.autopilot;

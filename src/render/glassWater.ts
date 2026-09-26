@@ -5,7 +5,7 @@
 import {shaderModule} from '../gpu/gpu';
 import {deferRenderPipeline} from '../gpu/pipelines';
 import {CarSpec} from '../gen/car';
-import {GlassWater, Pane} from '../sim/glassWater';
+import {GlassWater, Pane, wiperAngle} from '../sim/glassWater';
 import waterSrc from '../shaders/glass_water.wgsl';
 
 export const WATER_ATLAS = 2048;
@@ -49,7 +49,7 @@ export class GlassWaterRenderer {
     const d = device;
     this.paneBuf = d.createBuffer({
       label: 'glass-water-panes',
-      size: 64,
+      size: 80,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.splatBuf = d.createBuffer({
@@ -213,13 +213,24 @@ export class GlassWaterRenderer {
       // Start with glass that has been out in the weather for a while.
       for (let i = 0; i < 180; ++i)
         this.sim.update(1 / 30, t - 6 + i / 30, speed, rain, snow, wipers);
-      const pn = this.sim.panes;
-      const f = new Float32Array(16);
-      for (let p = 0; p < 3; ++p)
-        f.set([pn[p].uMin, pn[p].uMax, pn[p].vMax, 0], p * 4);
-      f.set([0.97, 0, 0, 0], 12);
-      this.device.queue.writeBuffer(this.paneBuf, 0, f);
     }
+    // Pane extents, water-film gain and this frame's wiper sweep.
+    const pn = this.sim.panes;
+    const f = new Float32Array(20);
+    for (let p = 0; p < 3; ++p)
+      f.set([pn[p].uMin, pn[p].uMax, pn[p].vMax, 0], p * 4);
+    const fdt = Math.min(dt, 0.1);
+    f.set(
+      [
+        0.9995,
+        rain * fdt * (0.35 + speed * 0.03),
+        rain * fdt * (0.15 + speed * 0.02),
+        0,
+      ],
+      12,
+    );
+    f.set([wiperAngle(t - fdt), wiperAngle(t), wipers ? 1 : 0, 0], 16);
+    this.device.queue.writeBuffer(this.paneBuf, 0, f);
     // Off screen it only needs to stay plausible: step at ~15 Hz.
     this.pending += dt;
     if (!visible && this.pending < 1 / 15) return;

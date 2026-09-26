@@ -5,8 +5,23 @@
 
 struct Panes {
   pane: array<vec4f, 3>, // uMin, uMax, vMax, -
-  misc: vec4f,           // trail decay factor, -, -, -
+  misc: vec4f,           // film decay, film gain windshield, film gain side, -
+  wipe: vec4f,           // blade angle last frame, this frame, wipers on, -
 };
+
+// Wipers (windshield metres): pivot xy, blade r0 / r1 (see glassWater.ts).
+const WIPER_A = vec4f(0.6, -0.04, 0.14, 0.8);
+const WIPER_B = vec4f(-0.08, -0.04, 0.12, 0.7);
+
+fn swept(uv: vec2f, w: vec4f) -> bool {
+  let q = uv - w.xy;
+  let r = length(q);
+  if (r < w.z - 0.01 || r > w.w + 0.004) { return false; }
+  let th = atan2(q.y, -q.x);
+  let lo = min(W.wipe.x, W.wipe.y) - 0.003;
+  let hi = max(W.wipe.x, W.wipe.y) + 0.003;
+  return th >= lo && th <= hi;
+}
 
 @group(0) @binding(0) var<uniform> W: Panes;
 @group(0) @binding(1) var prevTex: texture_2d<f32>;
@@ -37,10 +52,24 @@ fn vsDecay(@builtin(vertex_index) vi: u32) -> FOut {
   return o;
 }
 
+// Water film (B): builds up with the rain (more at speed), saturates, and
+// is erased where a wiper blade passes this frame.
 @fragment
 fn fsDecay(in: FOut) -> @location(0) vec4f {
   let prev = textureLoad(prevTex, vec2i(in.pos.xy), 0);
-  return vec4f(0.0, 0.0, prev.b * W.misc.x, 0.0);
+  let a = in.pos.xy / 2048.0;
+  var pane = 0u;
+  if (a.y >= 0.5) { pane = select(2u, 1u, a.y < 0.75); }
+  let rc = paneRect(pane);
+  let pn = W.pane[pane];
+  let t = (a - rc.xy) / rc.zw;
+  let uv = vec2f(pn.x + t.x * (pn.y - pn.x), (1.0 - t.y) * pn.z);
+  let gain = select(W.misc.z, W.misc.y, pane == 0u);
+  var film = min(prev.b * W.misc.x + gain, 1.0);
+  if (pane == 0u && W.wipe.z > 0.5 && (swept(uv, WIPER_A) || swept(uv, WIPER_B))) {
+    film = 0.0;
+  }
+  return vec4f(0.0, 0.0, film, 0.0);
 }
 
 // One splat: a drop (dome, stretched along its motion), a snow flake, or a

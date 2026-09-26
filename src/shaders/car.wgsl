@@ -752,6 +752,7 @@ fn fsGlass(in: VOut) -> GlassOut {
 struct WaterPanes {
   pane: array<vec4f, 3>, // uMin, uMax, vMax, -
   misc: vec4f,
+  wipe: vec4f,
 };
 @group(3) @binding(0) var waterTex: texture_2d<f32>;
 @group(3) @binding(1) var waterSamp: sampler;
@@ -796,7 +797,19 @@ fn fsGlassFx(in: VOut) -> @location(0) vec4f {
     -(wy1 - wy0) * WATER_HMAX / (2.0 * texel * mPerV));
   // A drop is a lens: it shows an inverted, magnified view, i.e. sampling
   // moves with the surface slope. Convert glass metres -> pixels -> uv.
-  let offG = grad * 0.02 + vec2f(sin(g.uv.y * 900.0), cos(g.uv.x * 700.0)) * w0.b * 0.0006;
+    // Water film: a rippled sheet streaming with the airflow (up the
+  // windshield, back along the side windows), refracting everything behind.
+  let speed = min(F.glass.x, 35.0);
+  let tm = F.cam.w;
+  var fq = vec2f(g.uv.x * 34.0, g.uv.y * 12.0 - tm * (0.4 + speed * 0.05));
+  if (g.region == 1u) { fq = vec2f(g.uv.x * 10.0 + tm * (0.3 + speed * 0.06), g.uv.y * 30.0); }
+  let e = 0.35;
+  let n0 = vnoise(fq) + 0.5 * vnoise(fq * 2.7 + 5.1);
+  let nx = vnoise(fq + vec2f(e, 0.0)) + 0.5 * vnoise((fq + vec2f(e, 0.0)) * 2.7 + 5.1);
+  let ny = vnoise(fq + vec2f(0.0, e)) + 0.5 * vnoise((fq + vec2f(0.0, e)) * 2.7 + 5.1);
+  let film = w0.b;
+  let filmGrad = vec2f(nx - n0, ny - n0) / e;
+  let offG = grad * 0.03 + filmGrad * film * 0.006;
   let det = dx.x * dy.y - dx.y * dy.x;
   var offUv = vec2f(0.0);
   if (abs(det) > 1e-12) {
@@ -808,7 +821,7 @@ fn fsGlassFx(in: VOut) -> @location(0) vec4f {
   // faint darkening of wet film.
   let n = normalize(vec3f(-grad, 1.0));
   let hi = pow(saturate(dot(n, normalize(vec3f(0.25, 0.55, 1.0)))), 60.0) * step(0.02, w0.r);
-  let shade = saturate(slope * 0.5) * 0.6 + w0.b * 0.1 - hi * 1.2;
+    let shade = saturate(slope * 0.5) * 0.6 + film * 0.12 - hi * 1.2;
   return vec4f(offUv, shade, w0.g);
 }
 

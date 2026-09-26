@@ -17,14 +17,15 @@ hillsides; fallen leaves on the road that the car blows away).
 |---|---|
 | ← / → (A / D) | change lanes (only when it's safe; you can't crash) |
 | ↑ / ↓ (W / S) | speed up / slow down |
-| C | cycle camera: auto director, then each shot in turn (kept when switching environments) |
-| V | cycle the player's vehicle (6 cars, a semi truck with trailer, a bus) |
+| C (or the camera button, top left) | cycle camera: auto director, then each shot in turn (kept when switching environments) |
+| V (or the car button, top left) | cycle the player's vehicle (6 cars, a semi truck with trailer, a bus) |
 | drag / wheel (touch: drag / pinch) | orbit camera around the car, dolly in / out |
 | ← → ↑ ↓ (orbit camera) | move the orbit focus around the car (Shift+↑/↓: up / down; within 10 m) |
 | R (or the ↻ button, top right) | generate a new world (new seed) |
 | P | toggle autopilot |
 | ⚙ (top left) | settings: environment, time of day, clouds, speed, camera, graphics toggles |
 | 1 – 9 | switch environment |
+| B (or the globe button, top left) | next environment |
 | H | hide the HUD |
 
 ## URL parameters

@@ -35,6 +35,13 @@ await page.waitForFunction(
   {timeout: 60000},
 );
 expect('biome switch keeps camera', await forced(), 'helicopter');
+const b0 = await get('window.__dev.app.biome.id');
+await page.keyboard.press('b');
+await page.waitForFunction(
+  `window.__dev.app.biome.id !== '${b0}' && !window.__dev.app.busy`,
+  {timeout: 60000},
+);
+expect('B -> next environment', (await get('window.__dev.app.biome.id')) !== b0, true);
 const k0 = await get('window.__dev.app.playerCar');
 await page.keyboard.press('v');
 const k1 = await get('window.__dev.app.playerCar');
