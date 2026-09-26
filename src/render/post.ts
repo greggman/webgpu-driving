@@ -24,6 +24,7 @@ export interface PostSettings {
   aperture: number;
   near: number;
   motionBlur: number; // shutter fraction (0.5 = 180 degrees)
+  bloom: boolean;
 }
 
 export class Post {

@@ -86,7 +86,7 @@ fn fs(in: FsOut) -> @location(0) vec4f {
     textureSampleLevel(hdrTex, samp, uv, 0.0).g,
     textureSampleLevel(hdrTex, samp, uv + cc * ca, 0.0).b);
   let bloom = textureSampleLevel(bloomTex, samp, uv, 0.0).rgb;
-  hdr = mix(hdr, bloom, 0.05);
+  hdr = mix(hdr, bloom, 0.05 * F.post.x);
   hdr += lensFlare(uv);
   let exposure = exposureBuf[0] * F.sunColor.w;
   var c = hdr * exposure;

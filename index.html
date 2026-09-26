@@ -32,24 +32,65 @@
     #loading.visible { opacity: 1; }
     #loading-track { height: 4px; margin-top: 8px; border-radius: 2px; background: rgba(255,255,255,0.2); overflow: hidden; }
     #loading-bar { height: 100%; width: 0; background: #fff; transition: width 0.25s; }
-    #envs {
-      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-      display: flex; gap: 4px; padding: 4px; border-radius: 999px;
-      background: rgba(0,0,0,0.35); backdrop-filter: blur(6px);
-      max-width: calc(100% - 88px); overflow-x: auto; scrollbar-width: none;
+    #gear {
+      position: absolute; top: 12px; left: 12px; width: 40px; height: 40px; padding: 0;
+      border: 1px solid rgba(255,255,255,0.35); border-radius: 50%; background: rgba(0,0,0,0.35);
+      color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(6px); transition: background 0.15s, transform 0.3s; z-index: 3;
     }
-    #envs button {
-      flex: none; border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer;
-      background: transparent; color: rgba(255,255,255,0.85);
-      font: 500 13px/1 system-ui, sans-serif; white-space: nowrap;
+    #gear:hover { background: rgba(0,0,0,0.55); transform: rotate(45deg); }
+    #gear:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    #settings {
+      position: absolute; top: 64px; left: 12px; bottom: 12px; width: 300px;
+      max-width: calc(100% - 24px); display: flex; flex-direction: column;
+      background: rgba(18,20,24,0.82); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; color: #eee;
+      font: 13px/1.4 system-ui, sans-serif; z-index: 2;
+      transform: translateX(calc(-100% - 24px)); opacity: 0;
+      transition: transform 0.25s ease, opacity 0.25s ease;
     }
-    #envs button:hover { background: rgba(255,255,255,0.15); color: #fff; }
-    #envs button[aria-pressed="true"] { background: #fff; color: #111; }
-    #envs button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-    body.ui-hidden #envs, body.ui-hidden #regen { display: none; }
-    @media (max-width: 760px) {
-      #envs { left: 12px; right: 64px; transform: none; max-width: none; }
+    #settings.open { transform: none; opacity: 1; }
+    #settings header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 12px 8px 16px; border-bottom: 1px solid rgba(255,255,255,0.1);
     }
+    #settings h2 { margin: 0; font-size: 15px; font-weight: 600; }
+    #settings .close {
+      width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent;
+      color: #ccc; font-size: 18px; cursor: pointer;
+    }
+    #settings .close:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    #settings .body { overflow-y: auto; padding: 4px 16px 16px; }
+    #settings section { margin-top: 12px; }
+    #settings h3 {
+      margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; color: #9aa3ad;
+    }
+    #settings .env-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    #settings button:not(.close) {
+      border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 7px 8px;
+      background: rgba(255,255,255,0.06); color: #eee; font: inherit; cursor: pointer; text-align: left;
+    }
+    #settings button:not(.close):hover { background: rgba(255,255,255,0.14); }
+    #settings button[aria-pressed="true"] { background: #fff; color: #111; border-color: #fff; }
+    #settings button.wide { width: 100%; margin-top: 8px; text-align: center; }
+    #settings button.secondary { color: #bbb; }
+    #settings button:focus-visible, #settings input:focus-visible, #settings select:focus-visible {
+      outline: 2px solid #8ab4ff; outline-offset: 1px;
+    }
+    #settings .row { display: flex; justify-content: space-between; margin-top: 8px; }
+    #settings output { color: #9aa3ad; font-variant-numeric: tabular-nums; }
+    #settings input[type=range] { width: 100%; margin: 4px 0 2px; accent-color: #fff; }
+    #settings label.check { display: flex; gap: 8px; align-items: center; padding: 4px 0; cursor: pointer; }
+    #settings input[type=checkbox] { accent-color: #fff; width: 15px; height: 15px; margin: 0; }
+    #settings label.block { display: block; margin-bottom: 4px; }
+    #settings select {
+      width: 100%; padding: 6px 8px; border-radius: 8px; font: inherit; color: #eee;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14);
+    }
+    #settings select option { color: #111; }
+    #settings .hint { color: #9aa3ad; font-size: 12px; margin: 8px 0 0; }
+    body.ui-hidden #gear, body.ui-hidden #regen, body.ui-hidden #settings { display: none; }
     #error {
       position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
       color: #fff; font: 16px system-ui, sans-serif; text-align: center; padding: 24px;
@@ -59,7 +100,16 @@
 <body>
   <canvas id="screen"></canvas>
   <div id="hud"></div>
-  <nav id="envs" aria-label="Environment"></nav>
+  <button id="gear" title="Settings" aria-label="Settings" aria-expanded="false" aria-controls="settings">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  </button>
+  <aside id="settings" role="dialog" aria-label="Settings" inert>
+    <header><h2>Settings</h2><button class="close" type="button" aria-label="Close settings">×</button></header>
+    <div class="body"></div>
+  </aside>
   <button id="regen" title="New world (R)" aria-label="Generate a new world">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/>

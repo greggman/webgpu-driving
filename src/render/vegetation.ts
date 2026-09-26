@@ -114,6 +114,7 @@ export class Vegetation {
   private road: Road | null = null;
   private biome: Biome | null = null;
   enabled = true;
+  grassEnabled = true;
   // Previous frame's Hi-Z pyramid (set by the renderer).
   hzbView!: GPUTextureView;
   hzbValid = false;
@@ -1052,7 +1053,7 @@ export class Vegetation {
       [0, 1, 2].filter(l => !dbg.includes(`nolod${l}`)),
       false,
     );
-    if (dbg.includes('nograss')) return;
+    if (dbg.includes('nograss') || !this.grassEnabled) return;
     if (this.tileCount > 0 && this.biome!.scatter.grass > 0) {
       pass.setPipeline(this.grassNearPipe);
       pass.setBindGroup(1, this.grassNearBG);

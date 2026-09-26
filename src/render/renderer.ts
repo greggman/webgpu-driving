@@ -34,6 +34,31 @@ import {FRAME_PRELUDE} from './shaders';
 import {shaderModule} from '../gpu/gpu';
 
 const REBASE = 1024;
+
+// User-adjustable graphics settings (see src/ui/settings.ts).
+export interface GraphicsSettings {
+  dof: boolean;
+  motionBlur: boolean;
+  volumetrics: boolean;
+  ssao: boolean;
+  grass: boolean;
+  bloom: boolean;
+  filmGrain: boolean;
+  letterbox: boolean;
+  renderScale: number; // 0.5 .. 1
+}
+
+export const DEFAULT_GRAPHICS: GraphicsSettings = {
+  dof: true,
+  motionBlur: true,
+  volumetrics: true,
+  ssao: true,
+  grass: true,
+  bloom: true,
+  filmGrain: true,
+  letterbox: false,
+  renderScale: 1,
+};
 export const DEBUG = new Set(
   (new URLSearchParams(location.search).get('debug') ?? '').split(','),
 );
@@ -124,6 +149,7 @@ export class Renderer {
   private prevViewProj = new Float32Array(16);
   exposureBias = 1;
   private volumeOn = false;
+  graphics: GraphicsSettings = {...DEFAULT_GRAPHICS};
   stats = {terrainNodes: 0, roadChunks: 0, cars: 0};
   readonly profiler: Profiler;
 
@@ -497,7 +523,8 @@ export class Renderer {
     const gpu = this.gpu;
     const d = gpu.device;
     const canvas = gpu.canvas;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr =
+      Math.min(window.devicePixelRatio || 1, 2) * this.graphics.renderScale;
     const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
     const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
     if (canvas.width !== w || canvas.height !== h) {
@@ -639,7 +666,14 @@ export class Renderer {
       ...biome.sky.grade.map((g, i) => g * (1 + (nightTint[i] - 1) * sk.night)),
       biome.sky.saturation * (1 - 0.35 * sk.night),
     ]);
-    F.set('grade2', [biome.sky.contrast, 0.35, 0.012, 0]);
+    const g = this.graphics;
+    F.set('post', [g.bloom ? 1 : 0, 0, 0, 0]);
+    F.set('grade2', [
+      biome.sky.contrast,
+      g.filmGrain ? 0.35 : 0,
+      g.filmGrain ? 0.012 : 0,
+      g.letterbox ? 0.1 : 0,
+    ]);
     F.set('car', [...loc(scene.player.pos), scene.player.heading]);
     const fogBase = road.atS(scene.playerS).y;
     F.set('fog', [
@@ -650,7 +684,8 @@ export class Renderer {
     ]);
     this.atmosphere.setMie(biome.sky.turbidity);
     const vol = VOLUME[biome.id] ?? [0, 0.6, 50];
-    this.volumeOn = vol[0] > 0 && !DEBUG.has('novol');
+    this.volumeOn =
+      vol[0] > 0 && !DEBUG.has('novol') && this.graphics.volumetrics;
     F.set('volume', [vol[0], vol[1], vol[2], this.volumeOn ? 1 : 0]);
 
     // Lights.
@@ -831,6 +866,8 @@ export class Renderer {
     main.end();
 
     this.encodeHzb(enc);
+    this.post.aoEnabled = this.graphics.ssao;
+    this.vegetation.grassEnabled = this.graphics.grass;
     this.post.encode(
       enc,
       gpu.context.getCurrentTexture().createView({label: 'swapchain'}),
@@ -838,9 +875,15 @@ export class Renderer {
         dt: scene.dt,
         exposureBias: this.exposureBias,
         focus: cam.focus,
-        aperture: DEBUG.has('nodof') ? 0 : cam.aperture,
+        aperture: DEBUG.has('nodof') || !this.graphics.dof ? 0 : cam.aperture,
+        bloom: this.graphics.bloom,
         near,
-        motionBlur: DEBUG.has('nomb') ? 0 : scene.frozen ? 0 : 0.5,
+        motionBlur:
+          DEBUG.has('nomb') || !this.graphics.motionBlur
+            ? 0
+            : scene.frozen
+              ? 0
+              : 0.5,
       },
     );
     this.profiler.endFrame(enc);

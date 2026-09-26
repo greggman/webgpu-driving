@@ -17,7 +17,8 @@ Seven environments: **country road**, **desert dirt road**, **ocean coastline**,
 | C | next camera shot |
 | R (or the ↻ button, top right) | generate a new world (new seed) |
 | P | toggle autopilot |
-| 1 – 7 (or the picker at the top) | switch environment |
+| ⚙ (top left) | settings: environment, time of day, clouds, speed, camera, graphics toggles |
+| 1 – 7 | switch environment |
 | H | hide the HUD |
 
 ## URL parameters

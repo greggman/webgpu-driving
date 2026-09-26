@@ -10,6 +10,8 @@ import {CameraState, Director, SHOT_KINDS, ShotKind} from './camera/director';
 import {computeSky} from './world/sky';
 import {carSpec} from './gen/car';
 import {Tumbleweeds} from './sim/tumbleweeds';
+import {SettingsPanel, loadStoredSettings} from './ui/settings';
+import {DEFAULT_GRAPHICS} from './render/renderer';
 
 export interface Params {
   biome: BiomeId;
@@ -84,7 +86,10 @@ export class App {
     document.getElementById('regen')!.addEventListener('click', () => {
       void this.regenerate();
     });
-    this.buildEnvPicker();
+    const stored = loadStoredSettings();
+    this.renderer.graphics = {...DEFAULT_GRAPHICS, ...stored.graphics};
+    if (stored.hud === false) this.hudEl.classList.add('hidden');
+    this.settings = new SettingsPanel(this);
   }
 
   // True while a world is being generated (the frame loop pauses).
@@ -106,34 +111,31 @@ export class App {
     return new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
   }
 
-  // On-screen environment picker (also reachable with keys 1-7).
-  private envButtons = new Map<BiomeId, HTMLButtonElement>();
-  private buildEnvPicker() {
-    const nav = document.getElementById('envs')!;
-    BIOME_ORDER.forEach((id, i) => {
-      const b = document.createElement('button');
-      b.textContent = BIOMES[id].name;
-      b.title = `${BIOMES[id].name} (${i + 1})`;
-      b.setAttribute('aria-pressed', 'false');
-      b.addEventListener('click', () => {
-        b.blur();
-        this.switchTo(id);
-      });
-      nav.appendChild(b);
-      this.envButtons.set(id, b);
-    });
-  }
+  settings!: SettingsPanel;
 
-  private updateEnvPicker(id: BiomeId) {
-    for (const [k, b] of this.envButtons) {
-      b.setAttribute('aria-pressed', k === id ? 'true' : 'false');
-    }
-    this.envButtons
-      .get(id)
-      ?.scrollIntoView({block: 'nearest', inline: 'nearest'});
+  private onWorldChanged(id: BiomeId) {
     const url = new URL(location.href);
     url.searchParams.set('biome', id);
     history.replaceState(null, '', url);
+    this.settings?.sync();
+  }
+
+  get hudHidden(): boolean {
+    return this.hudEl.classList.contains('hidden');
+  }
+
+  setHudVisible(v: boolean) {
+    this.hudEl.classList.toggle('hidden', !v);
+  }
+
+  setCruise(v: number) {
+    this.biome.road.cruise = v;
+    this.traffic.player.desired = v;
+  }
+
+  setCamera(kind: ShotKind | null) {
+    this.director.forced = kind;
+    this.director.cut(this.traffic.player.s, kind ?? undefined);
   }
 
   switchTo(id: BiomeId) {
@@ -148,7 +150,18 @@ export class App {
     if (this.busy) return;
     this.params.seed = Math.floor(Math.random() * 1e6) + 1;
     this.params.s = null;
+    // Keep the user's scene tweaks across a new seed.
+    const sky = {...this.biome.sky};
+    const cruise = this.biome.road.cruise;
+    const autopilot = this.traffic.autopilot;
+    const forced = this.director.forced;
     await this.generate(this.biome.id);
+    this.biome.sky.timeOfDay = sky.timeOfDay;
+    this.biome.sky.clouds = sky.clouds;
+    this.setCruise(cruise);
+    this.traffic.autopilot = autopilot;
+    if (forced) this.setCamera(forced);
+    this.settings.sync();
   }
 
   async generate(id: BiomeId) {
@@ -158,7 +171,7 @@ export class App {
     this.setProgress(`${name}: shaping the land`, 0.05);
     await this.yieldToPaint();
     this.biome = structuredClone(BIOMES[id]);
-    this.updateEnvPicker(id);
+    this.onWorldChanged(id);
     if (this.params.tod !== null) this.biome.sky.timeOfDay = this.params.tod;
     this.road = new Road(this.biome, this.params.seed);
     this.setProgress(`${name}: populating traffic`, 0.2);
@@ -215,6 +228,9 @@ export class App {
 
   private installInput() {
     window.addEventListener('keydown', e => {
+      // Don't steer the car while typing into the settings controls.
+      const t0 = e.target as HTMLElement | null;
+      if (t0 && t0.closest('input, select, textarea, #settings')) return;
       this.keys.add(e.key);
       this.idle = 0;
       const t = this.traffic;
@@ -241,10 +257,12 @@ export class App {
           break;
         case 'p':
           t.autopilot = !t.autopilot;
+          this.settings.sync();
           break;
         case 'h':
           this.hudEl.classList.toggle('hidden');
           document.body.classList.toggle('ui-hidden');
+          this.settings.close();
           break;
         case 'r':
           void this.regenerate();
