@@ -33,6 +33,11 @@ for (const id of BIOME_ORDER) {
         left: [Math.cos(p.heading), 0, -Math.sin(p.heading)],
         up: [0, 1, 0],
         speed: 20,
+        heave: 0,
+        bumpPitch: 0,
+        bumpRoll: 0,
+        baseFwd: [Math.sin(p.heading), 0, Math.cos(p.heading)],
+        baseLeft: [Math.cos(p.heading), 0, -Math.sin(p.heading)],
       } as Pose;
       const cam = dir.update(0, pose, sCar, 4.8);
       if (cam.shot !== 'roadside') continue; // no good spot: another shot

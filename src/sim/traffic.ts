@@ -34,6 +34,9 @@ export interface Vehicle {
   rollVel: number;
   latVel: number;
   player: boolean;
+  // Suspension response to road bumps (dirt roads): heave (m), pitch and
+  // roll (rad) and their rates.
+  bump?: number[];
 }
 
 const PAINTS: Array<[number, number, number, number]> = [

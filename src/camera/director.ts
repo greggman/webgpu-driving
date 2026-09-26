@@ -72,6 +72,8 @@ export class Director {
   customFov = 50;
   private weights: Partial<Record<ShotKind, number>>;
   cutCount = 0;
+  // Seated camera head spring: heave, pitch, roll and their rates.
+  private head = [0, 0, 0, 0, 0, 0];
   canopy = 12; // min aerial clearance above ground (m)
   // Roadside fence line (lateral offset from the road centre, top height).
   fence: {offset: number; top: number} | null = null;
@@ -251,10 +253,18 @@ export class Director {
       this.cut(sCar, this.forced);
     }
     const s = this.shot;
+    // Outside cameras follow the car without its suspension bounce.
     const P = car.pos,
-      Fw = car.fwd,
-      L = car.left,
+      Fw = car.baseFwd,
+      L = car.baseLeft,
       U: [number, number, number] = [0, 1, 0];
+    // Car-mounted cameras use the car's frame without the suspension bounce
+    // (only the seated ones add a lagged head motion, below).
+    const BU: [number, number, number] = [
+      Fw[1] * L[2] - Fw[2] * L[1],
+      Fw[2] * L[0] - Fw[0] * L[2],
+      Fw[0] * L[1] - Fw[1] * L[0],
+    ];
     const at = (f: number, l: number, u: number): [number, number, number] => [
       P[0] + Fw[0] * f + L[0] * l + U[0] * u,
       P[1] + Fw[1] * f + L[1] * l + U[1] * u,
@@ -266,9 +276,9 @@ export class Director {
       l: number,
       u: number,
     ): [number, number, number] => [
-      P[0] + Fw[0] * f + L[0] * l + car.up[0] * u,
-      P[1] + Fw[1] * f + L[1] * l + car.up[1] * u,
-      P[2] + Fw[2] * f + L[2] * l + car.up[2] * u,
+      P[0] + Fw[0] * f + L[0] * l + BU[0] * u,
+      P[1] + Fw[1] * f + L[1] * l + BU[1] * u,
+      P[2] + Fw[2] * f + L[2] * l + BU[2] * u,
     ];
     let eye: [number, number, number];
     let target: [number, number, number];
@@ -333,7 +343,7 @@ export class Director {
         target = rigid(-0.8, s.side * 0.7, 0.55);
         fov = 62 * DEG;
         aperture = 0.15;
-        up = car.up;
+        up = BU;
         break;
       }
       case 'interior': {
@@ -344,7 +354,7 @@ export class Director {
         // Roughly what a driver sees (a wide lens exaggerates the cabin).
         fov = 50 * DEG;
         interior = true;
-        up = car.up;
+        up = BU;
         break;
       }
       case 'passenger': {
@@ -353,7 +363,7 @@ export class Director {
         target = rigid(3, -6, de[2] - 0.2);
         fov = 55 * DEG;
         interior = true;
-        up = car.up;
+        up = BU;
         break;
       }
       case 'topdown': {
@@ -367,7 +377,7 @@ export class Director {
         eye = rigid(1.2, 0, 1.25);
         target = rigid(20, 0, 0.8);
         fov = 60 * DEG;
-        up = car.up;
+        up = BU;
         break;
       }
       case 'orbit': {
@@ -402,6 +412,44 @@ export class Director {
         break;
       }
     }
+    if (interior) {
+      // Seated cameras: the head rides the bounce late and softer than the
+      // body (a lagging, damped spring on ~60% of the body motion), so the
+      // cabin moves a little in view without shaking the picture.
+      const hd = this.head;
+      const tgt = [car.heave * 0.6, car.bumpPitch * 0.6, car.bumpRoll * 0.6];
+      const k = 26,
+        damp = 2 * 0.5 * Math.sqrt(k);
+      const n = Math.max(1, Math.ceil(dt / (1 / 120)));
+      const h = dt / n;
+      for (let it = 0; it < n; ++it)
+        for (let i = 0; i < 3; ++i) {
+          hd[i + 3] += (k * (tgt[i] - hd[i]) - damp * hd[i + 3]) * h;
+          hd[i] += hd[i + 3] * h;
+        }
+      const cu = BU;
+      const lift = hd[0];
+      eye = [
+        eye[0] + cu[0] * lift,
+        eye[1] + cu[1] * lift,
+        eye[2] + cu[2] * lift,
+      ];
+      target = [
+        target[0] + cu[0] * lift,
+        target[1] + cu[1] * lift,
+        target[2] + cu[2] * lift,
+      ];
+      // Pitch / roll: the view keeps the head's (lagged) attitude instead of
+      // the body's.
+      const dir = [0, 1, 2].map(i => target[i] - eye[i]);
+      const len = Math.hypot(dir[0], dir[1], dir[2]);
+      target = [
+        target[0] + cu[0] * len * hd[1],
+        target[1] + cu[1] * len * hd[1],
+        target[2] + cu[2] * len * hd[1],
+      ];
+      up = [up[0] + L[0] * hd[2], up[1] + L[1] * hd[2], up[2] + L[2] * hd[2]];
+    }
     // Keep the eye above the ground (and, for aerial shots, above the
     // canopy: vegetation is GPU-scattered, so use a per-biome clearance).
     if (!interior && s.kind !== 'wheel' && s.kind !== 'hood') {
@@ -430,7 +478,7 @@ export class Director {
         a[2] + (b[2] - a[2]) * k,
       ];
       if (s.kind !== 'roadside') {
-        const mv = car.fwd.map(x => x * car.speed * dt);
+        const mv = Fw.map(x => x * car.speed * dt);
         this.smoothEye = [
           this.smoothEye[0] + mv[0],
           this.smoothEye[1] + mv[1],

@@ -519,7 +519,7 @@ export class App {
   ): WorldCar {
     let t = this.trailers.get(v.id);
     if (!t) {
-      t = {...v, roll: 0, rollVel: 0, pitch: 0, pitchVel: 0};
+      t = {...v, roll: 0, rollVel: 0, pitch: 0, pitchVel: 0, bump: undefined};
       this.trailers.set(v.id, t);
     }
     t.s = v.s + v.dir * offset;
@@ -534,6 +534,7 @@ export class App {
       t,
       Math.max(dt, 1 / 120),
       spec.wheelbase,
+      spec.track,
     );
     pose.steer = 0;
     const id = v.id + 1e6;
@@ -690,6 +691,7 @@ export class App {
         v,
         Math.max(dt, 1 / 120),
         spec.wheelbase,
+        spec.track,
       );
       v.s = s0;
       if (v.kind === 'semi')

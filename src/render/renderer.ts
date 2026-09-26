@@ -979,14 +979,17 @@ export class Renderer {
       if (c.player && cam.interior) {
         // The interior view renders the cabin instead of the body shell.
       }
+      // The body rides the suspension (heave along its up axis).
+      const bodyPos = (p: Pose) =>
+        loc([0, 1, 2].map(k => p.pos[k] + p.up[k] * p.heave));
       const model = fromBasis(
         c.pose.left,
         c.pose.up,
         c.pose.fwd,
-        loc(c.pose.pos),
+        bodyPos(c.pose),
       );
       const pp = c.prevPose ?? c.pose;
-      const prevModel = fromBasis(pp.left, pp.up, pp.fwd, loc(pp.pos));
+      const prevModel = fromBasis(pp.left, pp.up, pp.fwd, bodyPos(pp));
       carDraws.push({...c.draw, model, prevModel});
     }
     this.cars.setCars(carDraws);

@@ -1,6 +1,7 @@
 // World-space poses for vehicles (with body pitch/roll springs) from road
 // coordinates.
 import {Road} from '../world/road';
+import {hash01, noise1} from '../math/noise';
 import {Vehicle} from './traffic';
 
 export interface Pose {
@@ -11,6 +12,37 @@ export interface Pose {
   heading: number;
   steer: number;
   speed: number;
+  // Suspension bounce on rough roads: body heave (m, along up) and the
+  // pitch / roll it adds (rad). fwd / up / left include them; base* are
+  // the frame without them (for cameras that shouldn't bounce).
+  heave: number;
+  bumpPitch: number;
+  bumpRoll: number;
+  baseFwd: [number, number, number];
+  baseLeft: [number, number, number];
+}
+
+// Height of a rough (dirt) road surface under a wheel at arc length s and
+// lateral offset d: washboard ripples, rolling bumps and the odd pothole.
+export function roadBump(road: Road, s: number, d: number): number {
+  if (!road.biome.road.dirt) return 0;
+  let h =
+    noise1(s * 0.45, 11) * 0.028 +
+    noise1(s * 1.7 + d * 0.9, 23) * 0.012 +
+    Math.sin(s * 8.5 + noise1(s * 0.2, 5) * 3) *
+      0.004 *
+      (0.5 + 0.5 * noise1(s * 0.05, 7));
+  // Potholes: ~1 per 25 m, on one wheel track or the other.
+  const cell = Math.floor(s / 25);
+  const hh = hash01(cell, 77);
+  if (hh < 0.5) {
+    const c = (cell + 0.2 + hh) * 25;
+    const side = hash01(cell, 78) < 0.5 ? -1 : 1;
+    const dd = d - side * 1.6;
+    const r2 = ((s - c) / 0.9) ** 2 + (dd / 0.9) ** 2;
+    h -= 0.05 * Math.exp(-r2 * 2);
+  }
+  return h;
 }
 
 export function vehiclePose(
@@ -18,6 +50,7 @@ export function vehiclePose(
   v: Vehicle,
   dt: number,
   wheelbase: number,
+  track = 1.6,
 ): Pose {
   const s = v.s;
   const a = road.pointAt(s - 1.2, v.d);
@@ -87,14 +120,56 @@ export function vehiclePose(
       vv[2] * cs + cr[2] * sn + axis[2] * d * (1 - cs),
     ];
   };
-  fwd = rot(fwd, left, v.pitch);
-  up = rot(up, left, v.pitch);
-  up = rot(up, fwd, v.roll);
-  left = rot(left, fwd, v.roll);
+  const baseFwd: [number, number, number] = [...fwd];
+  const baseLeft: [number, number, number] = [...left];
+  // Suspension over road bumps: the four wheel heights drive heave, pitch
+  // and roll springs (~1.3 Hz body bounce, lightly damped).
+  const bs = (v.bump ??= [0, 0, 0, 0, 0, 0]);
+  if (road.biome.road.dirt && dt > 0) {
+    const sf = s + (v.dir * wheelbase) / 2,
+      sr = s - (v.dir * wheelbase) / 2;
+    const hw = track / 2;
+    const fl = roadBump(road, sf, v.d + hw),
+      fr = roadBump(road, sf, v.d - hw),
+      rl = roadBump(road, sr, v.d + hw),
+      rr = roadBump(road, sr, v.d - hw);
+    const targets = [
+      (fl + fr + rl + rr) / 4,
+      (fl + fr - rl - rr) / 2 / wheelbase,
+      ((fl + rl - fr - rr) / 2 / track) * v.dir,
+    ];
+    const kk = 66,
+      dd = 2 * 0.3 * Math.sqrt(kk);
+    // Sub-step for stability at low frame rates.
+    const n = Math.ceil(dt / (1 / 120));
+    const h = dt / n;
+    for (let it = 0; it < n; ++it)
+      for (let k = 0; k < 3; ++k) {
+        bs[k + 3] += (kk * (targets[k] - bs[k]) - dd * bs[k + 3]) * h;
+        bs[k] += bs[k + 3] * h;
+      }
+  }
+  fwd = rot(fwd, left, v.pitch - bs[1]);
+  up = rot(up, left, v.pitch - bs[1]);
+  up = rot(up, fwd, v.roll + bs[2]);
+  left = rot(left, fwd, v.roll + bs[2]);
   ll = Math.hypot(...left);
   const camber = -0.015 * Math.abs(v.d);
   const pos: [number, number, number] = [c.pos[0], c.pos[1] + camber, c.pos[2]];
   const heading = Math.atan2(fwd[0], fwd[2]);
   const steer = Math.atan(wheelbase * curv) + lat * 0.5;
-  return {pos, fwd, up, left, heading, steer, speed: v.speed};
+  return {
+    pos,
+    fwd,
+    up,
+    left,
+    heading,
+    steer,
+    speed: v.speed,
+    heave: bs[0],
+    bumpPitch: bs[1],
+    bumpRoll: bs[2],
+    baseFwd,
+    baseLeft,
+  };
 }
