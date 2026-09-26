@@ -545,7 +545,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       let letters = step(0.5, fract(ang * 40.0 / 6.2831853)) * step(0.7, fract(ang * 3.0));
       s.albedo = vec3f(band * letters * 0.02);
     }
-    s.albedo = vec3f(0.016, 0.016, 0.018) * (1.0 - 0.6 * dark) + s.albedo;
+    s.albedo = vec3f(0.028) * (1.0 - 0.6 * dark) + s.albedo;
     s.rough = 0.85;
     s.spec = 0.25;
   } else if (mat == 20u) {
@@ -640,7 +640,7 @@ fn fsGlass(in: VOut) -> GlassOut {
     let spec = D_GGX(saturate(dot(nn, h)), 0.0004) * V_SmithGGX(max(nv, 1e-3), saturate(dot(nn, l)), 0.0004) * fres;
     var refl = envRadiance(r, 0.02) * fres + F.sunColor.rgb * min(spec, 200.0) * sh * saturate(dot(nn, l));
     // Tint: traffic glass is darker (privacy glass), windscreens lighter.
-    let tint = select(0.55, 0.35, lp.z > wsBase - 0.9 && nn.y > 0.2 && c.p4.x < 0.5);
+    let tint = select(0.68, 0.5, lp.z > wsBase - 0.9 && nn.y > 0.2 && c.p4.x < 0.5);
     let a = 1.0 - (1.0 - tint) * (1.0 - fres);
     o.color = vec4f(refl, a);
     return o;

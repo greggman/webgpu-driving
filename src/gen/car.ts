@@ -106,7 +106,7 @@ export function carSpec(kind: CarKind): CarSpec {
         length: 4.82,
         width: 1.86,
         wheelbase: 2.85,
-        wheelR: 0.345,
+        wheelR: 0.365,
         track: 1.63,
         clearance: 0.15,
         noseY: 0.66,
@@ -134,7 +134,7 @@ export function carSpec(kind: CarKind): CarSpec {
         length: 4.08,
         width: 1.8,
         wheelbase: 2.62,
-        wheelR: 0.33,
+        wheelR: 0.35,
         track: 1.58,
         clearance: 0.15,
         noseY: 0.66,
@@ -162,7 +162,7 @@ export function carSpec(kind: CarKind): CarSpec {
         length: 4.85,
         width: 1.96,
         wheelbase: 2.9,
-        wheelR: 0.405,
+        wheelR: 0.425,
         track: 1.71,
         clearance: 0.24,
         noseY: 0.95,
@@ -190,7 +190,7 @@ export function carSpec(kind: CarKind): CarSpec {
         length: 4.45,
         width: 1.9,
         wheelbase: 2.68,
-        wheelR: 0.355,
+        wheelR: 0.375,
         track: 1.65,
         clearance: 0.13,
         noseY: 0.56,
@@ -202,8 +202,8 @@ export function carSpec(kind: CarKind): CarSpec {
         roofY: 1.26,
         roofW: 0.68,
         wsBase: 0.82,
-        roofFront: -0.18,
-        roofBack: -0.75,
+        roofFront: 0.08,
+        roofBack: -0.95,
         rearBase: -1.85,
         sideRear: -0.85,
       });
@@ -218,7 +218,7 @@ export function carSpec(kind: CarKind): CarSpec {
         length: 4.9,
         width: 1.86,
         wheelbase: 2.88,
-        wheelR: 0.345,
+        wheelR: 0.365,
         track: 1.63,
         clearance: 0.15,
         noseY: 0.66,
@@ -246,7 +246,7 @@ export function carSpec(kind: CarKind): CarSpec {
         length: 5.5,
         width: 2.0,
         wheelbase: 3.45,
-        wheelR: 0.42,
+        wheelR: 0.44,
         track: 1.75,
         clearance: 0.27,
         noseY: 1.08,
@@ -456,7 +456,7 @@ export function buildCarBody(sp: CarSpec): MeshData {
   };
   const endFactorAt = (z: number) => {
     const e = Math.min(nose - z, z - tail);
-    return Math.sqrt(clamp01(e / 0.06));
+    return Math.sqrt(clamp01(e / (pickup ? 0.02 : 0.06)));
   };
   const lower: P3[][] = zs.map(z => section(z, endFactorAt(z)));
   const RN = lower[0].length;
@@ -532,7 +532,10 @@ export function buildCarBody(sp: CarSpec): MeshData {
     const h = Math.max(top - base, 0.001);
     const w = halfWidth(z);
     const wb = w * 0.955;
-    const wt = w * sp.roofW;
+    // Full tumblehome only where the greenhouse is tall; where it shrinks to
+    // the beltline (windscreen / backlight bases) the glass spans the width.
+    const tall = clamp01(h / Math.max(sp.roofY - belt(z), 0.05));
+    const wt = wb + (w * sp.roofW - wb) * Math.pow(tall, 0.6);
     const rc = Math.min(0.11, h * 0.45); // roof corner radius
     const half: Array<[number, number]> = [];
     // Side from the base up to the corner (tumblehome), then the rounded
@@ -1012,20 +1015,20 @@ export function buildWheel(): MeshData {
   }
   // Caliper (fixed; the shader doesn't spin it): a curved block at the rear top.
   for (let i = 0; i < 6; ++i) {
-    const a0 = Math.PI * 0.62 + (i / 6) * 0.55,
-      a1 = Math.PI * 0.62 + ((i + 1) / 6) * 0.55;
+    const a0 = Math.PI * 0.55 + (i / 6) * 0.8,
+      a1 = Math.PI * 0.55 + ((i + 1) / 6) * 0.8;
     const P = [
-      ring(0.56, hw * 0.3, a0),
-      ring(0.4, hw * 0.3, a0),
-      ring(0.4, hw * 0.3, a1),
-      ring(0.56, hw * 0.3, a1),
+      ring(0.6, hw * 0.3, a0),
+      ring(0.36, hw * 0.3, a0),
+      ring(0.36, hw * 0.3, a1),
+      ring(0.6, hw * 0.3, a1),
     ];
     for (const q of [0, 1, 2, 0, 2, 3]) push(P[q], [1, 0, 0], MAT_CALIPER);
     const T = [
-      ring(0.56, hw * 0.3, a0),
-      ring(0.56, -hw * 0.1, a0),
-      ring(0.56, -hw * 0.1, a1),
-      ring(0.56, hw * 0.3, a1),
+      ring(0.6, hw * 0.3, a0),
+      ring(0.6, -hw * 0.1, a0),
+      ring(0.6, -hw * 0.1, a1),
+      ring(0.6, hw * 0.3, a1),
     ];
     const nt = (a: number) => [0, Math.cos(a), Math.sin(a)];
     for (const q of [0, 1, 2, 0, 2, 3])

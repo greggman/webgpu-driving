@@ -192,13 +192,18 @@ export function buildInterior(spec: CarSpec): Interior {
   for (const sx of [dx, -dx]) {
     box([sx, 0.45 + oy, -0.55 + sz], [0.25, 0.07, 0.26], MI_SEAT);
     box([sx, 0.82 + oy, -0.86 + sz], [0.25, 0.34, 0.07], MI_SEAT, -0.28);
-    box([sx, 1.22 + oy, -0.98 + sz], [0.13, 0.09, 0.06], MI_SEAT, -0.2);
+    box(
+      [sx, Math.min(1.22 + oy, spec.roofY - 0.16), -0.98 + sz],
+      [0.13, 0.09, 0.06],
+      MI_SEAT,
+      -0.2,
+    );
   }
   // Rear bench (visible through the side glass on the outside view).
-  if (spec.kind !== 'pickup') {
-    const rz = spec.rearBase + 0.25;
-    box([0, 0.45 + oy, rz + 0.32], [hw - 0.05, 0.07, 0.24], MI_SEAT);
-    box([0, 0.76 + oy, rz], [hw - 0.05, 0.3, 0.07], MI_SEAT, -0.25);
+  if (spec.kind !== 'pickup' && spec.kind !== 'coupe') {
+    const rz = spec.rearBase + 0.3;
+    box([0, 0.45 + oy, rz + 0.3], [hw * 0.8, 0.07, 0.22], MI_SEAT);
+    box([0, 0.72 + oy, rz], [hw * 0.8, 0.24, 0.07], MI_SEAT, -0.25);
   }
   // Floor.
   quad(
