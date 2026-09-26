@@ -85,6 +85,6 @@
     * Semi Trucks
     * Passenger Busses
  
-[ ] In a previous demo we needed a 2 frame cap using onSubmittedWorkDone.
+[x] In a previous demo we needed a 2 frame cap using onSubmittedWorkDone.
 
     That way we don't flood the GPU with too many frames.

@@ -50,6 +50,8 @@ function showGpuProblem(msg: string, fatal: boolean) {
   box.classList.add('visible');
 }
 
+const MAX_IN_FLIGHT = 2;
+
 async function main() {
   const dev: DevHooks = {ready: false, settled: false};
   (window as unknown as {__dev: DevHooks}).__dev = dev;
@@ -95,10 +97,22 @@ async function main() {
     ),
     ...app.debugInfo(),
   });
+  let inFlight = 0;
   const loop = (t: number) => {
     // Stop rendering once the device is gone (the banner explains why).
     if (gpu.lost) return;
+    // At most MAX_IN_FLIGHT frames queued on the GPU: if the GPU is behind,
+    // skip this display frame instead of piling up more work (latency).
+    if (inFlight >= MAX_IN_FLIGHT) {
+      requestAnimationFrame(loop);
+      return;
+    }
     app.frame(t);
+    inFlight++;
+    gpu.device.queue
+      .onSubmittedWorkDone()
+      .then(() => inFlight--)
+      .catch(() => {});
     if (!dev.settled && app.settled) {
       // Wait for the GPU to finish before reporting.
       void gpu.device.queue.onSubmittedWorkDone().then(() => {
