@@ -173,6 +173,9 @@ export const SEDAN_BODY: BodyCurves = {
   chromeSill: true,
   chromeDLO: true,
   doorBow: 0.015,
+  doorConcave: 0.012,
+  archGap: 0.012,
+  mirror: {w: 0.15, h: 0.085, out: 0.055},
   // Lamps, grille and intake: openings in the front / rear views (x, y).
   openings: [
     // Slim swept headlamps tucked under the hood edge, eyebrow DRL on top.
