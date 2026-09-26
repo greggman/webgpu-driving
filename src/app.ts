@@ -30,7 +30,32 @@ export interface Params {
   look: [number, number, number] | null;
   fov: number | null;
   timeScale: number;
+  // Showroom: one parked car, no traffic, a fixed view (for judging cars).
+  showroom: boolean;
+  car: string | null;
+  paint: string | null;
+  view: string | null;
 }
+
+// Showroom camera views: car-local eye / target (forward, left, up), fov.
+const SHOWROOM_VIEWS: Record<string, [number[], number[], number]> = {
+  front34: [[5.2, 3.3, 1.25], [0, 0, 0.62], 34],
+  rear34: [[-5.2, 3.1, 1.3], [0, 0, 0.62], 34],
+  side: [[0.2, 7.0, 0.95], [0.2, 0, 0.7], 36],
+  wheel: [[2.5, 1.95, 0.5], [1.35, 0.8, 0.38], 40],
+  top34: [[4.2, -4.2, 3.6], [0, 0, 0.45], 36],
+  front: [[7.5, 0.0, 1.0], [0, 0, 0.7], 30],
+};
+
+const PAINTS: Record<string, [number, number, number, number]> = {
+  red: [0.5, 0.015, 0.012, 0.55],
+  blue: [0.02, 0.09, 0.25, 0.75],
+  silver: [0.62, 0.62, 0.6, 0.85],
+  white: [0.75, 0.74, 0.7, 0.45],
+  black: [0.01, 0.01, 0.012, 0.6],
+  orange: [0.55, 0.22, 0.03, 0.8],
+  green: [0.03, 0.18, 0.08, 0.7],
+};
 
 export function parseParams(): Params {
   const q = new URLSearchParams(location.search);
@@ -57,6 +82,10 @@ export function parseParams(): Params {
     look: vec3Param(q.get('look')),
     fov: num('fov'),
     timeScale: num('speed') ?? 1,
+    showroom: q.get('showroom') === '1',
+    car: q.get('car'),
+    paint: q.get('paint'),
+    view: q.get('view'),
   };
 }
 
@@ -189,6 +218,35 @@ export class App {
     this.settings.sync();
   }
 
+  // Showroom: only the player's car, parked, chosen body/paint, fixed view.
+  private setupShowroom() {
+    const t = this.traffic;
+    const p = t.player;
+    const kinds = ['sedan', 'hatch', 'suv', 'coupe', 'wagon', 'pickup'];
+    if (this.params.car && kinds.includes(this.params.car)) {
+      p.kind = this.params.car as typeof p.kind;
+    }
+    if (this.params.paint && PAINTS[this.params.paint]) p.color = PAINTS[this.params.paint];
+    t.vehicles = [p];
+    t.autopilot = false;
+    p.speed = 0;
+    p.desired = 0;
+    p.accel = 0;
+    p.pitch = p.roll = p.pitchVel = p.rollVel = p.latVel = 0;
+    const view = this.params.view ?? 'front34';
+    if (view === 'interior') {
+      this.director.forced = 'interior';
+      this.director.cut(p.s, 'interior');
+    } else {
+      const v = SHOWROOM_VIEWS[view] ?? SHOWROOM_VIEWS.front34;
+      this.director.customEye = v[0] as [number, number, number];
+      this.director.customTarget = v[1] as [number, number, number];
+      this.director.customFov = v[2];
+      this.director.forced = 'custom';
+      this.director.cut(p.s, 'custom');
+    }
+  }
+
   // Load-time profile (logged with ?debug=timing).
   timings: Array<[string, number]> = [];
   private mark(label: string) {
@@ -249,6 +307,7 @@ export class App {
     // Let traffic settle into a natural arrangement before we start.
     for (let i = 0; i < 120; ++i) this.traffic.update(1 / 30);
     if (this.params.s !== null) this.traffic.player.s = this.params.s;
+    if (this.params.showroom) this.setupShowroom();
     this.setProgress(`${name}: growing trees and baking impostors`, 0.35);
     await this.yieldToPaint();
     this.mark('traffic done');

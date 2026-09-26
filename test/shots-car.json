@@ -1,6 +1,182 @@
 [
-  {"name": "car-rear", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "-7,2.5,1.6", "look": "0,0,0.7", "fov": "40"}},
-  {"name": "car-side", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "1,6.5,1.2", "look": "0,0,0.7", "fov": "40"}},
-  {"name": "car-front", "params": {"biome": "coast", "cam": "custom", "s": "1500", "eye": "7,2.5,1.4", "look": "0,0,0.7", "fov": "40"}},
-  {"name": "car-3q", "params": {"biome": "forest", "cam": "custom", "s": "1500", "eye": "4,-5,1.3", "look": "0,0,0.7", "fov": "40"}}
+ {
+  "name": "car-sedan-front34",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "sedan",
+   "paint": "red",
+   "view": "front34",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-sedan-rear34",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "sedan",
+   "paint": "red",
+   "view": "rear34",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-sedan-side",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "sedan",
+   "paint": "red",
+   "view": "side",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-sedan-wheel",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "sedan",
+   "paint": "red",
+   "view": "wheel",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-suv-front34",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "suv",
+   "paint": "silver",
+   "view": "front34",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-suv-rear34",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "suv",
+   "paint": "silver",
+   "view": "rear34",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-coupe-front34",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "coupe",
+   "paint": "blue",
+   "view": "front34",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-coupe-rear34",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "coupe",
+   "paint": "blue",
+   "view": "rear34",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-pickup-front34",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "pickup",
+   "paint": "black",
+   "view": "front34",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-pickup-rear34",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "pickup",
+   "paint": "black",
+   "view": "rear34",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-hatch-front34",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "hatch",
+   "paint": "white",
+   "view": "front34",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-hatch-rear34",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "hatch",
+   "paint": "white",
+   "view": "rear34",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-wagon-front34",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "wagon",
+   "paint": "green",
+   "view": "front34",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-wagon-rear34",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "wagon",
+   "paint": "green",
+   "view": "rear34",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ },
+ {
+  "name": "car-sedan-interior",
+  "params": {
+   "biome": "country",
+   "showroom": "1",
+   "car": "sedan",
+   "paint": "red",
+   "view": "interior",
+   "s": "1500",
+   "tod": "17.6"
+  }
+ }
 ]
