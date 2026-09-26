@@ -17,6 +17,9 @@
 // Local frame: +z forward, +y up, +x left; origin on the ground midway
 // between the axles.
 
+import {BodyCurves, buildCurveBody} from './carBody';
+import {SEDAN_BODY} from './bodies/sedan';
+
 export type CarKind =
   | 'sedan'
   | 'hatch'
@@ -118,6 +121,9 @@ export interface CarSpec {
   headlightY: number;
   taillightY: number;
   bedFront?: number; // pickup bed start (z)
+  // Curve-network body (src/gen/bodies/*.ts); replaces the procedural
+  // loft when present.
+  body?: BodyCurves;
   // Compatibility with the shader / interior: [front cap y, ..., rear y].
   top: Array<[number, number]>;
   belt: number;
@@ -145,6 +151,7 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'sedan':
       return spec({
         kind,
+        body: SEDAN_BODY,
         axleShift: 0.1,
         boxy: 6,
         cladding: false,
@@ -422,11 +429,11 @@ function smooth(a: number, b: number, x: number) {
   return t * t * (3 - 2 * t);
 }
 
-type P3 = [number, number, number];
+export type P3 = [number, number, number];
 
 // Grid of points [station][ring] -> triangles with smooth normals and a
 // per-quad material.
-function emitGrid(
+export function emitGrid(
   push: (p: number[], n: number[], m: number) => void,
   grid: P3[][],
   mat: (i: number, j: number) => number,
@@ -479,6 +486,7 @@ function emitGrid(
 }
 
 export function buildCarBody(sp: CarSpec): MeshData {
+  if (sp.body) return buildCurveBody(sp, sp.body);
   const verts: number[] = [];
   const push = (p: number[], n: number[], m: number) => {
     verts.push(p[0], p[1], p[2], n[0], n[1], n[2], m, 0);
@@ -1078,7 +1086,7 @@ export function buildCarBody(sp: CarSpec): MeshData {
 
 // Makes every triangle wind counter-clockwise around its vertex normals, so
 // front_facing in the shader tells outside from inside.
-function orient(out: Float32Array): Float32Array {
+export function orient(out: Float32Array): Float32Array {
   for (let t = 0; t < out.length / V_FLOATS; t += 3) {
     const o = t * V_FLOATS;
     const e1 = [0, 1, 2].map(k => out[o + 8 + k] - out[o + k]);
@@ -1102,7 +1110,7 @@ function orient(out: Float32Array): Float32Array {
   return out;
 }
 
-function box(
+export function box(
   push: (p: number[], n: number[], m: number) => void,
   c: number[],
   h: number[],

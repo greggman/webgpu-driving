@@ -1,0 +1,86 @@
+[
+  {
+    "name": "bp-side",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "bp-side"
+    }
+  },
+  {
+    "name": "bp-front",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "bp-front"
+    }
+  },
+  {
+    "name": "bp-rear",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "bp-rear"
+    }
+  },
+  {
+    "name": "bp-top",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "bp-top"
+    }
+  },
+  {
+    "name": "bp-front34",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "front34"
+    }
+  },
+  {
+    "name": "bp-rear34",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "rear34"
+    }
+  },
+  {
+    "name": "bp-wheel",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "wheel"
+    }
+  }
+]
