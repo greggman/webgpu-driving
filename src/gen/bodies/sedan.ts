@@ -168,5 +168,65 @@ export const SEDAN_BODY: BodyCurves = {
   chromeSill: true,
   chromeDLO: true,
   doorBow: 0.01,
+  // Lamps, grille and intake: openings in the front / rear views (x, y).
+  openings: [
+    {
+      kind: 'headlamp',
+      end: 'front',
+      mirror: true,
+      outline: [
+        [0.34, 0.64],
+        [0.55, 0.615],
+        [0.72, 0.63],
+        [0.78, 0.665],
+        [0.72, 0.69],
+        [0.5, 0.69],
+        [0.36, 0.675],
+      ],
+      projectors: [
+        [0.5, 0.655, 0.018],
+        [0.62, 0.655, 0.018],
+      ],
+      strip: [0.0, 0.4],
+      depth: 0.05,
+    },
+    {
+      kind: 'grille',
+      end: 'front',
+      outline: [
+        [-0.34, 0.58],
+        [0.34, 0.58],
+        [0.28, 0.4],
+        [-0.28, 0.4],
+      ],
+      depth: 0.04,
+    },
+    {
+      kind: 'intake',
+      end: 'front',
+      outline: [
+        [-0.5, 0.35],
+        [0.5, 0.35],
+        [0.46, 0.27],
+        [-0.46, 0.27],
+      ],
+      depth: 0.04,
+    },
+    {
+      kind: 'taillamp',
+      end: 'rear',
+      mirror: true,
+      outline: [
+        [0.42, 0.93],
+        [0.78, 0.92],
+        [0.83, 0.87],
+        [0.8, 0.82],
+        [0.62, 0.85],
+        [0.42, 0.88],
+      ],
+      strip: [0.0, 0.35],
+      depth: 0.04,
+    },
+  ],
   hoodDome: 0.015,
 };

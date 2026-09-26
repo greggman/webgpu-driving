@@ -190,8 +190,8 @@ fn vsBodyShadow(v: VIn, @builtin(instance_index) ii: u32) -> CSOut {
 
 @fragment
 fn fsShadow(in: CSOut) {
-  // Glass lets sunlight into the cabin.
-  if (in.mat == 1u) { discard; }
+    // Glass lets sunlight into the cabin; lamp lenses into the lamps.
+  if (in.mat == 1u || in.mat == 26u) { discard; }
 }
 
 @vertex
@@ -279,8 +279,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   let lp = in.local;
   let v = normalize(F.cam.xyz - wp);
   let interior = c.p4.x > 0.5;
-  // Glass is drawn in the blended pass (fsGlass).
-  if (in.mat == 1u) { discard; }
+    // Glass and lamp lenses are drawn in the blended pass (fsGlass).
+  if (in.mat == 1u || in.mat == 26u) { discard; }
   if (dot(n, v) < 0.0) { n = -n; }
   // Cabin materials (interior mesh, or the inside of the body shell).
   let wheelMat = in.mat == 7u || in.mat == 8u || in.mat >= 20u;
@@ -355,14 +355,16 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   let ax = abs(lp.x) / halfW;
   let hy = c.p2.z; // headlight centre height
   let ty = c.p2.w; // tail light centre height
-  let body = mat == 0u || mat == 3u || mat == 4u;
+    let body = mat == 0u || mat == 3u || mat == 4u;
+  // Bodies with modelled lamp / grille openings don't get painted ones.
+  let decals = c.p6.w < 0.5;
   var part = 0u; // 1 headlight, 2 tail light, 3 grille, 4 black plastic, 5 chrome
   let style = u32(c.p6.z + 0.5); // sedan hatch suv coupe wagon pickup
   let gx = ax;
   let gy = lp.y - hy;
   var cell = 0u; // grille pattern: 0 slats, 1 honeycomb, 2 big rectangles
   var recess = 1.0;
-  if (body && lp.z > 0.0) {
+    if (body && decals && lp.z > 0.0) {
     // Headlight units in the upper corners of the nose, wrapping around
     // onto the fender.
     let hu = (ax - select(0.5, 0.46, style == 0u)) / select(0.42, 0.46, style == 0u);
@@ -422,7 +424,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   }
   if (body && lp.z < 0.0) {
         // Tail lamps on the rear face, wrapping onto the rear quarters.
-    if (lp.z < -halfL + 0.5 && (ln.z < -0.1 || (ax > 0.9 && lp.z < -halfL + 0.35))) {
+        if (decals && lp.z < -halfL + 0.5 && (ln.z < -0.1 || (ax > 0.9 && lp.z < -halfL + 0.35))) {
       let dy = lp.y - ty;
       var lamp = false;
       var bezel = false;
@@ -657,6 +659,52 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     s.spec = 0.06;
     // Rubber sits partly in the arch shadow.
     s.ao = 0.6;
+    } else if (mat >= 23u && mat <= 30u) {
+    // Modelled lamp / grille parts (see carBody.ts openings).
+    let brake = c.p1.y;
+    if (mat == 23u) {
+      // Headlamp housing: brushed chrome reflector with facets.
+      let facet = 0.8 + 0.2 * step(0.5, fract(lp.x * 40.0));
+      s.albedo = vec3f(0.55) * facet;
+      s.metal = 1.0;
+      s.rough = 0.25;
+    } else if (mat == 24u) {
+      // Tail lamp body: red reflector optics behind the lens.
+      let optic = 0.7 + 0.3 * step(0.5, fract(lp.y * 60.0));
+      s.albedo = vec3f(0.35, 0.02, 0.015) * optic;
+      s.rough = 0.15;
+      coat = 1.0;
+      emissive = vec3f(1.0, 0.04, 0.02) * (0.4 + 2.5 * lightsOn + 10.0 * brake) * optic;
+    } else if (mat == 25u || mat == 27u) {
+      // Grille / intake insert: gloss-black honeycomb with depth.
+      let q = vec2f(lp.x, lp.y) * 70.0;
+      let rr = vec2f(1.0, 1.732);
+      let hh = rr * 0.5;
+      let a = (q - rr * floor(q / rr)) - hh;
+      let b = (q - hh - rr * floor((q - hh) / rr)) - hh;
+      let g = select(b, a, dot(a, a) < dot(b, b));
+      let hexD = max(abs(g.x) * 0.866 + abs(g.y) * 0.5, abs(g.y));
+      let wall = smoothstep(0.36, 0.44, hexD);
+      s.albedo = mix(vec3f(0.003), vec3f(select(0.05, 0.03, mat == 27u)), wall);
+      s.rough = mix(0.8, 0.15, wall);
+      s.ao = mix(0.35, 1.0, wall);
+    } else if (mat == 28u) {
+      // DRL: white LED light guide.
+      s.albedo = vec3f(0.9);
+      s.rough = 0.2;
+      emissive = vec3f(1.0, 0.97, 0.92) * (3.0 + 6.0 * lightsOn);
+    } else if (mat == 29u) {
+      // Projector lens: dark glass, bright when the lights are on.
+      s.albedo = vec3f(0.02);
+      s.rough = 0.02;
+      coat = 1.0;
+      emissive = vec3f(1.0, 0.97, 0.9) * (0.05 + 40.0 * lightsOn);
+    } else {
+      // Tail light guide: bright red LED line.
+      s.albedo = vec3f(0.5, 0.03, 0.02);
+      s.rough = 0.2;
+      emissive = vec3f(1.0, 0.05, 0.02) * (6.0 + 5.0 * lightsOn + 14.0 * brake);
+    }
   } else if (mat == 20u) {
     // Licence plate: white retro-reflective sheet, dark border and characters.
         let py = lp.y - select(ty - 0.3, hy - 0.32, lp.z > 0.0);
@@ -793,8 +841,8 @@ fn sinceWiped(uv: vec2f, t: f32) -> f32 {
 
 @fragment
 fn fsGlass(in: VOut) -> GlassOut {
-  let c = cars[in.car];
-  if (in.mat != 1u) { discard; }
+    let c = cars[in.car];
+  if (in.mat != 1u && in.mat != 26u) { discard; }
   let lp = in.local;
   var o: GlassOut;
   o.velocity = vec2f(0.0);
@@ -804,6 +852,16 @@ fn fsGlass(in: VOut) -> GlassOut {
   let nn = select(-n, n, dot(n, v) > 0.0);
   let nv = saturate(dot(nn, v));
   let fres = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
+  if (in.mat == 26u) {
+    // Clear lamp lens: nearly untinted, sharp reflections.
+    let r = reflect(-v, nn);
+    let l = F.sun.xyz;
+    let h = normalize(v + l);
+    let spec = D_GGX(saturate(dot(nn, h)), 0.0004) * V_SmithGGX(max(nv, 1e-3), saturate(dot(nn, l)), 0.0004) * fres;
+    let refl = envRadiance(r, 0.02) * fres + F.sunColor.rgb * min(spec, 200.0) * sunShadow(in.world, nn) * saturate(dot(nn, l));
+    o.color = vec4f(refl, 1.0 - 0.92 * (1.0 - fres));
+    return o;
+  }
   let interior = c.p4.x > 0.5;
   if (!interior) {
     // Tinted, reflective glass seen from outside.

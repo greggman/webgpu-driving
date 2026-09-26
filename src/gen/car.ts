@@ -88,6 +88,15 @@ export const MAT_RIM = 8;
 export const MAT_PLATE = 20;
 export const MAT_DISC = 21;
 export const MAT_CALIPER = 22;
+// Lamp / grille opening parts (curve-network bodies, see carBody.ts).
+export const MAT_LAMP_HEAD = 23; // headlamp housing: chrome reflector
+export const MAT_LAMP_TAIL = 24; // tail lamp body: red reflector
+export const MAT_GRILLE = 25; // grille insert (mesh)
+export const MAT_LENS = 26; // clear lamp lens (glass pass)
+export const MAT_INTAKE = 27; // intake insert (dark mesh)
+export const MAT_DRL = 28; // daytime running light strip (white LED)
+export const MAT_PROJ = 29; // projector lens
+export const MAT_LED = 30; // tail light guide (red LED)
 
 export interface CarSpec {
   kind: CarKind;

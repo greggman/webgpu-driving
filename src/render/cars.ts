@@ -365,7 +365,12 @@ export class CarRenderer {
         o + 56,
       );
       this.data.set(
-        [0.37, spec.belt - 0.01, MESH_KINDS.indexOf(c.kind), 0],
+        [
+          0.37,
+          spec.belt - 0.01,
+          MESH_KINDS.indexOf(c.kind),
+          spec.body?.openings?.length ? 1 : 0,
+        ],
         o + 60,
       );
       this.data.set(

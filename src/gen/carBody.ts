@@ -36,6 +36,14 @@ import {
   MAT_REAR,
   MAT_TRIM,
   MAT_UNDER,
+  MAT_LAMP_HEAD,
+  MAT_LAMP_TAIL,
+  MAT_GRILLE,
+  MAT_LENS,
+  MAT_INTAKE,
+  MAT_DRL,
+  MAT_PROJ,
+  MAT_LED,
   box,
   emitGrid,
   orient,
@@ -43,6 +51,23 @@ import {
 } from './car';
 
 export type Knots = Array<[number, number]>; // (z, value)
+
+// An opening in the skin, outlined in the front (end 'front', looking
+// backward at the nose) or rear view: (x, y) points of a closed curve
+// (x = car-left; a smooth closed spline goes through them). Mirrored
+// openings are given for x >= 0 and duplicated at -x.
+export interface Opening {
+  kind: 'headlamp' | 'taillamp' | 'grille' | 'intake';
+  end: 'front' | 'rear';
+  outline: Array<[number, number]>;
+  mirror?: boolean;
+  depth?: number; // housing depth (m); default 0.04
+  // Headlamp projector lenses: (x, y, radius), mirrored with the opening.
+  projectors?: Array<[number, number, number]>;
+  // LED strip (DRL / tail light guide) along part of the outline: the
+  // [start, end] fraction of the outline's length (from its first point).
+  strip?: [number, number];
+}
 
 function sm(a: number, b: number, x: number) {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -78,6 +103,9 @@ export interface BodyCurves {
   hoodLines?: {x: number; height: number; crease: number};
   hoodDome?: number; // raise of the hood centre line (m), faded at cowl / nose
   doorBow?: number; // outward bow of the panel between door line and shoulder (m)
+  // Lamps, grille and intakes: real openings cut into the skin (see
+  // buildOpenings).
+  openings?: Opening[];
   chromeDLO?: boolean; // thin chrome trim along the top of the side glass
   cabin: {
     windscreenBase: number; // z where the windscreen meets the cowl
@@ -367,39 +395,55 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   const xIn = sp.track / 2 - 0.2;
   const trimArch = (_x: number, y: number, _z: number): number => y;
 
+  // Raked fascias: the upper nose / tail leans back from the bumper.
+  const rakeZ = (z: number, x: number, y: number) => {
+    const Wz = Math.max(width(z), 1e-3);
+    let zz = z;
+    const corner = sm(0.75, 1.0, Math.abs(x) / Wz);
+    if (c.noseRake) {
+      const r = c.noseRake;
+      const e = sm(nose - 0.5, nose, z);
+      zz -= r.depth * sm(r.bumperY, r.bumperY + 0.25, y) * e;
+      zz -=
+        (r.cornerDepth ?? 0) *
+        corner *
+        (1 - sm(r.bumperY, r.bumperY + 0.1, y)) *
+        e;
+    }
+    if (c.tailRake) {
+      const r = c.tailRake;
+      const e = sm(tail + 0.5, tail, z);
+      zz += r.depth * sm(r.bumperY, r.bumperY + 0.25, y) * e;
+      zz +=
+        (r.cornerDepth ?? 0) *
+        corner *
+        (1 - sm(r.bumperY, r.bumperY + 0.1, y)) *
+        e;
+    }
+    return zz;
+  };
+  // Skin half width at height y of the (unraked) section at z.
+  const skinXAt = (z: number, y: number): number => {
+    const {p} = sectionHalf(z);
+    let best = 0;
+    for (let k = 0; k + 1 < p.length; ++k) {
+      const a = p[k],
+        b = p[k + 1];
+      if ((a[1] - y) * (b[1] - y) <= 0 && a[1] !== b[1]) {
+        const t = (y - a[1]) / (b[1] - a[1]);
+        best = Math.max(best, a[0] + (b[0] - a[0]) * t);
+      }
+    }
+    return best;
+  };
+
   const grid: P3[][] = [];
   let spans: number[] = [];
   for (const z of Z) {
     const {p, span} = sectionHalf(z);
     spans = span;
     const ring: P3[] = [];
-    // Raked fascias: the upper nose / tail leans back from the bumper.
-    const Wz = Math.max(width(z), 1e-3);
-    const zr = (x: number, y: number) => {
-      let zz = z;
-      const corner = sm(0.75, 1.0, Math.abs(x) / Wz);
-      if (c.noseRake) {
-        const r = c.noseRake;
-        const e = sm(nose - 0.5, nose, z);
-        zz -= r.depth * sm(r.bumperY, r.bumperY + 0.25, y) * e;
-        zz -=
-          (r.cornerDepth ?? 0) *
-          corner *
-          (1 - sm(r.bumperY, r.bumperY + 0.1, y)) *
-          e;
-      }
-      if (c.tailRake) {
-        const r = c.tailRake;
-        const e = sm(tail + 0.5, tail, z);
-        zz += r.depth * sm(r.bumperY, r.bumperY + 0.25, y) * e;
-        zz +=
-          (r.cornerDepth ?? 0) *
-          corner *
-          (1 - sm(r.bumperY, r.bumperY + 0.1, y)) *
-          e;
-      }
-      return zz;
-    };
+    const zr = (x: number, y: number) => rakeZ(z, x, y);
     for (let k = 0; k < p.length; ++k) {
       const y = trimArch(p[k][0], p[k][1], z);
       ring.push([-p[k][0], y, zr(p[k][0], y)]);
@@ -419,11 +463,27 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   });
   const near = (z: number, zc: number, w: number) => Math.abs(z - zc) < w;
 
+  const ops = prepareOpenings(c.openings ?? [], nose, tail, skinXAt, rakeZ);
+
   const mat = (i: number, j: number): number => {
     const z = (Z[i] + Z[i + 1]) / 2;
     const k = j < H ? j : RN - 2 - j;
     const s = spans[Math.min(k, H - 1)];
     const first = k === spanStart[s];
+    // Lamp / grille openings: the skin inside them is replaced by the
+    // opening's own geometry.
+    if (ops.length) {
+      const q = [
+        grid[i][j],
+        grid[i + 1][j],
+        grid[i][j + 1],
+        grid[i + 1][j + 1],
+      ];
+      const cx = (q[0][0] + q[1][0] + q[2][0] + q[3][0]) / 4,
+        cy = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4,
+        cz = (q[0][2] + q[1][2] + q[2][2] + q[3][2]) / 4;
+      for (const o of ops) if (o.covers(cx, cy, cz)) return -1;
+    }
     // Arch openings: drop the outer skin inside the arch (the lip covers
     // the edge).
     {
@@ -503,6 +563,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   if ((cr.belt ?? 0) >= 0.5) creaseK.add(spanStart[5]);
   if ((c.hoodLines?.crease ?? 0) >= 0.5) creaseK.add(spanStart[7]);
   emitSkin(push, grid, mat, H, creaseK);
+  for (const o of ops) o.emit(push);
 
   // Wheel-well liners (dark half tubes) closing the trimmed arches.
   for (const az of axles) {
@@ -536,19 +597,8 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
 
   // Arch lips: a flange following the arch circle, flared out from the
   // skin and rolled under into the well (it covers the trimmed edge).
-  const skinX = (z: number, y: number): number => {
-    const {p} = sectionHalf(z);
-    let best = 0;
-    for (let k = 0; k + 1 < p.length; ++k) {
-      const a = p[k],
-        b = p[k + 1];
-      if ((a[1] - y) * (b[1] - y) <= 0 && a[1] !== b[1]) {
-        const t = (y - a[1]) / (b[1] - a[1]);
-        best = Math.max(best, a[0] + (b[0] - a[0]) * t);
-      }
-    }
-    return best;
-  };
+  const skinX = skinXAt;
+
   // Profile (radius, x offset from the skin): on the skin, flare out, roll
   // under, then back up inside past the skin cut (a closed channel, so the
   // cut edge is never visible).
@@ -725,4 +775,251 @@ function emitSkin(
       for (const [a, b, d] of q) push(grid[a][b], vn(a, b, d), m);
     }
   }
+}
+
+// ---- Openings (lamps, grille, intakes) ----
+
+interface PreparedOpening {
+  covers: (x: number, y: number, z: number) => boolean;
+  emit: (push: (p: number[], n: number[], m: number) => void) => void;
+}
+
+// Closed uniform Catmull-Rom through the outline points, `n` samples.
+function closedSpline(pts: Array<[number, number]>, n: number) {
+  const out: Array<[number, number]> = [];
+  const m = pts.length;
+  for (let q = 0; q < n; ++q) {
+    const t = (q / n) * m;
+    const i = Math.floor(t);
+    const u = t - i;
+    const P = (k: number) => pts[(((i + k) % m) + m) % m];
+    const p0 = P(-1),
+      p1 = P(0),
+      p2 = P(1),
+      p3 = P(2);
+    const f = (a: number, b: number, cc: number, d: number) =>
+      0.5 *
+      (2 * b +
+        (-a + cc) * u +
+        (2 * a - 5 * b + 4 * cc - d) * u * u +
+        (-a + 3 * b - 3 * cc + d) * u * u * u);
+    out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+  }
+  return out;
+}
+
+function insidePoly(poly: Array<[number, number]>, x: number, y: number) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i],
+      [xj, yj] = poly[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)
+      inside = !inside;
+  }
+  return inside;
+}
+
+// Offsets a closed outline by d (positive = outward) along its 2D normals.
+function offsetPoly(poly: Array<[number, number]>, d: number) {
+  const n = poly.length;
+  // Orientation: positive area = counter-clockwise.
+  let area = 0;
+  for (let i = 0; i < n; ++i) {
+    const a = poly[i],
+      b = poly[(i + 1) % n];
+    area += a[0] * b[1] - b[0] * a[1];
+  }
+  const sgn = area > 0 ? 1 : -1;
+  return poly.map((p, i) => {
+    const a = poly[(i - 1 + n) % n],
+      b = poly[(i + 1) % n];
+    const tx = b[0] - a[0],
+      ty = b[1] - a[1];
+    const l = Math.hypot(tx, ty) || 1;
+    // Outward normal of a CCW polygon is (ty, -tx).
+    return [p[0] + (ty / l) * d * sgn, p[1] + (-tx / l) * d * sgn] as [
+      number,
+      number,
+    ];
+  });
+}
+
+function prepareOpenings(
+  list: Opening[],
+  nose: number,
+  tail: number,
+  skinX: (z: number, y: number) => number,
+  rakeZ: (z: number, x: number, y: number) => number,
+): PreparedOpening[] {
+  const out: PreparedOpening[] = [];
+  for (const op of list) {
+    const sides = op.mirror ? [1, -1] : [1];
+    for (const sx of sides) {
+      const front = op.end === 'front';
+      const endZ = front ? nose : tail;
+      const dir = front ? 1 : -1; // outward along z
+      const outline = closedSpline(
+        op.outline.map(([x, y]) => [x * sx, y] as [number, number]),
+        72,
+      );
+      // Skin surface z seen from the end at (x, y): the station where the
+      // section just stops covering |x| (bisection), then the rake.
+      const surfZ = (x: number, y: number): number => {
+        let a = endZ - dir * 0.9,
+          b = endZ;
+        if (skinX(a, y) < Math.abs(x)) return endZ - dir * 0.9;
+        for (let it = 0; it < 26; ++it) {
+          const m = (a + b) / 2;
+          if (skinX(m, y) >= Math.abs(x)) a = m;
+          else b = m;
+        }
+        return rakeZ(a, x, y);
+      };
+      const depth = op.depth ?? 0.04;
+      const cover = offsetPoly(outline, 0.004);
+      let reach = 0;
+      for (const [x, y] of outline)
+        reach = Math.max(reach, Math.abs(endZ - surfZ(x, y)));
+      const isLamp = op.kind === 'headlamp' || op.kind === 'taillamp';
+      const backMat =
+        op.kind === 'headlamp'
+          ? MAT_LAMP_HEAD
+          : op.kind === 'taillamp'
+            ? MAT_LAMP_TAIL
+            : op.kind === 'grille'
+              ? MAT_GRILLE
+              : MAT_INTAKE;
+      const wallMat = op.kind === 'grille' ? MAT_CHROME : MAT_TRIM;
+      const P = (x: number, y: number, dz: number): number[] => [
+        x,
+        y,
+        surfZ(x, y) - dir * dz,
+      ];
+      out.push({
+        covers: (x, y, z) =>
+          Math.abs(z - endZ) < reach + 0.08 &&
+          (z - (endZ - dir * (reach + 0.08))) * dir > 0 &&
+          insidePoly(cover, x, y),
+        emit: push => {
+          const quad = (
+            a: number[],
+            b: number[],
+            cc: number[],
+            d: number[],
+            m: number,
+          ) => {
+            const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            const e2 = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
+            let n = [
+              e1[1] * e2[2] - e1[2] * e2[1],
+              e1[2] * e2[0] - e1[0] * e2[2],
+              e1[0] * e2[1] - e1[1] * e2[0],
+            ];
+            const l = Math.hypot(n[0], n[1], n[2]) || 1;
+            n = n.map(v => v / l);
+            for (const p of [a, b, cc, a, cc, d]) push(p, n, m);
+          };
+          // Rim: a thin dark gap on the skin, then the housing wall down
+          // to the back.
+          const rimOut = offsetPoly(outline, 0.008);
+          const N = outline.length;
+          for (let i = 0; i < N; ++i) {
+            const i2 = (i + 1) % N;
+            const [ax, ay] = outline[i],
+              [bx, by] = outline[i2];
+            const [ox, oy] = rimOut[i],
+              [px, py] = rimOut[i2];
+            quad(
+              P(ox, oy, -0.001),
+              P(px, py, -0.001),
+              P(bx, by, -0.001),
+              P(ax, ay, -0.001),
+              MAT_TRIM,
+            );
+            quad(
+              P(ax, ay, -0.001),
+              P(bx, by, -0.001),
+              P(bx, by, depth + 0.01),
+              P(ax, ay, depth + 0.01),
+              wallMat,
+            );
+          }
+          // Back plate and (lamps) a clear lens flush with the skin: filled
+          // on a 2D grid clipped to the outline.
+          let x0 = 1e9,
+            x1 = -1e9,
+            y0 = 1e9,
+            y1 = -1e9;
+          for (const [x, y] of outline) {
+            x0 = Math.min(x0, x);
+            x1 = Math.max(x1, x);
+            y0 = Math.min(y0, y);
+            y1 = Math.max(y1, y);
+          }
+          const st = 0.012;
+          const grow = offsetPoly(outline, st);
+          for (let x = x0 - st; x < x1 + st; x += st)
+            for (let y = y0 - st; y < y1 + st; y += st) {
+              const cs = [
+                [x, y],
+                [x + st, y],
+                [x + st, y + st],
+                [x, y + st],
+              ];
+              if (!cs.some(([u, v]) => insidePoly(outline, u, v))) continue;
+              if (!cs.every(([u, v]) => insidePoly(grow, u, v))) continue;
+              const back = cs.map(([u, v]) => P(u, v, depth));
+              quad(back[0], back[1], back[2], back[3], backMat);
+              if (isLamp) {
+                const lens = cs.map(([u, v]) => P(u, v, 0.002));
+                quad(lens[0], lens[1], lens[2], lens[3], MAT_LENS);
+              }
+            }
+          // Projector lenses: chrome ring + dark glass disc, set in.
+          for (const [px0, py0, r] of op.projectors ?? []) {
+            const cx = px0 * sx;
+            const segs = 20;
+            for (let k = 0; k < segs; ++k) {
+              const a0 = (k / segs) * Math.PI * 2,
+                a1 = ((k + 1) / segs) * Math.PI * 2;
+              const ring = (rr: number, a: number, dz: number) =>
+                P(cx + Math.cos(a) * rr, py0 + Math.sin(a) * rr, dz);
+              quad(
+                ring(r * 1.35, a0, depth * 0.5),
+                ring(r * 1.35, a1, depth * 0.5),
+                ring(r, a1, depth * 0.35),
+                ring(r, a0, depth * 0.35),
+                MAT_CHROME,
+              );
+              const cen = P(cx, py0, depth * 0.3);
+              const n0 = [0, 0, dir];
+              push(cen, n0, MAT_PROJ);
+              push(ring(r, a0, depth * 0.35), n0, MAT_PROJ);
+              push(ring(r, a1, depth * 0.35), n0, MAT_PROJ);
+            }
+          }
+          // LED strip along part of the outline, just inside it.
+          if (op.strip) {
+            const [s0, s1] = op.strip;
+            const inner = offsetPoly(outline, -0.012);
+            const edge = offsetPoly(outline, -0.003);
+            const i0 = Math.floor(s0 * N),
+              i1 = Math.ceil(s1 * N);
+            for (let i = i0; i < i1; ++i) {
+              const a = i % N,
+                b = (i + 1) % N;
+              quad(
+                P(edge[a][0], edge[a][1], 0.012),
+                P(edge[b][0], edge[b][1], 0.012),
+                P(inner[b][0], inner[b][1], 0.012),
+                P(inner[a][0], inner[a][1], 0.012),
+                op.kind === 'taillamp' ? MAT_LED : MAT_DRL,
+              );
+            }
+          }
+        },
+      });
+    }
+  }
+  return out;
 }
