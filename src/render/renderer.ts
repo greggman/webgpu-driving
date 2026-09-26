@@ -408,6 +408,7 @@ export class Renderer {
   }
 
   setWorld(road: Road, biome: Biome) {
+    this.worldFrame = this.frameIndex;
     this.road = road;
     this.biome = biome;
     this.roadMesh = new RoadMesh(this.gpu.device, road);
@@ -475,8 +476,19 @@ export class Renderer {
     ]);
   }
 
+  private worldFrame = 0;
+
   get settled(): boolean {
-    return this.terrain.pendingUpdates === 0 && this.frameIndex > 45;
+    return (
+      this.terrain.pendingUpdates === 0 &&
+      this.frameIndex - this.worldFrame > 45
+    );
+  }
+
+  // 0..1 warm-up progress of the current world (for the loading bar).
+  get worldProgress(): number {
+    const f = Math.min(1, (this.frameIndex - this.worldFrame) / 30);
+    return this.terrain.pendingUpdates === 0 ? f : Math.min(f, 0.9);
   }
 
   render(scene: SceneState) {

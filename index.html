@@ -13,6 +13,24 @@
       text-shadow: 0 1px 2px #000; opacity: 0.85; pointer-events: none; white-space: pre;
     }
     #hud.hidden { display: none; }
+    #regen {
+      position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; padding: 0;
+      border: 1px solid rgba(255,255,255,0.35); border-radius: 50%; background: rgba(0,0,0,0.35);
+      color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(6px); transition: background 0.15s, transform 0.3s;
+    }
+    #regen:hover { background: rgba(0,0,0,0.55); transform: rotate(90deg); }
+    #regen:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    #loading {
+      position: absolute; left: 50%; bottom: 48px; transform: translateX(-50%);
+      width: min(360px, calc(100% - 32px)); padding: 12px 16px; border-radius: 10px;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(8px); color: #fff;
+      font: 13px/1.4 system-ui, sans-serif; opacity: 0; pointer-events: none;
+      transition: opacity 0.4s;
+    }
+    #loading.visible { opacity: 1; }
+    #loading-track { height: 4px; margin-top: 8px; border-radius: 2px; background: rgba(255,255,255,0.2); overflow: hidden; }
+    #loading-bar { height: 100%; width: 0; background: #fff; transition: width 0.25s; }
     #error {
       position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
       color: #fff; font: 16px system-ui, sans-serif; text-align: center; padding: 24px;
@@ -22,6 +40,15 @@
 <body>
   <canvas id="screen"></canvas>
   <div id="hud"></div>
+  <button id="regen" title="New world (R)" aria-label="Generate a new world">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/>
+    </svg>
+  </button>
+  <div id="loading" role="status" aria-live="polite">
+    <div id="loading-label">Generating…</div>
+    <div id="loading-track"><div id="loading-bar"></div></div>
+  </div>
   <div id="error"></div>
   <script type="module" src="main.js"></script>
 </body>

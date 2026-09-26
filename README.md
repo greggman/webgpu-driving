@@ -15,6 +15,7 @@ Seven environments: **country road**, **desert dirt road**, **ocean coastline**,
 | ← / → (A / D) | change lanes (only when it's safe; you can't crash) |
 | ↑ / ↓ (W / S) | speed up / slow down |
 | C | next camera shot |
+| R (or the ↻ button, top right) | generate a new world (new seed) |
 | P | toggle autopilot |
 | 1 – 7 | switch environment |
 | H | hide the HUD |

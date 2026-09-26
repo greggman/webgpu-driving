@@ -79,16 +79,51 @@ export class App {
     public params: Params,
   ) {
     this.renderer = new Renderer(gpu);
-    this.setBiome(params.biome);
     this.installInput();
     if (!params.hud) this.hudEl.classList.add('hidden');
+    document.getElementById('regen')!.addEventListener('click', () => {
+      void this.regenerate();
+    });
   }
 
-  setBiome(id: BiomeId) {
-    const base = BIOMES[id];
-    this.biome = structuredClone(base);
+  // True while a world is being generated (the frame loop pauses).
+  busy = false;
+  private loadingEl = document.getElementById('loading')!;
+  private loadingLabel = document.getElementById('loading-label')!;
+  private loadingBar = document.getElementById('loading-bar')!;
+  private showingProgress = false;
+
+  private setProgress(label: string, frac: number) {
+    this.loadingEl.classList.add('visible');
+    this.showingProgress = true;
+    this.loadingLabel.textContent = label;
+    this.loadingBar.style.width = `${Math.round(Math.min(1, frac) * 100)}%`;
+  }
+
+  // Let the browser paint the progress bar between generation stages.
+  private yieldToPaint(): Promise<void> {
+    return new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+  }
+
+  // New world with a fresh random seed in the current environment.
+  async regenerate() {
+    if (this.busy) return;
+    this.params.seed = Math.floor(Math.random() * 1e6) + 1;
+    this.params.s = null;
+    await this.generate(this.biome.id);
+  }
+
+  async generate(id: BiomeId) {
+    if (this.busy) return;
+    this.busy = true;
+    const name = BIOMES[id].name;
+    this.setProgress(`${name}: shaping the land`, 0.05);
+    await this.yieldToPaint();
+    this.biome = structuredClone(BIOMES[id]);
     if (this.params.tod !== null) this.biome.sky.timeOfDay = this.params.tod;
     this.road = new Road(this.biome, this.params.seed);
+    this.setProgress(`${name}: populating traffic`, 0.2);
+    await this.yieldToPaint();
     const s0 = this.params.s ?? 800;
     this.traffic = new Traffic(this.biome, this.params.seed, s0);
     const ps = carSpec(this.traffic.player.kind);
@@ -123,6 +158,11 @@ export class App {
       if (this.params.shotTime !== null)
         this.director.setShotTime(this.params.shotTime);
     }
+    // Let traffic settle into a natural arrangement before we start.
+    for (let i = 0; i < 120; ++i) this.traffic.update(1 / 30);
+    if (this.params.s !== null) this.traffic.player.s = this.params.s;
+    this.setProgress(`${name}: growing trees and baking impostors`, 0.35);
+    await this.yieldToPaint();
     this.renderer.setWorld(this.road, this.biome);
     this.tumbleweeds =
       this.biome.scatter.tumbleweeds > 0
@@ -130,9 +170,8 @@ export class App {
         : null;
     this.prevCam = null;
     this.prevPoses.clear();
-    // Let traffic settle into a natural arrangement before we start.
-    for (let i = 0; i < 120; ++i) this.traffic.update(1 / 30);
-    if (this.params.s !== null) this.traffic.player.s = this.params.s;
+    this.setProgress(`${name}: streaming terrain`, 0.6);
+    this.busy = false;
   }
 
   private installInput() {
@@ -167,12 +206,15 @@ export class App {
         case 'h':
           this.hudEl.classList.toggle('hidden');
           break;
+        case 'r':
+          void this.regenerate();
+          break;
         default: {
           const n = Number(e.key);
           if (n >= 1 && n <= BIOME_ORDER.length) {
             this.params.s = null;
             this.params.tod = null;
-            this.setBiome(BIOME_ORDER[n - 1]);
+            void this.generate(BIOME_ORDER[n - 1]);
           }
         }
       }
@@ -181,6 +223,17 @@ export class App {
   }
 
   frame(now: number) {
+    if (this.busy || !this.traffic) return;
+    if (this.showingProgress) {
+      // Terrain clipmaps, road chunks and TAA/exposure warm up over the
+      // first frames of a new world.
+      const p = this.renderer.worldProgress;
+      this.setProgress(this.loadingLabel.textContent ?? '', 0.6 + 0.4 * p);
+      if (p >= 1) {
+        this.showingProgress = false;
+        this.loadingEl.classList.remove('visible');
+      }
+    }
     const dtReal = this.last ? Math.min((now - this.last) / 1000, 0.1) : 1 / 60;
     this.last = now;
     this.fpsAcc += dtReal;
@@ -273,7 +326,7 @@ export class App {
     const st = this.renderer.stats;
     this.hudEl.textContent =
       `${this.biome.name}  ·  ${kmh} km/h  ·  ${cam.shot} cam  ·  ${this.fps.toFixed(0)} fps\n` +
-      `←/→ lanes  ↑/↓ speed  C camera  P autopilot (${t.autopilot ? 'on' : 'off'})  1-7 environments  H hide\n` +
+      `←/→ lanes  ↑/↓ speed  C camera  R new world  P autopilot (${t.autopilot ? 'on' : 'off'})  1-7 environments  H hide\n` +
       `terrain nodes ${st.terrainNodes}  road chunks ${st.roadChunks}  cars ${st.cars}`;
   }
 
@@ -298,6 +351,6 @@ export class App {
   }
 
   get settled(): boolean {
-    return this.renderer.settled;
+    return !this.busy && !!this.traffic && this.renderer.settled;
   }
 }

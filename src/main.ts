@@ -20,6 +20,7 @@ async function main() {
   const canvas = document.getElementById('screen') as HTMLCanvasElement;
   const gpu = await initGpu(canvas);
   const app = new App(gpu, parseParams());
+  await app.generate(app.params.biome);
   dev.app = app;
   dev.ready = true;
   dev.stats = () => ({
