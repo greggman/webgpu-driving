@@ -1,4 +1,5 @@
 [
-  {"name": "insp-grass-low", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "0,-6,1.1", "look": "40,-14,0", "fov": "60"}},
-  {"name": "insp-grass-lahonda", "params": {"biome": "lahonda", "cam": "custom", "s": "2400", "eye": "0,-6,1.1", "look": "40,-16,0", "fov": "60"}}
+  {"name": "insp-ocean-a", "params": {"biome": "coast", "cam": "custom", "s": "2500", "eye": "-10,25,14", "look": "60,60,0", "fov": "55"}},
+  {"name": "insp-ocean-b", "params": {"biome": "coast", "cam": "helicopter", "s": "4000", "t": "2"}},
+  {"name": "insp-ocean-c", "params": {"biome": "coast", "cam": "custom", "s": "3200", "eye": "0,30,8", "look": "30,120,0", "fov": "50"}}
 ]
