@@ -30,6 +30,7 @@ const SHOT_NAMES: Record<ShotKind, string> = {
   topdown: 'Top down',
   hood: 'Hood cam',
   front: 'Front tracking',
+  orbit: 'Orbit (drag / wheel / arrows)',
   custom: 'Custom',
 };
 

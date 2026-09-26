@@ -18,6 +18,7 @@ export type ShotKind =
   | 'topdown'
   | 'hood'
   | 'front'
+  | 'orbit'
   | 'custom';
 
 export const SHOT_KINDS: ShotKind[] = [
@@ -32,6 +33,7 @@ export const SHOT_KINDS: ShotKind[] = [
   'topdown',
   'hood',
   'front',
+  'orbit',
   'custom',
 ];
 
@@ -73,6 +75,10 @@ export class Director {
   canopy = 12; // min aerial clearance above ground (m)
   // Roadside fence line (lateral offset from the road centre, top height).
   fence: {offset: number; top: number} | null = null;
+  // User orbit camera (mouse / touch / wheel / arrows): angles around the
+  // car relative to its heading, distance, and a focus offset in car-local
+  // (forward, left, up), limited to ORBIT_FOCUS_MAX.
+  orbit = {yaw: Math.PI, pitch: 0.25, dist: 9, focus: [0, 0, 0.8]};
   // Driver eye in car-local (forward, left, up), set from the car's proportions.
   driverEye: [number, number, number] = [-0.35, 0.37, 1.1];
 
@@ -208,6 +214,7 @@ export class Director {
       topdown: 0.4,
       hood: 0.5,
       front: 0.8,
+      orbit: 0,
       custom: 0,
     };
     let total = 0;
@@ -359,6 +366,21 @@ export class Director {
         up = car.up;
         break;
       }
+      case 'orbit': {
+        const o = this.orbit;
+        target = at(o.focus[0], o.focus[1], o.focus[2]);
+        const cp = Math.cos(o.pitch);
+        const off: [number, number, number] = [
+          Math.cos(o.yaw) * cp * o.dist,
+          Math.sin(o.yaw) * cp * o.dist,
+          Math.sin(o.pitch) * o.dist,
+        ];
+        eye = at(o.focus[0] + off[0], o.focus[1] + off[1], o.focus[2] + off[2]);
+        fov = 50 * DEG;
+        aperture = 0.15;
+        smooth = 12;
+        break;
+      }
       case 'custom': {
         eye = at(...this.customEye);
         target = at(...this.customTarget);
@@ -378,6 +400,11 @@ export class Director {
     // Keep the eye above the ground (and, for aerial shots, above the
     // canopy: vegetation is GPU-scattered, so use a per-biome clearance).
     if (!interior && s.kind !== 'wheel' && s.kind !== 'hood') {
+      if (s.kind === 'orbit') {
+        // Keep the orbit above the ground; raise the pitch rather than dive.
+        const g0 = this.road.groundHeight(eye[0], eye[2]);
+        if (eye[1] < g0 + 0.3) eye = [eye[0], g0 + 0.3, eye[2]];
+      }
       const g = this.road.groundHeight(eye[0], eye[2]);
       const aerial =
         s.kind === 'helicopter' || s.kind === 'topdown' || s.kind === 'drone';
@@ -426,6 +453,19 @@ export class Director {
     if (s.kind === 'wheel') aperture = 0.06;
     void carLen;
     return {eye, target, up, fov, focus, aperture, interior, shot: s.kind};
+  }
+
+  // Start the orbit camera from a world-space eye (keeps the current view).
+  orbitFrom(eye: number[], car: Pose) {
+    const P = car.pos;
+    const d = [eye[0] - P[0], eye[1] - P[1] - 0.8, eye[2] - P[2]];
+    const f = d[0] * car.fwd[0] + d[2] * car.fwd[2];
+    const l = d[0] * car.left[0] + d[2] * car.left[2];
+    const dist = Math.min(40, Math.max(2.5, Math.hypot(f, l, d[1])));
+    this.orbit.yaw = Math.atan2(l, f);
+    this.orbit.pitch = Math.max(-0.05, Math.min(1.45, Math.asin(d[1] / dist)));
+    this.orbit.dist = dist;
+    this.orbit.focus = [0, 0, 0.8];
   }
 
   get shotKind(): ShotKind {

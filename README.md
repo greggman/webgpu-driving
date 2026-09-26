@@ -19,6 +19,8 @@ hillsides; fallen leaves on the road that the car blows away).
 | ↑ / ↓ (W / S) | speed up / slow down |
 | C | cycle camera: auto director, then each shot in turn (kept when switching environments) |
 | V | cycle the player's car |
+| drag / wheel (touch: drag / pinch) | orbit camera around the car, dolly in / out |
+| ← → ↑ ↓ (orbit camera) | move the orbit focus around the car (Shift+↑/↓: up / down; within 10 m) |
 | R (or the ↻ button, top right) | generate a new world (new seed) |
 | P | toggle autopilot |
 | ⚙ (top left) | settings: environment, time of day, clouds, speed, camera, graphics toggles |

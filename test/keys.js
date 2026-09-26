@@ -39,6 +39,26 @@ const k0 = await get('window.__dev.app.playerCar');
 await page.keyboard.press('v');
 const k1 = await get('window.__dev.app.playerCar');
 expect('V changes car', k0 !== k1, true);
+// Orbit camera: a drag on the canvas switches to it and turns the view,
+// the wheel dollies, arrows move the focus (limited).
+await page.mouse.move(480, 270);
+await page.mouse.down();
+await page.mouse.move(560, 250, {steps: 5});
+await page.mouse.up();
+expect('drag -> orbit', await forced(), 'orbit');
+const d0 = await get('window.__dev.app.director.orbit.dist');
+await page.mouse.wheel({deltaY: -300});
+const d1 = await get('window.__dev.app.director.orbit.dist');
+expect('wheel dollies in', d1 < d0, true);
+for (let i = 0; i < 40; ++i) await page.keyboard.press('ArrowLeft');
+const f = await get('window.__dev.app.director.orbit.focus');
+expect('focus limited to 10 m', Math.hypot(f[0], f[1], f[2] - 0.8) <= 10.001, true);
+await new Promise(r => setTimeout(r, 500));
+const cam = await get('window.__dev.app.lastCamera');
+const gnd = await get(
+  `window.__dev.app.road.groundHeight(${cam.eye[0]}, ${cam.eye[2]})`,
+);
+expect('orbit eye above ground', cam.eye[1] > gnd, true);
 await browser.close();
 server.close();
 process.exit(fail ? 1 : 0);

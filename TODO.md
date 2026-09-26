@@ -63,7 +63,7 @@
     takes more time? I know that will be slower but we need to find something that's not
     so distracting.
 
-[ ] Can we let the user control the camera?
+[x] Can we let the user control the camera?
 
     I think maybe an orbit camera around the car? Dolly to the car with wheel?
     I'm not sure the engine handles all angles. It would be nice to move the

@@ -97,6 +97,8 @@ function vec3Param(v: string | null): [number, number, number] | null {
     : null;
 }
 
+const ORBIT_FOCUS_MAX = 10; // m the orbit focus may move from the car
+
 export class App {
   renderer: Renderer;
   biome!: Biome;
@@ -123,6 +125,7 @@ export class App {
   ) {
     this.renderer = new Renderer(gpu);
     this.installInput();
+    this.installOrbit();
     if (!params.hud) {
       // hud=0 (screenshots): hide all on-screen UI.
       this.hudEl.classList.add('hidden');
@@ -366,6 +369,26 @@ export class App {
       this.keys.add(e.key);
       this.idle = 0;
       const t = this.traffic;
+      // Orbit camera: the arrows move the focus point around the car
+      // (W/A/S/D still drive).
+      if (this.director.forced === 'orbit' && e.key.startsWith('Arrow')) {
+        const f = this.director.orbit.focus;
+        const step = 0.5;
+        if (e.key === 'ArrowLeft') f[1] += step;
+        if (e.key === 'ArrowRight') f[1] -= step;
+        if (e.key === 'ArrowUp') f[e.shiftKey ? 2 : 0] += step;
+        if (e.key === 'ArrowDown') f[e.shiftKey ? 2 : 0] -= step;
+        f[2] = Math.max(0.2, f[2]);
+        const r = Math.hypot(f[0], f[1], f[2] - 0.8);
+        if (r > ORBIT_FOCUS_MAX) {
+          const k = ORBIT_FOCUS_MAX / r;
+          f[0] *= k;
+          f[1] *= k;
+          f[2] = 0.8 + (f[2] - 0.8) * k;
+        }
+        e.preventDefault();
+        return;
+      }
       switch (e.key) {
         case 'ArrowLeft':
         case 'a':
@@ -420,6 +443,76 @@ export class App {
       }
     });
     window.addEventListener('keyup', e => this.keys.delete(e.key));
+  }
+
+  // Drag (mouse / one finger) orbits the car, wheel / pinch dollies; the
+  // first drag switches to the orbit camera starting from the current view.
+  private installOrbit() {
+    const cv = this.gpu.canvas;
+    cv.style.touchAction = 'none';
+    const pts = new Map<number, {x: number; y: number}>();
+    let pinch = 0;
+    const ensureOrbit = () => {
+      if (this.director.forced === 'orbit') return;
+      if (this.lastCamera && this.lastPose)
+        this.director.orbitFrom(this.lastCamera.eye, this.lastPose);
+      this.setCamera('orbit');
+      this.settings.sync();
+    };
+    const spread = () => {
+      const [a, b] = [...pts.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+    cv.addEventListener('pointerdown', e => {
+      pts.set(e.pointerId, {x: e.clientX, y: e.clientY});
+      cv.setPointerCapture(e.pointerId);
+      if (pts.size === 2) pinch = spread();
+    });
+    cv.addEventListener('pointermove', e => {
+      const p = pts.get(e.pointerId);
+      if (!p) return;
+      const dx = e.clientX - p.x,
+        dy = e.clientY - p.y;
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (!this.traffic || this.busy) return;
+      const o = this.director.orbit;
+      if (pts.size === 1) {
+        if (Math.abs(dx) + Math.abs(dy) < 1) return;
+        ensureOrbit();
+        o.yaw -= dx * 0.006;
+        o.pitch = Math.max(-0.05, Math.min(1.45, o.pitch + dy * 0.005));
+      } else if (pts.size === 2) {
+        const sp = spread();
+        if (pinch > 0 && sp > 0) {
+          ensureOrbit();
+          o.dist = Math.max(2.5, Math.min(40, (o.dist * pinch) / sp));
+        }
+        pinch = sp;
+      }
+      this.idle = 0;
+    });
+    const end = (e: PointerEvent) => {
+      pts.delete(e.pointerId);
+      pinch = pts.size === 2 ? spread() : 0;
+    };
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    cv.addEventListener(
+      'wheel',
+      e => {
+        if (!this.traffic || this.busy) return;
+        e.preventDefault();
+        ensureOrbit();
+        const o = this.director.orbit;
+        o.dist = Math.max(
+          2.5,
+          Math.min(40, o.dist * Math.exp(e.deltaY * 0.0015)),
+        );
+        this.idle = 0;
+      },
+      {passive: false},
+    );
   }
 
   frame(now: number) {
@@ -504,6 +597,7 @@ export class App {
       });
     }
     const pp = playerPose!;
+    this.lastPose = pp;
     const camera0 = this.director.update(
       this.params.freeze && this.params.shotTime === null ? 0 : dt,
       pp,
@@ -544,6 +638,7 @@ export class App {
   }
 
   lastCamera: CameraState | null = null;
+  private lastPose: Pose | null = null;
 
   debugInfo(): object {
     const c = this.lastCamera;
