@@ -1,0 +1,4 @@
+[
+  {"name": "insp-tree", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "0,-14,3", "look": "30,-40,6", "fov": "50"}},
+  {"name": "insp-grass", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "0,-7,1.2", "look": "15,-12,0", "fov": "55"}}
+]

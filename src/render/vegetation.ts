@@ -24,6 +24,17 @@ const IMP_RES = 512;
 const GRASS_CAP_NEAR = 300000;
 const GRASS_CAP_FAR = 400000;
 const TILE = 8;
+// Base scale per species so procedural trees reach realistic heights.
+const TREE_SCALE: Record<string, number> = {
+  oak: 2.0,
+  birch: 1.7,
+  bare: 1.8,
+  pine: 1.1,
+  redwood: 1.0,
+  cypress: 1.0,
+  palm: 1.2,
+  cactus: 1.0,
+};
 
 interface TypeDef {
   mesh: number;
@@ -530,8 +541,8 @@ export class Vegetation {
         cluster: isCactus ? 5 : dense ? 0 : 1,
         minRoad: isCactus ? road.halfWidth + 4 : forestEdge,
         maxSlope: 0.45,
-        scaleMin: isCactus ? 0.7 : 0.75,
-        scaleMax: isCactus ? 1.25 : 1.3,
+        scaleMin: (isCactus ? 0.7 : 0.75) * TREE_SCALE[k],
+        scaleMax: (isCactus ? 1.25 : 1.3) * TREE_SCALE[k],
       });
     }
     if (S.bushes > 0) {

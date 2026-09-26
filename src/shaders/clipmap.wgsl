@@ -38,3 +38,14 @@ fn normals(@builtin(global_invocation_id) id: vec3u) {
   let dhdz = (hu - hd) / (sz * c.z);
   textureStore(clipOut, i, vec4f(hc.x, dhdx, dhdz, hc.y));
 }
+
+// Debug probe: evaluate the terrain function directly at a point.
+@group(0) @binding(6) var<storage, read_write> probe: array<vec4f, 2>;
+
+@compute @workgroup_size(1)
+fn probeHeight() {
+  let p = probe[0].xy;
+  let ri = roadInfo(p);
+  let n = naturalHeight(p.x + F.misc.x, p.y + F.misc.y, ri.d);
+  probe[1] = vec4f(roadBlend(n, ri.d, ri.y, ri.bridge), ri.d, ri.y, n);
+}

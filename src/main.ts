@@ -26,6 +26,7 @@ async function main() {
     frames: app.frames,
     biome: app.biome.id,
     ...app.renderer.stats,
+    ...app.debugInfo(),
   });
   const loop = (t: number) => {
     app.frame(t);

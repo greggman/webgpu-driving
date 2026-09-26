@@ -42,6 +42,12 @@ export class TerrainRenderer {
   // World-space (f64) min corner of each level; NaN = needs full rebuild.
   private levelMin: Array<[number, number]> = [];
   private dirty = new Set<number>();
+  private probePipe: GPUComputePipeline;
+  private probeBuf: GPUBuffer;
+  private probeRead: GPUBuffer;
+  private probeBG: GPUBindGroup;
+  private probeBusy = false;
+  probeResult: number[] = [];
   minY = -100;
   maxY = 2000;
 
@@ -127,6 +133,33 @@ export class TerrainRenderer {
       );
     }
 
+    this.probePipe = device.createComputePipeline({
+      label: 'terrain-probe',
+      layout: 'auto',
+      compute: {module, entryPoint: 'probeHeight'},
+    });
+    this.probeBuf = device.createBuffer({
+      label: 'terrain-probe',
+      size: 32,
+      usage:
+        GPUBufferUsage.STORAGE |
+        GPUBufferUsage.COPY_SRC |
+        GPUBufferUsage.COPY_DST,
+    });
+    this.probeRead = device.createBuffer({
+      label: 'terrain-probe-read',
+      size: 32,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+    this.probeBG = device.createBindGroup({
+      label: 'terrain-probe-bg',
+      layout: this.probePipe.getBindGroupLayout(0),
+      entries: [
+        {binding: 0, resource: {buffer: frame.buffer}},
+        {binding: 1, resource: roadTexView},
+        {binding: 6, resource: {buffer: this.probeBuf}},
+      ],
+    });
     this.nodeBuf = device.createBuffer({
       label: 'terrain-nodes',
       size: MAX_NODES * 16,
@@ -281,6 +314,33 @@ export class TerrainRenderer {
 
   get pendingUpdates(): number {
     return this.dirty.size;
+  }
+
+  // Debug: evaluate the GPU terrain function at a local xz (async readback).
+  probe(enc: GPUCommandEncoder, x: number, z: number) {
+    if (this.probeBusy) return;
+    this.device.queue.writeBuffer(
+      this.probeBuf,
+      0,
+      new Float32Array([x, z, 0, 0]),
+    );
+    const pass = enc.beginComputePass({label: 'terrain-probe'});
+    pass.setPipeline(this.probePipe);
+    pass.setBindGroup(0, this.probeBG);
+    pass.dispatchWorkgroups(1);
+    pass.end();
+    enc.copyBufferToBuffer(this.probeBuf, 0, this.probeRead, 0, 32);
+    this.probeBusy = true;
+  }
+
+  afterSubmit() {
+    if (!this.probeBusy || this.probeRead.mapState !== 'unmapped') return;
+    void this.probeRead.mapAsync(GPUMapMode.READ).then(() => {
+      const a = new Float32Array(this.probeRead.getMappedRange().slice(0));
+      this.probeResult = [...a.slice(4, 8)];
+      this.probeRead.unmap();
+      this.probeBusy = false;
+    });
   }
 
   encodeClipmapUpdates(enc: GPUCommandEncoder) {

@@ -17,7 +17,8 @@ export type ShotKind =
   | 'passenger'
   | 'topdown'
   | 'hood'
-  | 'front';
+  | 'front'
+  | 'custom';
 
 export const SHOT_KINDS: ShotKind[] = [
   'chase',
@@ -31,6 +32,7 @@ export const SHOT_KINDS: ShotKind[] = [
   'topdown',
   'hood',
   'front',
+  'custom',
 ];
 
 export interface CameraState {
@@ -62,8 +64,13 @@ export class Director {
   private smoothEye: [number, number, number] | null = null;
   private smoothTarget: [number, number, number] | null = null;
   forced: ShotKind | null = null;
+  // Car-relative eye/target (forward, left, up) for cam=custom.
+  customEye: [number, number, number] = [-8, 3, 2];
+  customTarget: [number, number, number] = [0, 0, 1];
+  customFov = 50;
   private weights: Partial<Record<ShotKind, number>>;
   cutCount = 0;
+  canopy = 12; // min aerial clearance above ground (m)
 
   constructor(
     private road: Road,
@@ -119,6 +126,7 @@ export class Director {
       topdown: 0.4,
       hood: 0.5,
       front: 0.8,
+      custom: 0,
     };
     let total = 0;
     const w = SHOT_KINDS.map(k => {
@@ -191,11 +199,13 @@ export class Director {
         break;
       }
       case 'helicopter': {
-        const r = 45 + s.seed * 25;
-        const a = s.side * (0.6 + t * 0.06) + s.seed * 6;
-        eye = at(Math.cos(a) * r, Math.sin(a) * r, 22 + s.seed * 18);
-        target = at(6, 0, 0.5);
-        fov = 32 * DEG;
+        // Wide aerial that keeps the horizon in frame: the car sits in the
+        // lower third with the landscape ahead of it.
+        const r = 55 + s.seed * 35;
+        const a = s.side * (0.5 + t * 0.05) + (s.seed - 0.5) * 1.2;
+        eye = at(-Math.cos(a) * r, Math.sin(a) * r * 0.7, 14 + s.seed * 16);
+        target = at(40, 0, 2);
+        fov = 38 * DEG;
         aperture = 0.0;
         smooth = 1.5;
         break;
@@ -265,6 +275,12 @@ export class Director {
         up = car.up;
         break;
       }
+      case 'custom': {
+        eye = at(...this.customEye);
+        target = at(...this.customTarget);
+        fov = this.customFov * DEG;
+        break;
+      }
       case 'front': {
         // Ahead of the car, looking back at it (tracking).
         eye = at(9 + Math.sin(t * 0.3) * 2, s.side * 1.5, 1.2);
@@ -275,10 +291,16 @@ export class Director {
         break;
       }
     }
-    // Keep the eye above the ground.
+    // Keep the eye above the ground (and, for aerial shots, above the
+    // canopy: vegetation is GPU-scattered, so use a per-biome clearance).
     if (!interior && s.kind !== 'wheel' && s.kind !== 'hood') {
       const g = this.road.groundHeight(eye[0], eye[2]);
-      if (eye[1] < g + 0.5) eye = [eye[0], g + 0.5, eye[2]];
+      const aerial =
+        s.kind === 'helicopter' || s.kind === 'topdown' || s.kind === 'drone';
+      const offRoad =
+        Math.abs(this.road.info(eye[0], eye[2]).d) > this.road.halfWidth + 2;
+      const clear = aerial ? this.canopy : offRoad ? 1.0 : 0.5;
+      if (eye[1] < g + clear) eye = [eye[0], g + clear, eye[2]];
     }
     if (smooth > 0 && this.smoothEye && this.smoothTarget) {
       const k = 1 - Math.exp(-smooth * dt);

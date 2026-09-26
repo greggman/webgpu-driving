@@ -24,9 +24,10 @@ const flag = (name, def) => {
 const outDir = path.resolve(flag('--out', path.join(here, '..', 'screenshots')));
 const [W, H] = flag('--size', '1280x720').split('x').map(Number);
 const extra = flag('--params', '');
+const shotFile = flag('--shots', path.join(here, 'shots.json'));
 const filter = args[0];
 
-const shots = JSON.parse(await fs.readFile(path.join(here, 'shots.json'), 'utf8'))
+const shots = JSON.parse(await fs.readFile(shotFile, 'utf8'))
   .filter(s => !filter || s.name.includes(filter));
 await fs.mkdir(outDir, {recursive: true});
 

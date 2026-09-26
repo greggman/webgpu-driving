@@ -347,10 +347,15 @@ export class Renderer {
     F.set('prevCam', scene.prevCamera ? loc(scene.prevCamera.eye) : eye);
     const sk = scene.sky;
     F.set('sun', [...sk.lightDir, sk.isSun ? 1 : 0]);
-    F.set('sunColor', [...sk.lightColor, biome.sky.exposure]);
+    // Night: let the image stay dark (auto exposure would otherwise turn
+    // moonlight into daylight).
+    F.set('sunColor', [
+      ...sk.lightColor,
+      biome.sky.exposure * (1 - 0.85 * sk.night),
+    ]);
     F.set('moon', [...sk.moonDir, sk.night]);
     F.set('misc', [ox, oz, w, h]);
-    F.set('misc2', [jx, jy, 0, 0]);
+    F.set('misc2', [jx, jy, this.frameIndex % 8, 0]);
     const wind = biome.weather.wind;
     F.set('weather', [
       wind * 0.8,
@@ -412,7 +417,11 @@ export class Renderer {
       biome.weather.dust,
       1,
     ]);
-    F.set('grade', [...biome.sky.grade, biome.sky.saturation]);
+    const nightTint = [0.75, 0.88, 1.25];
+    F.set('grade', [
+      ...biome.sky.grade.map((g, i) => g * (1 + (nightTint[i] - 1) * sk.night)),
+      biome.sky.saturation * (1 - 0.35 * sk.night),
+    ]);
     F.set('grade2', [biome.sky.contrast, 0.35, 0.012, 0]);
     F.set('car', [...loc(scene.player.pos), scene.player.heading]);
     const fogBase = road.atS(scene.playerS).y;
@@ -479,6 +488,7 @@ export class Renderer {
 
     const enc = d.createCommandEncoder({label: 'frame'});
     this.terrain.encodeClipmapUpdates(enc);
+    if (DEBUG.has('probe')) this.terrain.probe(enc, eye[0], eye[2]);
     this.atmosphere.update(enc);
     this.vegetation.encodeCompute(enc, this.frameBG);
 
@@ -553,6 +563,7 @@ export class Renderer {
       this.exposureBias,
     );
     d.queue.submit([enc.finish()]);
+    if (DEBUG.has('probe')) this.terrain.afterSubmit();
     this.frameIndex++;
     this.stats.terrainNodes = this.terrain.nodeCount;
     this.stats.roadChunks = this.roadMesh!.visible.length;

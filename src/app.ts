@@ -19,6 +19,9 @@ export interface Params {
   shotTime: number | null;
   freeze: boolean;
   hud: boolean;
+  eye: [number, number, number] | null;
+  look: [number, number, number] | null;
+  fov: number | null;
 }
 
 export function parseParams(): Params {
@@ -35,7 +38,18 @@ export function parseParams(): Params {
     shotTime: num('t'),
     freeze: q.get('freeze') === '1',
     hud: q.get('hud') !== '0',
+    eye: vec3Param(q.get('eye')),
+    look: vec3Param(q.get('look')),
+    fov: num('fov'),
   };
+}
+
+function vec3Param(v: string | null): [number, number, number] | null {
+  if (!v) return null;
+  const a = v.split(',').map(Number);
+  return a.length === 3 && a.every(x => isFinite(x))
+    ? [a[0], a[1], a[2]]
+    : null;
 }
 
 export class App {
@@ -78,6 +92,19 @@ export class App {
       this.params.seed,
       this.biome.shotWeights,
     );
+    // Aerial shots must clear the canopy (vegetation is GPU-scattered, so we
+    // use a conservative per-biome height).
+    const kinds = this.biome.scatter.treeKinds;
+    this.director.canopy = kinds.includes('redwood')
+      ? 55
+      : kinds.includes('pine')
+        ? 40
+        : kinds.includes('cactus')
+          ? 14
+          : 25;
+    if (this.params.eye) this.director.customEye = this.params.eye;
+    if (this.params.look) this.director.customTarget = this.params.look;
+    if (this.params.fov) this.director.customFov = this.params.fov;
     if (this.params.cam) {
       this.director.forced = this.params.cam;
       this.director.cut(s0, this.params.cam);
@@ -208,6 +235,7 @@ export class App {
       headlights: lights,
     });
     this.prevCam = camera;
+    this.lastCamera = camera;
     this.frames++;
     if (this.frames % 10 === 0) this.updateHud(camera);
   }
@@ -220,6 +248,26 @@ export class App {
       `${this.biome.name}  ·  ${kmh} km/h  ·  ${cam.shot} cam  ·  ${this.fps.toFixed(0)} fps\n` +
       `←/→ lanes  ↑/↓ speed  C camera  P autopilot (${t.autopilot ? 'on' : 'off'})  1-7 environments  H hide\n` +
       `terrain nodes ${st.terrainNodes}  road chunks ${st.roadChunks}  cars ${st.cars}`;
+  }
+
+  lastCamera: CameraState | null = null;
+
+  debugInfo(): object {
+    const c = this.lastCamera;
+    if (!c) return {};
+    const g = this.road.groundHeight(c.eye[0], c.eye[2]);
+    return {
+      eye: c.eye.map(v => Math.round(v * 10) / 10),
+      ground: Math.round(g * 10) / 10,
+      carS: Math.round(this.traffic.player.s),
+      cpuRoad: (() => {
+        const i = this.road.info(c.eye[0], c.eye[2]);
+        return [i.d, i.y].map(v => Math.round(v * 10) / 10);
+      })(),
+      gpuProbe: this.renderer.terrain.probeResult.map(
+        v => Math.round(v * 10) / 10,
+      ),
+    };
   }
 
   get settled(): boolean {

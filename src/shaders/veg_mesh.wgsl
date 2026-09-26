@@ -58,11 +58,14 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   let inst = insts[in.inst];
   if (fadeDiscard(inst.fade, in.pos.xy)) { discard; }
   let card = isCard(in.mat);
+  var leafShade = 1.0;
   if (card) {
-    let a = leafAlpha(in.uv, in.mat, fract(inst.tint * 7.0 + f32(in.inst % 13u) * 0.1));
-    if (a < 0.5) { discard; }
+    let la = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7));
+    if (la.x < 0.5) { discard; }
+    leafShade = la.y;
   }
-  let m = vegMaterial(in.mat, in.uv, inst.tint, in.local);
+  var m = vegMaterial(in.mat, in.uv, inst.tint, in.local);
+  m.albedo *= leafShade;
   var n = normalize(in.normal);
   if (!card && !ff) { n = -n; }
   var s: Surface;
@@ -100,6 +103,7 @@ struct SOut {
   @location(0) uv: vec2f,
   @location(1) @interpolate(flat) mat: u32,
   @location(2) @interpolate(flat) inst: u32,
+  @location(3) local: vec3f,
 };
 
 @vertex
@@ -111,15 +115,15 @@ fn vsShadow(v: VIn, @builtin(instance_index) ii: u32) -> SOut {
   o.uv = v.uv;
   o.mat = u32(v.mat + 0.5);
   o.inst = idx;
+  o.local = v.pos;
   return o;
 }
 
 @fragment
 fn fsShadow(in: SOut) {
   if (isCard(in.mat)) {
-    let inst = insts[in.inst];
-    let a = leafAlpha(in.uv, in.mat, fract(inst.tint * 7.0 + f32(in.inst % 13u) * 0.1));
-    if (a < 0.5) { discard; }
+    let a = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7));
+    if (a.x < 0.5) { discard; }
   }
 }
 
@@ -165,10 +169,14 @@ struct BakeTargets {
 @fragment
 fn fsBake(in: BakeOut, @builtin(front_facing) ff: bool) -> BakeTargets {
   let card = isCard(in.mat);
+  var shade = 1.0;
   if (card) {
-    if (leafAlpha(in.uv, in.mat, 0.37) < 0.5) { discard; }
+    let la = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7));
+    if (la.x < 0.5) { discard; }
+    shade = la.y;
   }
-  let m = vegMaterial(in.mat, in.uv, 0.5, in.local);
+  var m = vegMaterial(in.mat, in.uv, 0.5, in.local);
+  m.albedo *= shade;
   var n = normalize(in.normal);
   if (!card && !ff) { n = -n; }
   var ao = 1.0;

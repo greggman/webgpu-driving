@@ -59,31 +59,60 @@ fn windOffset(worldPos: vec3f, weight: f32, phase: f32) -> vec3f {
   return vec3f(wdir.x * d, -abs(d) * 0.15, wdir.y * d);
 }
 
-// Procedural leaf cluster alpha in card UV space.
-fn leafAlpha(uv: vec2f, mat: u32, seed: f32) -> f32 {
+// Procedural leaf cluster in card UV space: returns (alpha, per-leaf shade).
+fn leafAlpha(uv: vec2f, mat: u32, seed: f32) -> vec2f {
   let p = uv * 2.0 - 1.0;
+  let sd = i32(seed * 997.0);
   if (mat == 2u) {
-    // Needle spray: many thin strokes radiating from the base of the card.
-    let r = length(p - vec2f(0.0, -1.0));
-    let a = atan2(p.x, p.y + 1.0);
-    let strands = abs(fract(a * 9.0 + seed * 3.0) - 0.5);
-    let body = 1.0 - smoothstep(0.75, 1.0, length(p * vec2f(1.0, 0.8)));
-    return step(strands, 0.32 + 0.1 * body) * body * step(0.12, r);
+    // Needle spray: thin strokes along the card, clumped into tufts.
+    let g = uv * vec2f(7.0, 3.0);
+    let ci = floor(g);
+    var a = 0.0;
+    var shade = 1.0;
+    for (var y = -1; y <= 1; y++) {
+      for (var x = -1; x <= 1; x++) {
+        let c = ci + vec2f(f32(x), f32(y));
+        let h = hash01(i32(c.x) + sd, i32(c.y) * 7 + 1);
+        let h2 = hash01(i32(c.x) * 5 + 3, i32(c.y) + sd);
+        let q = g - c - vec2f(h, h2);
+        let ang = (h - 0.5) * 0.9;
+        let rq = vec2f(q.x * cos(ang) - q.y * sin(ang), q.x * sin(ang) + q.y * cos(ang));
+        let e = abs(rq.x) * 14.0 + max(abs(rq.y) - 0.45, 0.0) * 6.0;
+        if (1.0 - e > a) { a = 1.0 - e; shade = 0.8 + 0.4 * h2; }
+      }
+    }
+    // Elongated spray with a ragged fringe (not a disc).
+    let fringe = 0.25 * vnoise(uv * vec2f(9.0, 5.0) + seed * 7.0);
+    let body = 1.0 - smoothstep(0.55, 0.95, length(p * vec2f(1.7, 1.0)) + fringe);
+    return vec2f(step(0.0, a) * step(0.35, body), shade);
   }
-  // Broadleaf: a cluster of small ellipses.
+  // Broadleaf: cellular scatter of small rotated leaves.
+  let g = uv * 5.0;
+  let ci = floor(g);
   var a = 0.0;
-  for (var i = 0; i < 9; i++) {
-    let h = hash01(i32(seed * 997.0) + i * 13, i * 7 + 3);
-    let h2 = hash01(i * 31 + 5, i32(seed * 131.0) + i);
-    let c = vec2f(h * 1.5 - 0.75, h2 * 1.5 - 0.75);
-    let ang = h * 12.0 + h2 * 4.0;
-    let q = p - c;
-    let rq = vec2f(q.x * cos(ang) - q.y * sin(ang), q.x * sin(ang) + q.y * cos(ang));
-    let e = length(rq * vec2f(3.2, 1.9));
-    a = max(a, 1.0 - smoothstep(0.75, 0.95, e));
+  var shade = 1.0;
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      let c = ci + vec2f(f32(x), f32(y));
+      let h = hash01(i32(c.x) + sd, i32(c.y) + 17);
+      let h2 = hash01(i32(c.x) + 31, i32(c.y) + sd);
+      let center = c + vec2f(0.2 + 0.6 * h, 0.2 + 0.6 * h2);
+      // Keep leaves inside a rounded cluster.
+      let cuv = center / 5.0 * 2.0 - 1.0;
+      if (length(cuv) > 0.95) { continue; }
+      let q = g - center;
+      let ang = h * 6.2831 + h2 * 2.0;
+      let rq = vec2f(q.x * cos(ang) - q.y * sin(ang), q.x * sin(ang) + q.y * cos(ang));
+      // Pointed leaf shape.
+      let w = 0.36 * (1.0 - abs(rq.y) / 0.62);
+      let e = abs(rq.x) / max(w, 1e-3);
+      if (abs(rq.y) < 0.62 && e < 1.0) {
+        a = 1.0;
+        shade = 0.72 + 0.5 * fract(h * 13.7 + h2 * 5.3) - 0.12 * e;
+      }
+    }
   }
-  let edge = 1.0 - smoothstep(0.85, 1.0, length(p));
-  return a * edge;
+  return vec2f(a, shade);
 }
 
 struct VegMat {
@@ -137,7 +166,7 @@ fn vegMaterial(mat: u32, uv: vec2f, tint: f32, localPos: vec3f) -> VegMat {
 
 // Stable per-pixel dither for LOD cross-fades (changes per frame for TAA).
 fn ditherHash(px: vec2f) -> f32 {
-  let f = f32(u32(F.cam.w * 60.0) % 8u);
+  let f = F.misc2.z;
   return fract(52.9829189 * fract(dot(px + f * vec2f(5.588, 3.219), vec2f(0.06711056, 0.00583715))));
 }
 
