@@ -55,12 +55,13 @@ fn isCard(mat: u32) -> bool {
 
 @fragment
 fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
+  let duv = fwidth(in.uv);
   let inst = insts[in.inst];
   if (fadeDiscard(inst.fade, in.pos.xy)) { discard; }
   let card = isCard(in.mat);
   var leafShade = 1.0;
   if (card) {
-    let la = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7));
+    let la = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv);
     if (la.x < 0.5) { discard; }
     leafShade = la.y;
   }
@@ -121,8 +122,9 @@ fn vsShadow(v: VIn, @builtin(instance_index) ii: u32) -> SOut {
 
 @fragment
 fn fsShadow(in: SOut) {
+  let duv = fwidth(in.uv);
   if (isCard(in.mat)) {
-    let a = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7));
+    let a = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv);
     if (a.x < 0.5) { discard; }
   }
 }
@@ -168,10 +170,11 @@ struct BakeTargets {
 
 @fragment
 fn fsBake(in: BakeOut, @builtin(front_facing) ff: bool) -> BakeTargets {
+  let duv = fwidth(in.uv);
   let card = isCard(in.mat);
   var shade = 1.0;
   if (card) {
-    let la = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7));
+    let la = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv);
     if (la.x < 0.5) { discard; }
     shade = la.y;
   }

@@ -2,6 +2,7 @@
 //   AO (multiplied into HDR) -> TAA -> motion blur -> depth of field ->
 //   auto exposure -> bloom -> tonemap/grade/composite to the swapchain.
 import {shaderModule} from '../gpu/gpu';
+import {ts} from '../gpu/profiler';
 import {FRAME_PRELUDE} from './shaders';
 import fullscreen from '../shaders/post/fullscreen.wgsl';
 import taaSrc from '../shaders/post/taa.wgsl';
@@ -310,6 +311,7 @@ export class Post {
     ) => {
       const p = enc.beginRenderPass({
         label,
+        timestampWrites: ts(label.startsWith('bloom') ? 'bloom' : label),
         colorAttachments: [
           {view, loadOp: load, storeOp: 'store', clearValue: [0, 0, 0, 1]},
         ],
@@ -332,7 +334,10 @@ export class Post {
     pass('motion-blur', this.postA.createView(), this.mbPipe, this.mbBGs[cur]);
     pass('dof', this.postB.createView(), this.dofPipe, this.dofBG);
 
-    const cp = enc.beginComputePass({label: 'auto-exposure'});
+    const cp = enc.beginComputePass({
+      label: 'auto-exposure',
+      timestampWrites: ts('exposure'),
+    });
     cp.setPipeline(this.expBuildPipe);
     cp.setBindGroup(0, this.expBG);
     cp.dispatchWorkgroups(

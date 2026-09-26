@@ -26,6 +26,12 @@ async function main() {
     frames: app.frames,
     biome: app.biome.id,
     ...app.renderer.stats,
+    gpu: Object.fromEntries(
+      Object.entries(app.renderer.profiler.ms).map(([k, v]) => [
+        k,
+        Math.round(v * 100) / 100,
+      ]),
+    ),
     ...app.debugInfo(),
   });
   const loop = (t: number) => {

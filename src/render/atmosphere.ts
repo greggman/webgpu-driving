@@ -1,6 +1,7 @@
 // Atmosphere LUTs (transmittance, multi-scattering, sky-view, aerial
 // perspective), SH ambient, cloud noise, and the sky draw.
 import {shaderModule} from '../gpu/gpu';
+import {ts} from '../gpu/profiler';
 import {ATMO_PRELUDE, FRAME_PRELUDE, RENDER_PRELUDE} from './shaders';
 import lutSrc from '../shaders/atmo_lut.wgsl';
 import apSrc from '../shaders/atmo_ap.wgsl';
@@ -200,7 +201,10 @@ export class Atmosphere {
   }
 
   update(enc: GPUCommandEncoder) {
-    const pass = enc.beginComputePass({label: 'atmosphere'});
+    const pass = enc.beginComputePass({
+      label: 'atmosphere',
+      timestampWrites: ts('atmosphere'),
+    });
     if (this.lutsDirty) {
       this.lutsDirty = false;
       pass.setPipeline(this.transPipe);

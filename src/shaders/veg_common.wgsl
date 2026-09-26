@@ -59,60 +59,20 @@ fn windOffset(worldPos: vec3f, weight: f32, phase: f32) -> vec3f {
   return vec3f(wdir.x * d, -abs(d) * 0.15, wdir.y * d);
 }
 
-// Procedural leaf cluster in card UV space: returns (alpha, per-leaf shade).
-fn leafAlpha(uv: vec2f, mat: u32, seed: f32) -> vec2f {
-  let p = uv * 2.0 - 1.0;
-  let sd = i32(seed * 997.0);
-  if (mat == 2u) {
-    // Needle spray: thin strokes along the card, clumped into tufts.
-    let g = uv * vec2f(7.0, 3.0);
-    let ci = floor(g);
-    var a = 0.0;
-    var shade = 1.0;
-    for (var y = -1; y <= 1; y++) {
-      for (var x = -1; x <= 1; x++) {
-        let c = ci + vec2f(f32(x), f32(y));
-        let h = hash01(i32(c.x) + sd, i32(c.y) * 7 + 1);
-        let h2 = hash01(i32(c.x) * 5 + 3, i32(c.y) + sd);
-        let q = g - c - vec2f(h, h2);
-        let ang = (h - 0.5) * 0.9;
-        let rq = vec2f(q.x * cos(ang) - q.y * sin(ang), q.x * sin(ang) + q.y * cos(ang));
-        let e = abs(rq.x) * 14.0 + max(abs(rq.y) - 0.45, 0.0) * 6.0;
-        if (1.0 - e > a) { a = 1.0 - e; shade = 0.8 + 0.4 * h2; }
-      }
-    }
-    // Elongated spray with a ragged fringe (not a disc).
-    let fringe = 0.25 * vnoise(uv * vec2f(9.0, 5.0) + seed * 7.0);
-    let body = 1.0 - smoothstep(0.55, 0.95, length(p * vec2f(1.7, 1.0)) + fringe);
-    return vec2f(step(0.0, a) * step(0.35, body), shade);
-  }
-  // Broadleaf: cellular scatter of small rotated leaves.
-  let g = uv * 5.0;
-  let ci = floor(g);
-  var a = 0.0;
-  var shade = 1.0;
-  for (var y = -1; y <= 1; y++) {
-    for (var x = -1; x <= 1; x++) {
-      let c = ci + vec2f(f32(x), f32(y));
-      let h = hash01(i32(c.x) + sd, i32(c.y) + 17);
-      let h2 = hash01(i32(c.x) + 31, i32(c.y) + sd);
-      let center = c + vec2f(0.2 + 0.6 * h, 0.2 + 0.6 * h2);
-      // Keep leaves inside a rounded cluster.
-      let cuv = center / 5.0 * 2.0 - 1.0;
-      if (length(cuv) > 0.95) { continue; }
-      let q = g - center;
-      let ang = h * 6.2831 + h2 * 2.0;
-      let rq = vec2f(q.x * cos(ang) - q.y * sin(ang), q.x * sin(ang) + q.y * cos(ang));
-      // Pointed leaf shape.
-      let w = 0.36 * (1.0 - abs(rq.y) / 0.62);
-      let e = abs(rq.x) / max(w, 1e-3);
-      if (abs(rq.y) < 0.62 && e < 1.0) {
-        a = 1.0;
-        shade = 0.72 + 0.5 * fract(h * 13.7 + h2 * 5.3) - 0.12 * e;
-      }
-    }
-  }
-  return vec2f(a, shade);
+// Leaf cluster lookup in card UV space from the baked leaf-card texture
+// (group-0 binding 11, see leafgen.wgsl): returns (alpha, per-leaf shade).
+// Alpha is sharpened by its screen-space derivative so the cutout stays crisp
+// and keeps its coverage at distance.
+// duv = fwidth(uv) computed by the caller in uniform control flow.
+fn leafAlpha(uv: vec2f, mat: u32, seed: f32, duv: vec2f) -> vec2f {
+  let variant = vec2f(floor(fract(seed * 7.13) * 2.0), floor(fract(seed * 3.71) * 2.0));
+  let tuv = (clamp(uv, vec2f(0.01), vec2f(0.99)) + variant) * 0.5;
+  let layer = select(0, 1, mat == 2u);
+  let lod = clamp(log2(max(max(duv.x, duv.y) * 256.0, 1e-4)), 0.0, 6.0);
+  let t = textureSampleLevel(matTex, linSampler, tuv, layer, lod);
+  // Lower the cutout threshold at coarse mips to preserve coverage.
+  let thr = mix(0.5, 0.28, saturate(lod / 4.0));
+  return vec2f(select(0.0, 1.0, t.r > thr), t.g);
 }
 
 struct VegMat {

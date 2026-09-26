@@ -2,6 +2,7 @@
 // per-mesh-LOD indirect draws (LOD0 mesh, LOD1 mesh, octahedral impostor),
 // impostor baking, and frustum-based grass.
 import {shaderModule} from '../gpu/gpu';
+import {ts} from '../gpu/profiler';
 import {aabbInFrustum} from '../math/mat4';
 import {Biome, TreeKind} from '../world/biome';
 import {Road} from '../world/road';
@@ -15,6 +16,8 @@ import scatterSrc from '../shaders/veg_scatter.wgsl';
 import meshSrc from '../shaders/veg_mesh.wgsl';
 import impSrc from '../shaders/veg_impostor.wgsl';
 import grassSrc from '../shaders/grass.wgsl';
+import leafgenSrc from '../shaders/leafgen.wgsl';
+import {FRAME_PRELUDE} from './shaders';
 import {DEPTH_FORMAT, GBUFFER_TARGETS} from './targets';
 
 const MAX_MESHES = 16;
@@ -92,6 +95,7 @@ export class Vegetation {
   private impShadowPipe: GPURenderPipeline;
   private bakePipe: GPURenderPipeline;
   private impSampler: GPUSampler;
+  private leafSampler: GPUSampler;
   // Grass.
   private grassParams: GPUBuffer;
   private tileBuf: GPUBuffer;
@@ -118,13 +122,16 @@ export class Vegetation {
     shadowLayout: GPUBindGroupLayout,
   ) {
     const d = device;
-    const tex = d.createTexture({
-      label: 'material-array',
-      size: [4, 4, 1],
-      format: 'rgba8unorm',
-      usage: GPUTextureUsage.TEXTURE_BINDING,
+    this.leafSampler = d.createSampler({
+      label: 'leaf-sampler',
+      magFilter: 'linear',
+      minFilter: 'linear',
+      mipmapFilter: 'linear',
     });
-    this.materialView = tex.createView({dimension: '2d-array'});
+    this.materialView = this.bakeLeafTextures().createView({
+      label: 'leaf-cards-view',
+      dimension: '2d-array',
+    });
     this.meshInfoBuf = d.createBuffer({
       label: 'veg-mesh-info',
       size: MAX_MESHES * 16,
@@ -508,6 +515,88 @@ export class Vegetation {
     });
   }
 
+  // Leaf/needle card textures (2 layers, 2x2 variants each, mipmapped).
+  private bakeLeafTextures(): GPUTexture {
+    const d = this.device;
+    const SIZE = 512;
+    const MIPS = 7;
+    const tex = d.createTexture({
+      label: 'leaf-cards',
+      size: [SIZE, SIZE, 2],
+      mipLevelCount: MIPS,
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    const module = shaderModule(
+      d,
+      FRAME_PRELUDE + '\n' + leafgenSrc,
+      'leafgen',
+    );
+    const bake = d.createComputePipeline({
+      label: 'leafgen-bake',
+      layout: 'auto',
+      compute: {module, entryPoint: 'bake'},
+    });
+    const down = d.createComputePipeline({
+      label: 'leafgen-downsample',
+      layout: 'auto',
+      compute: {module, entryPoint: 'downsample'},
+    });
+    const enc = d.createCommandEncoder({label: 'leafgen'});
+    for (let layer = 0; layer < 2; ++layer) {
+      const ub = d.createBuffer({
+        label: `leafgen-params-${layer}`,
+        size: 16,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+      d.queue.writeBuffer(ub, 0, new Uint32Array([layer, SIZE, 0, 0]));
+      const view = (mip: number) =>
+        tex.createView({
+          label: `leaf-cards-${layer}-${mip}`,
+          dimension: '2d',
+          baseArrayLayer: layer,
+          arrayLayerCount: 1,
+          baseMipLevel: mip,
+          mipLevelCount: 1,
+        });
+      let pass = enc.beginComputePass({label: `leafgen-bake-${layer}`});
+      pass.setPipeline(bake);
+      pass.setBindGroup(
+        0,
+        d.createBindGroup({
+          label: `leafgen-bake-bg-${layer}`,
+          layout: bake.getBindGroupLayout(0),
+          entries: [
+            {binding: 0, resource: view(0)},
+            {binding: 1, resource: {buffer: ub}},
+          ],
+        }),
+      );
+      pass.dispatchWorkgroups(SIZE / 8, SIZE / 8);
+      pass.end();
+      for (let m = 1; m < MIPS; ++m) {
+        pass = enc.beginComputePass({label: `leafgen-mip-${layer}-${m}`});
+        pass.setPipeline(down);
+        pass.setBindGroup(
+          0,
+          d.createBindGroup({
+            label: `leafgen-mip-bg-${layer}-${m}`,
+            layout: down.getBindGroupLayout(0),
+            entries: [
+              {binding: 0, resource: view(m)},
+              {binding: 2, resource: view(m - 1)},
+            ],
+          }),
+        );
+        const sz = Math.max(1, SIZE >> m);
+        pass.dispatchWorkgroups(Math.ceil(sz / 8), Math.ceil(sz / 8));
+        pass.end();
+      }
+    }
+    d.queue.submit([enc.finish()]);
+    return tex;
+  }
+
   setWorld(biome: Biome, road: Road) {
     this.biome = biome;
     this.road = road;
@@ -725,7 +814,11 @@ export class Vegetation {
       const bg0 = d.createBindGroup({
         label: `impostor-bake-bg0-${mi}`,
         layout: this.bakePipe.getBindGroupLayout(0),
-        entries: [{binding: 0, resource: {buffer: this.frame.buffer}}],
+        entries: [
+          {binding: 0, resource: {buffer: this.frame.buffer}},
+          {binding: 6, resource: this.leafSampler},
+          {binding: 11, resource: this.materialView},
+        ],
       });
       const view = (t: GPUTexture) =>
         t.createView({dimension: '2d', baseArrayLayer: mi, arrayLayerCount: 1});
@@ -874,7 +967,10 @@ export class Vegetation {
 
   encodeCompute(enc: GPUCommandEncoder, frameBG: GPUBindGroup) {
     if (!this.enabled) return;
-    const pass = enc.beginComputePass({label: 'vegetation-scatter'});
+    const pass = enc.beginComputePass({
+      label: 'vegetation-scatter',
+      timestampWrites: ts('scatter+grass'),
+    });
     pass.setBindGroup(0, frameBG);
     pass.setPipeline(this.scatterPipe);
     for (const l of this.layers) {
@@ -917,7 +1013,13 @@ export class Vegetation {
   draw(pass: GPURenderPassEncoder, emptyBG: GPUBindGroup) {
     if (!this.enabled) return;
     pass.setBindGroup(2, emptyBG);
-    this.drawMeshes(pass, [0, 1, 2], false);
+    const dbg = new URLSearchParams(location.search).get('debug') ?? '';
+    this.drawMeshes(
+      pass,
+      [0, 1, 2].filter(l => !dbg.includes(`nolod${l}`)),
+      false,
+    );
+    if (dbg.includes('nograss')) return;
     if (this.tileCount > 0 && this.biome!.scatter.grass > 0) {
       pass.setPipeline(this.grassNearPipe);
       pass.setBindGroup(1, this.grassNearBG);
@@ -930,9 +1032,11 @@ export class Vegetation {
 
   drawShadow(pass: GPURenderPassEncoder, cascade: number) {
     if (!this.enabled) return;
+    if (location.search.includes('novegshadow')) return;
     this.drawMeshes(
       pass,
-      cascade < 2 ? [0, 1] : cascade === 2 ? [0, 1, 2] : [1, 2],
+      // Near cascades only need nearby (LOD0) casters.
+      cascade < 2 ? [0] : cascade === 2 ? [0, 1] : [1, 2],
       true,
     );
   }

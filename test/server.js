@@ -14,7 +14,7 @@ export function startServer(port = 8080) {
   });
 }
 
-if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === url.pathToFileURL(process.argv[1]).href) {
   const port = Number(process.argv[2] ?? 8080);
   await startServer(port);
   console.log(`serving ${root} at http://localhost:${port}/`);

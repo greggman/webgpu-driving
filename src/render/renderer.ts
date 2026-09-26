@@ -1,6 +1,7 @@
 // Frame orchestration: uniforms, streaming (origin rebasing, road texture,
 // clipmaps, road chunks), shadow cascades, the main G-buffer pass and post.
 import {Gpu} from '../gpu/gpu';
+import {Profiler, setProfiler, ts} from '../gpu/profiler';
 import {
   frustumPlanes,
   invert,
@@ -95,11 +96,14 @@ export class Renderer {
   frameIndex = 0;
   private prevViewProj = new Float32Array(16);
   exposureBias = 1;
-  stats = {terrainNodes: 0, roadChunks: 0, cars: 0, gpuMs: 0};
+  stats = {terrainNodes: 0, roadChunks: 0, cars: 0};
+  readonly profiler: Profiler;
 
   constructor(private gpu: Gpu) {
     const d = gpu.device;
     this.frame = new FrameData(d);
+    this.profiler = new Profiler(d, gpu.hasTimestamps);
+    setProfiler(this.profiler);
     this.targets = new Targets(d);
     this.frameLayout = d.createBindGroupLayout({
       label: 'frame-layout',
@@ -512,6 +516,7 @@ export class Renderer {
     F.upload();
 
     const enc = d.createCommandEncoder({label: 'frame'});
+    this.profiler.beginFrame();
     this.terrain.encodeClipmapUpdates(enc);
     if (DEBUG.has('probe')) this.terrain.probe(enc, eye[0], eye[2]);
     this.atmosphere.update(enc);
@@ -521,6 +526,7 @@ export class Renderer {
     for (let i = 0; i < CASCADES; ++i) {
       const pass = enc.beginRenderPass({
         label: `shadow-cascade-${i}`,
+        timestampWrites: ts('shadows'),
         colorAttachments: [],
         depthStencilAttachment: {
           view: this.shadows.layerViews[i],
@@ -543,6 +549,7 @@ export class Renderer {
     const t = this.targets;
     const main = enc.beginRenderPass({
       label: 'main',
+      timestampWrites: ts('main'),
       colorAttachments: [
         {
           view: t.color.createView(),
@@ -596,7 +603,9 @@ export class Renderer {
         motionBlur: DEBUG.has('nomb') ? 0 : scene.frozen ? 0 : 0.5,
       },
     );
+    this.profiler.endFrame(enc);
     d.queue.submit([enc.finish()]);
+    this.profiler.afterSubmit();
     if (DEBUG.has('probe')) this.terrain.afterSubmit();
     this.frameIndex++;
     this.stats.terrainNodes = this.terrain.nodeCount;

@@ -2,6 +2,7 @@
 // as the camera moves) + a CDLOD quadtree of instanced 32x32 grid patches
 // with vertex morphing between LODs.
 import {shaderModule} from '../gpu/gpu';
+import {ts} from '../gpu/profiler';
 import {aabbInFrustum} from '../math/mat4';
 import {RENDER_PRELUDE, terrainComputePrelude} from './shaders';
 import clipSrc from '../shaders/clipmap.wgsl';
@@ -345,7 +346,10 @@ export class TerrainRenderer {
 
   encodeClipmapUpdates(enc: GPUCommandEncoder) {
     if (!this.dirty.size) return;
-    const pass = enc.beginComputePass({label: 'terrain-clipmap-update'});
+    const pass = enc.beginComputePass({
+      label: 'terrain-clipmap-update',
+      timestampWrites: ts('clipmap'),
+    });
     const wg = CLIP_RES / 8;
     for (const l of this.dirty) {
       pass.setPipeline(this.heightPipe);
