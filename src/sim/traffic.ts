@@ -59,7 +59,6 @@ export class Traffic {
   readonly laneW: number;
   readonly lanes: number;
   autopilot = true;
-  private overtaking = false;
   private manualLaneUntil = 0;
   time = 0;
 
@@ -285,53 +284,71 @@ export class Traffic {
     this.player.desired = clamp(this.player.desired + delta, 3, c * 1.6);
   }
 
+  // Overtake state: the car being passed and when the manoeuvre began.
+  private passTarget: Vehicle | null = null;
+  private laneChangeAt = -1e9;
+  laneFlips = 0; // for tests: number of autopilot lane-target changes
+
+  private setTarget(d: number) {
+    const p = this.player;
+    if (Math.abs(d - p.dTarget) > 0.1) {
+      p.dTarget = d;
+      this.laneChangeAt = this.time;
+      this.laneFlips++;
+    }
+  }
+
   private autopilotStep() {
     const p = this.player;
     if (this.time < this.manualLaneUntil) return;
     const home = this.laneD(1, 0);
-    const {gap, other} = this.leader(p, p.dTarget);
     const cruise = this.biome.road.cruise;
-    if (this.lanes === 1) {
-      const passD = this.laneD(-1, 0);
-      if (!this.overtaking) {
-        // Slow car ahead? Overtake using the oncoming lane when clear.
-        if (
-          other &&
-          gap < 45 &&
-          other.dir === 1 &&
-          other.speed < cruise * 0.9
-        ) {
-          if (this.laneClear(p, passD)) {
-            p.dTarget = passD;
-            this.overtaking = true;
-          }
-        }
-      } else {
-        // Return once there's room in the home lane.
-        if (this.laneClear(p, home)) {
-          p.dTarget = home;
-          this.overtaking = false;
-        } else if (!this.laneClear(p, passD) && Math.abs(p.d - passD) < 0.5) {
-          // Something is coming: slow down and duck back in behind.
-          p.desired = cruise * 0.5;
-        }
+    const passD = this.lanes === 1 ? this.laneD(-1, 0) : this.laneD(1, 1);
+    const sinceChange = this.time - this.laneChangeAt;
+    const inHome = Math.abs(p.dTarget - home) < 0.1;
+    if (inHome) {
+      this.passTarget = null;
+      p.desired = cruise;
+      // Slow car ahead? Pass it when the passing lane is clear.
+      if (sinceChange < 3) return;
+      const {gap, other} = this.leader(p, home);
+      const slow = this.lanes === 1 ? 0.9 : 0.92;
+      if (
+        other &&
+        other.dir === 1 &&
+        gap < (this.lanes === 1 ? 45 : 50) &&
+        other.speed < cruise * slow &&
+        this.laneClear(p, passD)
+      ) {
+        this.passTarget = other;
+        this.setTarget(passD);
       }
-      if (!this.overtaking) p.desired = cruise;
+      return;
+    }
+    // Passing: commit for a while, then return once the passed car is well
+    // behind and the home lane has room. (Returning as soon as the home lane
+    // looked clear made the target flip every frame: the car ended up
+    // straddling the centre line, jittering.)
+    const t = this.passTarget;
+    const passed =
+      !t ||
+      !this.vehicles.includes(t) ||
+      p.s - t.s > (p.length + t.length) / 2 + 12;
+    if (sinceChange > 2 && passed && this.laneClear(p, home)) {
+      this.setTarget(home);
+      return;
+    }
+    if (this.lanes === 1 && !this.laneClear(p, passD)) {
+      // Oncoming traffic: abort — drop back and tuck in behind the car.
+      p.desired = cruise * 0.5;
+      if (
+        t &&
+        t.s - p.s > (p.length + t.length) / 2 + 4 &&
+        this.laneClear(p, home)
+      ) {
+        this.setTarget(home);
+      }
     } else {
-      // Multi-lane: keep right, pass on the left.
-      const left = this.laneD(1, 1);
-      if (Math.abs(p.dTarget - home) < 0.1) {
-        if (
-          other &&
-          gap < 50 &&
-          other.speed < cruise * 0.92 &&
-          this.laneClear(p, left)
-        ) {
-          p.dTarget = left;
-        }
-      } else if (this.laneClear(p, home)) {
-        p.dTarget = home;
-      }
       p.desired = cruise;
     }
   }
