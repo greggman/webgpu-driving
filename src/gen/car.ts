@@ -155,15 +155,15 @@ export function carSpec(kind: CarKind): CarSpec {
         wheelbase: 2.85,
         wheelR: 0.365,
         track: 1.67,
-        clearance: 0.15,
-        noseY: 0.8,
+        clearance: 0.135,
+        noseY: 0.74,
         hoodY: 0.95,
         beltF: 0.97,
         beltR: 1.02,
         deckY: 1.06,
         tailY: 1.0,
         roofY: 1.44,
-        roofW: 0.72,
+        roofW: 0.78,
         wsBase: 0.86,
         roofFront: -0.06,
         roofBack: -0.72,
@@ -505,8 +505,8 @@ export function buildCarBody(sp: CarSpec): MeshData {
       const t = clamp01((z - sp.wsBase) / (nose - sp.wsBase));
       let hood =
         sp.noseY +
-        (Math.min(sp.hoodY, sp.beltF) - sp.noseY) * (1 - Math.pow(t, 1.4));
-      hood -= 0.025 * smooth(0.9, 1, t);
+        (Math.min(sp.hoodY, sp.beltF) - sp.noseY) * (1 - Math.pow(t, 2.3));
+      hood -= 0.05 * smooth(0.85, 1, t);
       // The front fender must clear the tyre (arch + sheet metal).
       const fz = (z - axles[0]) / (R + 0.5);
       hood = Math.max(hood, 2 * R + 0.09 - 0.5 * fz * fz);
@@ -540,7 +540,7 @@ export function buildCarBody(sp: CarSpec): MeshData {
     }
     return w;
   };
-  const archR = R + 0.03;
+  const archR = R + 0.018;
   const bottomLine = (z: number, top: number) => {
     const zn = Math.abs(z) / (L / 2);
     let b = sp.clearance + 0.1 * smooth(0.72, 1, zn);
@@ -585,11 +585,21 @@ export function buildCarBody(sp: CarSpec): MeshData {
       // beltline and a concave sculpt line low on the doors.
       const yn = (y - yc) / Math.max(hh, 1e-3);
       x *= 1 - 0.06 * Math.max(0, yn);
+      const sh = top - 0.12;
       // Rocker tuck-under.
       x *= 1 - 0.05 * smooth(-0.55, -0.95, yn);
-      const sh = top - 0.12;
+      // The lower door plane falls away below the shoulder (light / dark
+      // split at midday).
+      x -= 0.018 * smooth(sh - 0.03, sh - 0.3, y) * smooth(-0.6, 0.2, yn);
+      // Fascias: the upper front leans back; the rear lamp line overhangs
+      // an undercut bumper.
+      if (z > nose - 0.25)
+        x *= 1 - 0.06 * smooth(nose - 0.25, nose, z) * clamp01(yn + 0.3);
+      if (z < tail + 0.35)
+        x -=
+          0.018 * smooth(0.1, -0.3, yn) * smooth(tail + 0.35, tail + 0.05, z);
       x +=
-        0.02 * Math.exp(-Math.abs(y - sh) / 0.014) * smooth(0.3, 0.6, yn + 0.5);
+        0.03 * Math.exp(-Math.abs(y - sh) / 0.01) * smooth(0.3, 0.6, yn + 0.5);
       x -=
         0.012 * Math.exp(-Math.pow((y - (bot + (top - bot) * 0.3)) / 0.04, 2));
       if (hood && s > 0) {
@@ -608,7 +618,7 @@ export function buildCarBody(sp: CarSpec): MeshData {
   const endFactorAt = (z: number) => {
     const e = Math.min(nose - z, z - tail);
     // Fascias wrap round into the sides instead of ending in a flat plate.
-    return Math.sqrt(clamp01(e / (pickup ? 0.08 : 0.1)));
+    return Math.sqrt(clamp01(e / (pickup ? 0.08 : z < 0 ? 0.07 : 0.1)));
   };
   const lower: P3[][] = zs.map(z => section(z, endFactorAt(z)));
   const RN = lower[0].length;
@@ -647,7 +657,7 @@ export function buildCarBody(sp: CarSpec): MeshData {
     for (const sx of [-1, 1]) {
       const rad = archR + 0.01;
       const x0 = sx * 0.2,
-        x1 = sx * halfWidth(az) * 0.99;
+        x1 = sx * halfWidth(az) * 0.92;
       const grid: P3[][] = [];
       for (let a = 0; a <= 16; ++a) {
         const th = ((-25 + (a / 16) * 230) * Math.PI) / 180;

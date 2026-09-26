@@ -365,8 +365,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Headlight units in the upper corners of the nose, wrapping around
     // onto the fender.
     let hu = (ax - 0.5) / 0.42;
-    var top = 0.05 + 0.035 * saturate(hu);
-    var bot = -0.05;
+        // Thickens and sweeps up outboard.
+    var top = 0.03 + 0.07 * saturate(hu);
+    var bot = -0.035 - 0.02 * saturate(hu);
     if (style == 2u || style == 5u) { top = 0.07; bot = -0.06; }
     if (style == 3u) { top = 0.035 + 0.04 * saturate(hu); bot = -0.035; }
     let front = ln.z > 0.08 || (ax > 0.88 && lp.z > halfL - 0.32);
@@ -375,8 +376,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     }
     // Main grille: shape per kind, chrome / gloss surround.
     if (lp.z > halfL - 0.35 && ln.z > 0.25) {
-                  var y0 = -0.26; var y1 = 0.02; var wt = 0.42; var wb = 0.38;
-            cell = 1u;
+                        var y0 = -0.3; var y1 = -0.04; var wt = 0.34; var wb = 0.4;
+      cell = 0u;
       if (style == 1u) { y0 = -0.07; y1 = 0.0; wt = 0.4; wb = 0.36; }
       if (style == 2u) { y0 = -0.26; y1 = 0.05; wt = 0.46; wb = 0.46; cell = 1u; }
       if (style == 3u) { y0 = -0.3; y1 = -0.1; wt = 0.5; wb = 0.62; cell = 1u; }
@@ -387,7 +388,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       let inside = gy > y0 && gy < y1 && gx < gw;
       let edge = min(min(gy - y0, y1 - gy), (gw - gx) * halfW);
       if (inside) {
-        part = select(3u, 5u, edge < 0.014 && style != 3u);
+                // Surround: gloss black on the sedan, chrome on the others.
+        part = select(3u, select(5u, 4u, style == 0u), edge < 0.014 && style != 3u);
         recess = smoothstep(0.0, 0.05, edge);
       }
       // Lower intake below a body-colour bumper bar.
@@ -421,8 +423,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
         lamp = ax < 0.96 && abs(dy - 0.04) < 0.028;
         bezel = ax < 0.98 && abs(dy - 0.04) < 0.04;
       } else {
-                lamp = (ax > 0.55 && ax < 0.99 && dy > -0.06 && dy < 0.1) || (ax <= 0.58 && abs(dy - 0.045) < 0.016);
-        bezel = false;
+                        lamp = (ax > 0.5 && ax < 0.99 && dy > -0.07 && dy < 0.11) || (ax <= 0.58 && abs(dy - 0.045) < 0.022);
+        bezel = ax > 0.47 && dy > -0.085 && dy < 0.125;
       }
       if (lamp) { part = 2u; } else if (bezel) { part = 4u; }
     }
@@ -478,10 +480,10 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     if (style == 2u || style == 4u || style == 5u) {
       strip = max(strip, 1.0 - smoothstep(0.004, 0.009, abs(dy + 0.06)));
     }
-    s.albedo = vec3f(0.08, 0.004, 0.004);
+        s.albedo = vec3f(0.3, 0.012, 0.01);
     s.rough = 0.05;
     coat = 1.0;
-    emissive = vec3f(1.0, 0.04, 0.02) * (strip * (3.0 + 5.0 * lightsOn) + 0.15 + 14.0 * brake);
+    emissive = vec3f(1.0, 0.04, 0.02) * (strip * (6.0 + 5.0 * lightsOn) + 0.9 + 14.0 * brake);
   } else if (part == 3u) {
     // Grille insert, recessed: bright walls, dark cells, shadowed toward
     // the surround.
@@ -558,8 +560,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       // Trunk lid (sedan, coupe) front edge.
       if (style == 0u || style == 3u) { seam = min(seam, abs(lp.z - (c.p3.z - 0.05))); }
     }
-        // Bumper parting lines front and rear.
+            // Bumper parting lines front and rear.
     if (lp.z < -halfL + 0.6 || lp.z > halfL - 0.6) { seam = min(seam, abs(lp.y - 0.55)); }
+    if (ln.z < -0.3) { seam = min(seam, abs(lp.y - (ty - 0.2)) * 0.7); }
     if (ln.z < -0.3) {
       // Trunk / tailgate opening on the rear face.
       if (ax < 0.8) { seam = min(seam, abs(lp.y - (ty - 0.13))); }
@@ -585,9 +588,11 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Gloss-black trim (window frames, pillars, seals).
     s.albedo = vec3f(0.02);
     s.rough = 0.22;
-  } else if (mat == 5u) {
-    s.albedo = vec3f(0.015);
+    } else if (mat == 5u) {
+    // Underbody / wheel-well liners: near black, in shadow.
+    s.albedo = vec3f(0.006);
     s.rough = 0.9;
+    s.ao *= 0.3;
   } else if (mat == 6u) {
     s.albedo = vec3f(0.9);
     s.metal = 1.0;
@@ -651,7 +656,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     coat = 0.5;
   }
   s.ao = min(s.ao, ao);
-  if (body || mat == 2u) { s.ao *= mix(1.0, 0.25, saturate(-in.lnormal.y * 1.5)); }
+    if (body || mat == 2u || mat == 5u) { s.ao *= mix(1.0, 0.25, saturate(-in.lnormal.y * 1.5)); }
   let sh = sunShadow(wp, s.n) * cloudShadow(wp);
   var col = clearcoatShade(s, wp, sh, coat);
   if (coat > 0.0 && s.metal > 0.0) {
