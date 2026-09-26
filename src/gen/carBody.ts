@@ -499,7 +499,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         cy = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4,
         cz = (q[0][2] + q[1][2] + q[2][2] + q[3][2]) / 4;
       for (const az of axles)
-        if (cx > xIn && Math.hypot(cz - az, cy - R) < archR + 0.075) return -1;
+        if (cx > xIn && Math.hypot(cz - az, cy - R) < archR + 0.09) return -1;
     }
     if (s <= 1) return MAT_UNDER;
     // The skin left inboard of a trimmed arch is the wheel well's wall.
@@ -604,10 +604,12 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   // Profile (radius, x offset from the skin): on the skin, flare out, roll
   // under, then back up inside past the skin cut (a closed channel, so the
   // cut edge is never visible).
+  // A gentle swell that blends tangentially into the skin (not a band).
   const LIP: Array<[number, number]> = [
-    [archR + 0.095, 0.0],
-    [archR + 0.055, 0.014],
-    [archR + 0.02, 0.012],
+    [archR + 0.15, 0.0],
+    [archR + 0.1, 0.005],
+    [archR + 0.055, 0.011],
+    [archR + 0.02, 0.01],
     [archR, -0.012],
     [archR - 0.004, -0.06],
     [archR + 0.11, -0.06],
@@ -628,11 +630,13 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       const N = 36;
       for (let a = 0; a <= N; ++a) {
         const th = th0 + ((th1 - th0) * a) / N;
+        // The swell fades out at the ends of the arch (no flap).
+        const fe = sm(0, 0.15, a / N) * sm(1, 0.85, a / N);
         const row: P3[] = [];
         for (const [r, dx] of LIP) {
           const z = az + Math.cos(th) * r,
             y = R + Math.sin(th) * r;
-          row.push([sx * Math.max(skinX(z, y) + dx, xIn), y, z]);
+          row.push([sx * Math.max(skinX(z, y) + dx * fe, xIn), y, z]);
         }
         lg.push(row);
       }

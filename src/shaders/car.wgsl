@@ -585,7 +585,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     var seam = 1.0;
     let doorBot = c.p7.y + 0.14;
     let doorF = c.p3.x - 0.08;
-    var doorR = select(c.p3.z + 0.1, c.p3.y - 0.9, style == 3u);
+        var doorR = select(c.p3.z + 0.1, c.p3.y - 0.9, style == 3u);
+    // Sedan rear doors end ~1 m behind the B pillar (not in the quarter).
+    if (style == 0u) { doorR = c.p3.y - 1.0; }
     if (style == 5u) { doorR = c.p3.y; }
     if (ax > 0.8 && lp.y < c.p3.w && lp.y > doorBot) {
       seam = min(min(abs(lp.z - doorF), abs(lp.z - c.p3.y)), abs(lp.z - doorR));
@@ -598,7 +600,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       if (style == 0u || style == 3u) { seam = min(seam, abs(lp.z - (c.p3.z - 0.05))); }
     }
             // Bumper parting lines front and rear.
-        if (lp.z < -halfL + 0.6 || lp.z > halfL - 0.6) { seam = min(seam, abs(lp.y - 0.55)); }
+                if (lp.z < -halfL + 0.6 || (decals && lp.z > halfL - 0.6)) { seam = min(seam, abs(lp.y - 0.55)); }
     // The rear bumper cover's upper edge runs forward to the rear arch.
     if (lp.z < c.p7.x - c.p0.x * 0.5 && lp.z > -halfL + 0.5) {
       seam = min(seam, abs(lp.y - 0.55) + step(0.1, abs(lp.y - 0.55)));

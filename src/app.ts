@@ -57,7 +57,7 @@ const SHOWROOM_VIEWS: Record<string, [number[], number[], number]> = {
 };
 
 const PAINTS: Record<string, [number, number, number, number]> = {
-  red: [0.42, 0.01, 0.008, 0.15], // solid red: barely metallic
+  red: [0.34, 0.008, 0.006, 0.15], // deep solid red: barely metallic
   blue: [0.02, 0.09, 0.25, 0.75],
   silver: [0.62, 0.62, 0.6, 0.85],
   white: [0.75, 0.74, 0.7, 0.45],
