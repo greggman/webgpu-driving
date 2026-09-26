@@ -53,7 +53,7 @@ export const SEDAN_BODY: BodyCurves = {
     [-2.3, 1.02],
     [-2.0, 1.045],
     [-1.6, 1.05],
-    [-1.0, 1.03],
+    [-1.2, 1.04],
     [0.0, 1.0],
     [1.18, 0.965],
     [1.6, 0.91],
@@ -119,8 +119,8 @@ export const SEDAN_BODY: BodyCurves = {
   ],
   beltIn: [
     [-2.4, 0.96],
-    [-1.5, 0.935],
-    [0.0, 0.94],
+    [-1.5, 0.92],
+    [0.0, 0.925],
     [1.18, 0.95],
     [2.4, 0.965],
   ],
@@ -134,7 +134,12 @@ export const SEDAN_BODY: BodyCurves = {
     [1.18, 0.93],
   ],
   rockerIn: 0.92,
-  doorIn: 1.0,
+  doorIn: [
+    [-2.1, 1.0],
+    [-1.4, 1.012],
+    [1.3, 1.012],
+    [2.0, 1.0],
+  ],
   // Lower door character line: rises gently toward the rear.
   doorLine: [
     [-2.2, 0.6],
@@ -143,8 +148,9 @@ export const SEDAN_BODY: BodyCurves = {
     [1.5, 0.46],
     [2.2, 0.45],
   ],
-  noseRake: {bumperY: 0.42, depth: 0.07},
-  tailRake: {bumperY: 0.52, depth: 0.05},
+  noseRake: {bumperY: 0.42, depth: 0.07, cornerDepth: 0.06},
+  tailRake: {bumperY: 0.52, depth: 0.05, cornerDepth: 0.04},
+  creases: {door: 1.0, shoulder: 1.0, belt: 0.5},
   cabin: {
     windscreenBase: 1.18,
     roofFront: 0.25,
