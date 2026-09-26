@@ -44,6 +44,11 @@ import {
 
 export type Knots = Array<[number, number]>; // (z, value)
 
+function sm(a: number, b: number, x: number) {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
 export interface BodyCurves {
   top: Knots;
   bottom: Knots;
@@ -55,7 +60,14 @@ export interface BodyCurves {
   beltIn: Knots | number; // belt x / width (tumblehome starts here)
   railIn: Knots | number; // roof rail x / width over the cabin
   rockerIn: number; // sill corner x / width
-  doorIn: number; // lower-door x / width (tuck under the shoulder)
+  doorIn: Knots | number; // lower-door x / width (tuck under the shoulder)
+  // Lower door character line height (the door section point sits on it);
+  // default: 45% of the way from the rocker to the shoulder.
+  doorLine?: Knots;
+  // Raked fascias: above `bumperY` the upper nose / tail sits `depth`
+  // metres behind the bumper face.
+  noseRake?: {bumperY: number; depth: number};
+  tailRake?: {bumperY: number; depth: number};
   cabin: {
     windscreenBase: number; // z where the windscreen meets the cowl
     roofFront: number; // z of the windscreen header
@@ -221,6 +233,8 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   const g = bodyGeom(c);
   const shoulder = makeCurve(c.shoulder),
     rocker = makeCurve(c.rocker),
+    doorIn = asCurve(c.doorIn),
+    doorLine = c.doorLine ? makeCurve(c.doorLine) : null,
     width = makeCurve(c.width),
     beltIn = asCurve(c.beltIn),
     railIn = asCurve(c.railIn);
@@ -237,13 +251,24 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       bl = Math.max(g.belt(z), sh + 0.005);
     const bx = W * beltIn(z);
     const ry = Math.max(g.rail(z), bl);
-    const rx = inCabin(z) ? W * railIn(z) : bx;
+    // The roof rail blends into the belt over 0.1 m at the cabin ends.
+    const fr = inCabin(z)
+      ? Math.min(
+          1,
+          (z - cab.rearGlassBase) / 0.1,
+          (cab.windscreenBase - z) / 0.1,
+        )
+      : 0;
+    const rx = bx + (W * railIn(z) - bx) * Math.max(fr, 0);
+    const dl = doorLine
+      ? Math.min(Math.max(doorLine(z), rk + 0.01), sh - 0.01)
+      : rk + (sh - rk) * 0.45;
     const tp = Math.max(g.top(z), bot + 0.02);
     const pts: Array<[number, number]> = [
       [0, bot],
       [W * c.rockerIn * 0.82, bot + (rk - bot) * 0.15],
       [W * c.rockerIn, rk],
-      [W * c.doorIn, rk + (sh - rk) * 0.45],
+      [W * doorIn(z), dl],
       [W, sh],
       [bx, bl],
       [rx, ry + 0.0005],
@@ -273,14 +298,14 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
 
   // Wheel arches: pull the outer skin up onto the arch circle (this trims
   // the opening; inboard the skin stays, forming the well's inner wall).
-  const xIn = sp.track / 2 - 0.32;
+  const xIn = sp.track / 2 - 0.2;
   const trimArch = (x: number, y: number, z: number): number => {
     for (const az of axles) {
       const dz = z - az;
       if (Math.abs(dz) >= archR) continue;
       const yA = R + Math.sqrt(archR * archR - dz * dz);
       if (y >= yA) continue;
-      const w = Math.min(1, Math.max(0, (Math.abs(x) - xIn) / 0.08));
+      const w = Math.min(1, Math.max(0, (Math.abs(x) - xIn) / 0.015));
       y += (yA - y) * w;
     }
     return y;
@@ -292,10 +317,33 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     const {p, span} = sectionHalf(z);
     spans = span;
     const ring: P3[] = [];
-    for (let k = 0; k < p.length; ++k)
-      ring.push([-p[k][0], trimArch(p[k][0], p[k][1], z), z]);
-    for (let k = p.length - 2; k >= 0; --k)
-      ring.push([p[k][0], trimArch(p[k][0], p[k][1], z), z]);
+    // Raked fascias: the upper nose / tail leans back from the bumper.
+    const zr = (y: number) => {
+      let zz = z;
+      if (c.noseRake) {
+        const r = c.noseRake;
+        zz -=
+          r.depth *
+          sm(r.bumperY, r.bumperY + 0.25, y) *
+          sm(nose - 0.5, nose, z);
+      }
+      if (c.tailRake) {
+        const r = c.tailRake;
+        zz +=
+          r.depth *
+          sm(r.bumperY, r.bumperY + 0.25, y) *
+          sm(tail + 0.5, tail, z);
+      }
+      return zz;
+    };
+    for (let k = 0; k < p.length; ++k) {
+      const y = trimArch(p[k][0], p[k][1], z);
+      ring.push([-p[k][0], y, zr(y)]);
+    }
+    for (let k = p.length - 2; k >= 0; --k) {
+      const y = trimArch(p[k][0], p[k][1], z);
+      ring.push([p[k][0], y, zr(y)]);
+    }
     grid.push(ring);
   }
   const H = spans.length; // half-ring samples
@@ -434,18 +482,19 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       );
     }
   // Plates.
-  box(
-    push,
-    [0, sp.headlightY - 0.32, nose + 0.004],
-    [0.26, 0.06, 0.006],
-    MAT_PLATE,
-  );
-  box(
-    push,
-    [0, sp.taillightY - 0.3, tail - 0.004],
-    [0.26, 0.065, 0.006],
-    MAT_PLATE,
-  );
+  // Plates sit on the skin at their height (the fascias may be raked).
+  const faceZ = (y: number, front: boolean) => {
+    let best = front ? -1e9 : 1e9;
+    for (const ring of grid)
+      for (const q of ring)
+        if (Math.abs(q[0]) < 0.12 && Math.abs(q[1] - y) < 0.04)
+          best = front ? Math.max(best, q[2]) : Math.min(best, q[2]);
+    return Math.abs(best) > 1e8 ? (front ? nose : tail) : best;
+  };
+  const fy = sp.headlightY - 0.32,
+    ry = sp.taillightY - 0.3;
+  box(push, [0, fy, faceZ(fy, true) + 0.004], [0.26, 0.06, 0.006], MAT_PLATE);
+  box(push, [0, ry, faceZ(ry, false) - 0.004], [0.26, 0.065, 0.006], MAT_PLATE);
 
   const out = orient(new Float32Array(verts));
   return {vertices: out, count: out.length / 8};

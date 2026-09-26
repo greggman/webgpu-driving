@@ -284,7 +284,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   if (dot(n, v) < 0.0) { n = -n; }
   // Cabin materials (interior mesh, or the inside of the body shell).
   let wheelMat = in.mat == 7u || in.mat == 8u || in.mat >= 20u;
-  if ((in.mat >= 10u && in.mat < 20u) || (!ff && !wheelMat)) {
+    // (Underbody / wheel-well liners stay dark from either side.)
+  if ((in.mat >= 10u && in.mat < 20u) || (!ff && !wheelMat && in.mat != 5u)) {
     var s: Surface;
     let im = interiorShade(select(10u, in.mat, in.mat >= 10u), lp, c);
     s.albedo = im.rgb;
@@ -427,7 +428,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
         lamp = ax < 0.96 && abs(dy - 0.04) < 0.028;
         bezel = ax < 0.98 && abs(dy - 0.04) < 0.04;
       } else {
-                        lamp = (ax > 0.5 && ax < 0.99 && dy > -0.07 && dy < 0.11) || (ax <= 0.58 && abs(dy - 0.045) < 0.022);
+                        // Wraparound L clusters (vertical outboard, horizontal on top) and a
+        // thin centre bar joining them.
+        lamp = (ax > 0.84 && ax < 0.99 && dy > -0.07 && dy < 0.11) || (ax > 0.58 && ax <= 0.84 && dy > 0.04 && dy < 0.11) || (ax <= 0.58 && abs(dy - 0.08) < 0.008);
         bezel = ax > 0.47 && dy > -0.085 && dy < 0.125;
       }
       if (lamp) { part = 2u; } else if (bezel) { part = 4u; }

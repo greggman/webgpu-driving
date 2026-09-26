@@ -161,7 +161,7 @@ export function carSpec(kind: CarKind): CarSpec {
         width: 1.86,
         wheelbase: 2.85,
         wheelR: 0.365,
-        track: 1.67,
+        track: 1.6,
         clearance: 0.135,
         noseY: 0.74,
         hoodY: 0.95,
