@@ -27,11 +27,11 @@ export const SEDAN_BODY: BodyCurves = {
     // windscreen
     [0.7, 1.3],
     [0.95, 1.18],
-    [1.18, 1.02],
+    [1.18, 1.025],
     // hood -> nose
-    [1.6, 0.935],
-    [2.0, 0.86],
-    [2.25, 0.79],
+    [1.6, 0.955],
+    [2.0, 0.88],
+    [2.25, 0.805],
     [2.35, 0.75],
     [2.395, 0.7],
     [2.41, 0.64],
@@ -125,25 +125,25 @@ export const SEDAN_BODY: BodyCurves = {
   ],
   beltIn: [
     [-2.4, 0.96],
-    [-1.5, 0.92],
-    [0.0, 0.925],
-    [1.18, 0.95],
+    [-1.5, 0.9],
+    [0.0, 0.905],
+    [1.18, 0.94],
     [2.4, 0.965],
   ],
   railIn: [
     [-1.6, 0.78],
-    [-1.45, 0.71],
-    [-1.1, 0.72],
-    [-0.8, 0.745],
-    [0.2, 0.765],
+    [-1.45, 0.69],
+    [-1.1, 0.7],
+    [-0.8, 0.725],
+    [0.2, 0.745],
     [0.7, 0.8],
     [1.18, 0.93],
   ],
   rockerIn: 0.92,
   doorIn: [
     [-2.1, 1.0],
-    [-1.4, 1.012],
-    [1.3, 1.012],
+    [-1.4, 1.0],
+    [1.3, 1.0],
     [2.0, 1.0],
   ],
   // Lower door character line: rises gently toward the rear.
@@ -156,8 +156,7 @@ export const SEDAN_BODY: BodyCurves = {
   ],
   noseRake: {bumperY: 0.42, depth: 0.05, cornerDepth: 0.04},
   tailRake: {bumperY: 0.52, depth: 0.08, cornerDepth: 0.07},
-  creases: {door: 0.8, shoulder: 0.85, belt: 0.4},
-  hoodLines: {x: 0.38, height: 0.03, crease: 0.7},
+  creases: {door: 0.8, shoulder: 1.0, belt: 0.75},
   cabin: {
     windscreenBase: 1.18,
     roofFront: 0.42,
@@ -173,7 +172,7 @@ export const SEDAN_BODY: BodyCurves = {
   },
   chromeSill: true,
   chromeDLO: true,
-  doorBow: 0.01,
+  doorBow: 0.015,
   // Lamps, grille and intake: openings in the front / rear views (x, y).
   openings: [
     // Slim swept headlamps tucked under the hood edge, eyebrow DRL on top.
@@ -260,6 +259,20 @@ export const SEDAN_BODY: BodyCurves = {
       strip: [0.0, 1.0],
       depth: 0.04,
     },
+    // Rear diffuser band below the plate: steps the bumper section.
+    {
+      kind: 'intake',
+      end: 'rear',
+      mirror: 'merge',
+      outline: [
+        [0.0, 0.455],
+        [0.5, 0.455],
+        [0.6, 0.43],
+        [0.52, 0.395],
+        [0.0, 0.395],
+      ],
+      depth: 0.05,
+    },
     // Thin horizontal reflector slots in the rear bumper corners.
     {
       kind: 'intake',
@@ -274,5 +287,5 @@ export const SEDAN_BODY: BodyCurves = {
       depth: 0.02,
     },
   ],
-  hoodDome: 0.015,
+  hoodDome: 0.0,
 };
