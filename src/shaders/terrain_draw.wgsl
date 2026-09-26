@@ -151,7 +151,11 @@ fn fs(in: VOut) -> GBufferOut {
       var crop: vec3f;
       if (kind < 0.33) { crop = vec3f(0.62, 0.52, 0.22); }       // wheat
       else if (kind < 0.6) { crop = vec3f(0.2, 0.33, 0.07); }     // green crop
-      else if (kind < 0.8) { crop = vec3f(0.3, 0.22, 0.14); }     // plowed
+      else if (kind < 0.8) {                                      // plowed furrows
+        crop = vec3f(0.3, 0.22, 0.14) * (0.75 + 0.35 * (0.5 + 0.5 * rows));
+        let fs = cos(dot(world2, fld.dir) * 3.14159 / 0.9) * 0.6 * saturate(1.0 - dist / 250.0);
+        n = normalize(n + vec3f(fld.dir.x, 0.0, fld.dir.y) * fs);
+      }
       else { crop = vec3f(0.42, 0.45, 0.14); }                    // hay
       crop *= 0.85 + 0.15 * rows * saturate(1.0 - dist / 400.0) + 0.1 * (fine - 0.5);
       let edgeMask = smoothstep(1.5, 4.0, fld.edge);
@@ -169,6 +173,10 @@ fn fs(in: VOut) -> GBufferOut {
   // Sand near the sea / desert washes.
   let sandMask = smoothstep(4.0, 1.0, wp.y) * F.palette[9].w;
   albedo = mix(albedo, pal(5) * (0.9 + 0.2 * fine), saturate(sandMask));
+  // Wet sand where waves wash up (darker, glossy).
+  let wet = smoothstep(1.4, 0.3, wp.y) * F.palette[9].w * step(0.5, abs(F.terrain[3].x));
+  albedo *= 1.0 - 0.45 * wet;
+  rough = mix(rough, 0.2, wet);
 
   // Road shoulder: gravel/dirt strip.
   let shoulder = 1.0 - smoothstep(halfW + 0.3, halfW + 2.2 + mid * 1.5, roadD);

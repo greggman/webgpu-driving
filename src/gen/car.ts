@@ -484,8 +484,18 @@ export function buildCarBody(spec: CarSpec): MeshData {
     const z = spec.wsBase - 0.18;
     const wz = widthAt(z) * 0.95;
     const y = spec.belt + 0.1;
-    box(push, [sx * (wz + 0.13), y, z - 0.02], [0.085, 0.055, 0.045], MAT_PAINT);
-    box(push, [sx * (wz + 0.13), y, z - 0.068], [0.075, 0.045, 0.004], MAT_CHROME);
+    box(
+      push,
+      [sx * (wz + 0.13), y, z - 0.02],
+      [0.085, 0.055, 0.045],
+      MAT_PAINT,
+    );
+    box(
+      push,
+      [sx * (wz + 0.13), y, z - 0.068],
+      [0.075, 0.045, 0.004],
+      MAT_CHROME,
+    );
     box(push, [sx * (wz + 0.03), y - 0.035, z], [0.06, 0.015, 0.025], MAT_TRIM);
   }
   // License plates.

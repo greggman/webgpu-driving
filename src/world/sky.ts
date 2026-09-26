@@ -61,7 +61,8 @@ export function computeSky(sky: Sky, altitude: number): SkyState {
   const el = Math.sin(dayT * Math.PI) * 55 * DEG;
   const sunDir = dirFrom(sky.sunAzimuth * DEG + (t - 12) * 0.08, el);
   // Moon high in the night sky, roughly opposite the sun azimuth.
-  const moonDir = dirFrom((sky.sunAzimuth + 150) * DEG, 32 * DEG);
+  // Moon low-ish over the road ahead so chase/interior shots can frame it.
+  const moonDir = dirFrom(sky.sunAzimuth * 0.3 * DEG + 0.25, 18 * DEG);
   const elDeg = el / DEG;
   const night = Math.min(1, Math.max(0, (2 - elDeg) / 10));
   const isSun = elDeg > -3;

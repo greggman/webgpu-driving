@@ -136,7 +136,9 @@ fn fs(in: POut) -> TOut {
     // Leaf silhouette.
     let q = vec2f(in.uv.x * 1.6, in.uv.y);
     a = step(length(q), 1.0) * step(abs(in.uv.x), 0.95 - abs(in.uv.y) * 0.3);
-    col = mix(P.color.rgb, P.color.rgb * vec3f(1.3, 0.8, 0.4), fract(in.pos.x * 0.37));
+    // Vein + per-leaf tint (autumn yellows to greens).
+    let vein = 1.0 - 0.3 * step(abs(in.uv.x), 0.06);
+    col = mix(P.color.rgb, P.color.rgb * vec3f(1.5, 0.9, 0.35), fract(in.alpha * 97.0)) * vein;
   } else if (in.kind == 2u) {
     a = smoothstep(1.0, 0.0, r) * (0.6 + 0.4 * vnoise(in.uv * 3.0 + in.pos.xy * 0.01));
   } else {

@@ -742,7 +742,7 @@ export class Renderer {
             p.up[k] * 0.8,
         );
         const tl = loc(tp);
-        const tb = 4 + c.draw.brake * 10;
+        const tb = 1.2 + c.draw.brake * 5;
         L.set(
           [tl[0], tl[1], tl[2], 5, 0, 0, 0, -2, tb, tb * 0.03, tb * 0.02, 0],
           n * 12,

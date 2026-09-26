@@ -224,7 +224,8 @@ fn interiorShade(mat: u32, lp: vec3f, c: Car) -> vec4f {
   if (mat == 13u) { return vec4f(vec3f(0.03), 0.45); }
   if (mat == 15u) { return vec4f(vec3f(0.25), 0.45); }
   if (mat == 17u) { return vec4f(vec3f(0.025), 0.95); }
-  return vec4f(vec3f(0.035, 0.035, 0.04), 0.7);
+  // Dashboard: soft-touch dark plastic with a fine grain.
+  return vec4f(vec3f(0.05, 0.05, 0.055) * (0.9 + 0.2 * vnoise(lp.xz * 80.0)), 0.7);
 }
 
 @fragment
@@ -243,6 +244,18 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     let im = interiorShade(select(10u, in.mat, in.mat >= 10u), lp, c);
     s.albedo = im.rgb;
     s.rough = im.a;
+    if (in.mat < 10u) {
+      // Inside of the shell: fabric headliner above, soft-touch door cards below.
+      let lnI = normalize(in.lnormal);
+      if (lnI.y > 0.45) {
+        s.albedo = vec3f(0.32, 0.3, 0.27) * (0.9 + 0.1 * vnoise(lp.xz * 60.0));
+        s.rough = 0.95;
+      } else {
+        let stitch = step(0.96, fract(lp.y * 9.0));
+        s.albedo = vec3f(0.07, 0.065, 0.06) + vec3f(0.08, 0.05, 0.03) * stitch;
+        s.rough = 0.8;
+      }
+    }
     s.metal = select(0.0, 1.0, in.mat == 15u);
     s.n = n;
     s.ao = 0.7;

@@ -37,7 +37,7 @@ fn starField(dir: vec3f) -> vec3f {
       let temp = hash01(i32(ci.x) + 91, i32(ci.y) + 7);
       let tint = mix(vec3f(0.7, 0.8, 1.0), vec3f(1.0, 0.85, 0.65), temp);
       let px = 6.0 / scale; // keep stars ~1-2 pixels wide
-      col += tint * mag * tw * exp(-dist * dist / (px * px * 0.02)) * 1.5;
+      col += tint * mag * tw * exp(-dist * dist / (px * px * 0.02)) * 5.0;
     }
   }
   // Milky Way band along a tilted great circle.
@@ -51,22 +51,23 @@ fn starField(dir: vec3f) -> vec3f {
 fn moonDisk(dir: vec3f) -> vec3f {
   let md = F.moon.xyz;
   let c = dot(dir, md);
-  let radius = 0.0105;
+  let radius = 0.018;
   let cr = cos(radius);
   if (c < cr) {
-    // Glow.
-    let g = pow(saturate(c), 900.0);
-    return vec3f(0.6, 0.65, 0.8) * g * 0.08;
+    // Halo.
+    let g = pow(saturate(c), 600.0);
+    return vec3f(0.6, 0.65, 0.8) * g * 0.25;
   }
   // Local disk coordinates.
   var right = normalize(cross(md, vec3f(0.0, 1.0, 0.0)));
   let up = cross(right, md);
   let q = vec2f(dot(dir - md, right), dot(dir - md, up)) / sin(radius);
   let z = sqrt(saturate(1.0 - dot(q, q)));
-  let n = normalize(right * q.x + up * q.y + md * z);
-  // Phase: lit from a direction rotated around.
-  let lightDir = normalize(right * 0.8 + md * -0.2 + up * 0.25);
-  let lit = saturate(dot(n, -lightDir) * 1.2 + 0.1);
+  // Visible hemisphere faces the viewer (-md).
+  let n = normalize(right * q.x + up * q.y - md * z);
+  // Waxing gibbous: sunlight arrives from near the viewer, a bit to the side.
+  let toSun = normalize(-md * 0.75 + right * 0.6 + up * 0.15);
+  let lit = smoothstep(-0.05, 0.25, dot(n, toSun)) * (0.85 + 0.15 * z);
   let maria = 0.65 + 0.35 * fbm2(q * 3.0 + 7.0, 4);
   return vec3f(1.0, 0.97, 0.9) * lit * maria * 1.6;
 }

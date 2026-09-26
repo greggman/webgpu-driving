@@ -139,7 +139,7 @@ export class Particles {
     if (biome.weather.snow > 0)
       add(0, 260000, 60, 0.03, 1.4, 0, [1.0, 1.0, 1.0, 1.0]);
     if (biome.id === 'forest')
-      add(1, 2500, 50, 0.05, 0.8, 0, [0.55, 0.45, 0.12, 1]);
+      add(1, 1800, 45, 0.045, 0.7, 0, [0.3, 0.26, 0.08, 1]);
     if (biome.weather.dust > 0 || biome.road.dirt)
       add(2, 900, 0, 0.5, 0, 2.6, [0.62, 0.48, 0.34, 1]);
   }

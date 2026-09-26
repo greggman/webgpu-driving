@@ -94,7 +94,10 @@ for (const shot of shots) {
   if (variance < 1) errors.push(`blank frame (variance ${variance.toFixed(2)})`);
   const ms = Date.now() - t0;
   report.push({name: shot.name, params: shot.params, errors, stats, ms});
-  console.log(`${errors.length ? 'FAIL' : 'ok  '} ${shot.name} (${ms} ms)${stats ? ' ' + JSON.stringify(stats) : ''}`);
+  const brief = stats
+    ? ` gpu ${stats.gpu?.span?.toFixed(1) ?? '?'} ms, terrain ${stats.terrainNodes}, cars ${stats.cars}`
+    : '';
+  console.log(`${errors.length ? 'FAIL' : 'ok  '} ${shot.name} (${ms} ms)${brief}`);
   for (const e of errors.slice(0, 6)) console.log(`     ${e}`);
   if (errors.length) failed = true;
   await page.close();
