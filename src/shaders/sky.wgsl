@@ -84,45 +84,6 @@ fn sunDisk(dir: vec3f) -> vec3f {
   return trans * 20.0 * 800.0 * limb;
 }
 
-struct CloudResult {
-  color: vec3f,
-  alpha: f32,
-};
-
-fn cloudLayer(dir: vec3f, skyCol: vec3f) -> CloudResult {
-  var r: CloudResult;
-  r.color = vec3f(0.0);
-  r.alpha = 0.0;
-  if (dir.y <= 0.0 || F.sky.x <= 0.01) { return r; }
-  let hgt = 2600.0 - F.cam.y;
-  let t = hgt / max(dir.y, 0.015);
-  let p = F.cam.xz + dir.xz * t + F.misc.xy;
-  let dens = cloudDensity(p);
-  if (dens <= 0.001) { return r; }
-  // Light march toward the sun through the layer.
-  var od = 0.0;
-  let sdir = normalize(F.sun.xz + vec2f(1e-4));
-  for (var i = 1; i <= 4; i++) {
-    od += cloudDensity(p + sdir * f32(i) * 160.0);
-  }
-  let thickness = dens * 2.2;
-  let sunT = exp(-od * 0.9);
-  let powder = 1.0 - exp(-dens * 3.0);
-  let cph = dot(dir, F.sun.xyz);
-  let hg = mix(0.9 * (1.0 + 2.2 * pow(saturate(cph), 12.0)), 1.0, 0.3);
-  let amb = shIrradiance(vec3f(0.0, 1.0, 0.0)) * PI * 0.42;
-  let sunLit = F.sunColor.rgb * sunT * powder * hg * 0.25;
-  var col = sunLit + amb * (0.7 + 0.3 * (1.0 - dens));
-  // Overcast: darker undersides.
-  col *= mix(1.0, 0.65, saturate(F.sky.x * 1.3 - 0.4) * saturate(thickness));
-  let alpha = saturate(1.0 - exp(-dens * 4.0));
-  // Distance fade into the atmosphere.
-  let fade = exp(-t / 45000.0);
-  r.color = mix(skyCol, col, fade);
-  r.alpha = alpha * saturate(dir.y * 25.0);
-  return r;
-}
-
 @fragment
 fn fs(in: VOut) -> GBufferOut {
   let wp = F.invViewProj * vec4f(in.ndc, 0.5, 1.0);

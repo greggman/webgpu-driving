@@ -1,5 +1,5 @@
 [
-  {"name": "insp-lod-country", "params": {"biome": "country", "cam": "custom", "s": "2200", "eye": "0,-6,2", "look": "80,-60,5", "fov": "35"}},
-  {"name": "insp-lod-forest", "params": {"biome": "forest", "cam": "custom", "s": "2200", "eye": "0,0,2", "look": "90,0,10", "fov": "30"}},
-  {"name": "insp-lod-lahonda", "params": {"biome": "lahonda", "cam": "custom", "s": "2400", "eye": "0,-5,2", "look": "300,-150,20", "fov": "25"}}
+  {"name": "insp-env-car", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "4,-5,1.3", "look": "0,0,0.7", "fov": "40"}},
+  {"name": "insp-env-ocean-high", "params": {"biome": "coast", "cam": "helicopter", "s": "4000", "t": "2"}},
+  {"name": "insp-env-ocean-low", "params": {"biome": "coast", "cam": "custom", "s": "3200", "eye": "0,30,8", "look": "30,120,0", "fov": "50"}}
 ]

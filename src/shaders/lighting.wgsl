@@ -68,6 +68,47 @@ fn cloudDensity(p: vec2f) -> f32 {
   return saturate((base - (1.0 - cov)) / max(0.35, 1e-3) );
 }
 
+// 2D cloud layer as seen along a view ray (shared by the sky pass and the
+// environment map).
+struct CloudResult {
+  color: vec3f,
+  alpha: f32,
+};
+
+fn cloudLayer(dir: vec3f, skyCol: vec3f) -> CloudResult {
+  var r: CloudResult;
+  r.color = vec3f(0.0);
+  r.alpha = 0.0;
+  if (dir.y <= 0.0 || F.sky.x <= 0.01) { return r; }
+  let hgt = 2600.0 - F.cam.y;
+  let t = hgt / max(dir.y, 0.015);
+  let p = F.cam.xz + dir.xz * t + F.misc.xy;
+  let dens = cloudDensity(p);
+  if (dens <= 0.001) { return r; }
+  // Light march toward the sun through the layer.
+  var od = 0.0;
+  let sdir = normalize(F.sun.xz + vec2f(1e-4));
+  for (var i = 1; i <= 4; i++) {
+    od += cloudDensity(p + sdir * f32(i) * 160.0);
+  }
+  let thickness = dens * 2.2;
+  let sunT = exp(-od * 0.9);
+  let powder = 1.0 - exp(-dens * 3.0);
+  let cph = dot(dir, F.sun.xyz);
+  let hg = mix(0.9 * (1.0 + 2.2 * pow(saturate(cph), 12.0)), 1.0, 0.3);
+  let amb = shIrradiance(vec3f(0.0, 1.0, 0.0)) * PI * 0.42;
+  let sunLit = F.sunColor.rgb * sunT * powder * hg * 0.25;
+  var col = sunLit + amb * (0.7 + 0.3 * (1.0 - dens));
+  // Overcast: darker undersides.
+  col *= mix(1.0, 0.65, saturate(F.sky.x * 1.3 - 0.4) * saturate(thickness));
+  let alpha = saturate(1.0 - exp(-dens * 4.0));
+  // Distance fade into the atmosphere.
+  let fade = exp(-t / 45000.0);
+  r.color = mix(skyCol, col, fade);
+  r.alpha = alpha * saturate(dir.y * 25.0);
+  return r;
+}
+
 fn D_GGX(nh: f32, a: f32) -> f32 {
   let a2 = a * a;
   let d = nh * nh * (a2 - 1.0) + 1.0;
@@ -102,11 +143,33 @@ fn skyLUTLookup(az: f32, el: f32) -> vec3f {
 
 // Specular environment: sky in reflection direction (horizon clamped to
 // avoid reflecting the dark lower hemisphere), roughness blends to diffuse.
+// Environment radiance from the prefiltered octahedral environment map
+// (sky + clouds + horizon/ground, see envmap.wgsl); rougher = blurrier mip.
+fn octEncode(d: vec3f) -> vec2f {
+  let n = d / (abs(d.x) + abs(d.y) + abs(d.z));
+  var o = n.xz;
+  if (n.y < 0.0) {
+    o = (1.0 - abs(n.zx)) * select(vec2f(-1.0), vec2f(1.0), n.xz >= vec2f(0.0));
+  }
+  return o * 0.5 + 0.5;
+}
+
+fn octDecode(uv: vec2f) -> vec3f {
+  let f = uv * 2.0 - 1.0;
+  var n = vec3f(f.x, 1.0 - abs(f.x) - abs(f.y), f.y);
+  let t = saturate(-n.y);
+  n.x += select(t, -t, n.x >= 0.0);
+  n.z += select(t, -t, n.z >= 0.0);
+  return normalize(n);
+}
+
+fn envRadiance(dir: vec3f, rough: f32) -> vec3f {
+  let lod = clamp(sqrt(rough) * 7.0, 0.0, 7.0);
+  return textureSampleLevel(envTex, linSampler, octEncode(normalize(dir)), lod).rgb;
+}
+
 fn envSpecular(r: vec3f, rough: f32, n: vec3f) -> vec3f {
-  let rr = normalize(vec3f(r.x, max(r.y, 0.02), r.z));
-  let sky = skyRadiance(rr);
-  let diffuse = shIrradiance(n);
-  return mix(sky, diffuse, saturate(rough * rough * 1.5));
+  return mix(envRadiance(r, rough), shIrradiance(n), saturate(rough * rough * 1.2));
 }
 
 struct Surface {

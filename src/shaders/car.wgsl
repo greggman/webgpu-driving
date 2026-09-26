@@ -145,28 +145,10 @@ fn vsWheelShadow(v: VIn, @builtin(instance_index) ii: u32) -> CSOut {
   return o;
 }
 
-// Car-commercial reflection environment: sky gradient above a dark,
-// slightly broken treeline/hill band at the horizon, then lit ground (grass
-// at the sides, darker road below).
+// Car reflection environment: the shared prefiltered environment map
+// (sky + clouds + distant hills band + ground).
 fn carEnv(r: vec3f, rough: f32) -> vec3f {
-  let amb = shIrradiance(vec3f(0.0, 1.0, 0.0));
-  let sunLit = F.sunColor.rgb * max(F.sun.y, 0.0) / PI;
-  if (r.y >= 0.0) {
-    let rr = normalize(vec3f(r.x, max(r.y, 0.02), r.z));
-    var sky = skyRadiance(rr);
-    // Treeline / hills silhouette in the lowest few degrees.
-    let az = atan2(r.x, r.z);
-    let ridge = 0.03 + 0.05 * (0.5 + 0.5 * sin(az * 7.0 + 1.3) * sin(az * 3.0));
-    let band = smoothstep(ridge, ridge * 0.6, r.y);
-    sky = mix(sky, pal(6) * (amb + sunLit) * 0.6, band);
-    return mix(sky, amb, saturate(rough * 1.5));
-  }
-  let grass = pal(0) * (amb + sunLit);
-  let road = vec3f(0.08) * (amb + sunLit);
-  let side = saturate(abs(r.x) * 2.0);
-  let ground = mix(road, grass, side * 0.7);
-  let horizon = pal(6) * (amb + sunLit) * 0.6;
-  return mix(horizon, ground, saturate(-r.y * 5.0 + rough));
+  return envRadiance(r, rough);
 }
 
 fn clearcoatShade(base: Surface, wp: vec3f, sh: f32, coat: f32) -> vec3f {

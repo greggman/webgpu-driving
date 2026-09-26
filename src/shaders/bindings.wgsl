@@ -13,6 +13,7 @@
 @group(0) @binding(12) var cloudTex: texture_2d<f32>;
 @group(0) @binding(13) var volTex: texture_3d<f32>;
 @group(0) @binding(14) var<storage, read> clusterLights: array<u32>;
+@group(0) @binding(15) var envTex: texture_2d<f32>;
 
 struct Light {
   pos: vec4f,   // xyz local, w = range

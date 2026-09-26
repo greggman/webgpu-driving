@@ -29,8 +29,10 @@ import {Water} from './water';
 import {Particles} from './particles';
 import volSrc from '../shaders/volumetric.wgsl';
 import clusterSrc from '../shaders/clusters.wgsl';
+import envSrc from '../shaders/envmap.wgsl';
+import {deferComputePipeline} from '../gpu/pipelines';
 import hzbSrc from '../shaders/hzb.wgsl';
-import {FRAME_PRELUDE} from './shaders';
+import {FRAME_PRELUDE, RENDER_PRELUDE} from './shaders';
 import {shaderModule} from '../gpu/gpu';
 
 const REBASE = 1024;
@@ -85,6 +87,8 @@ export const DEBUG = new Set(
   (new URLSearchParams(location.search).get('debug') ?? '').split(','),
 );
 const MAX_LIGHTS = 64;
+const ENV_SIZE = 256;
+const ENV_MIPS = 8;
 // Volumetric fog per environment: density (1/m), anisotropy, height falloff.
 const VOLUME: Record<string, [number, number, number]> = {
   country: [0.0005, 0.65, 40],
@@ -157,6 +161,13 @@ export class Renderer {
   private volPipe: GPUComputePipeline;
   private volBG!: GPUBindGroup;
   private clusterBuf: GPUBuffer;
+  readonly envTex: GPUTexture;
+  private envFrameBG!: GPUBindGroup;
+  private envBGs: GPUBindGroup[] = [];
+  private envOutLayout: GPUBindGroupLayout;
+  private envDownLayout: GPUBindGroupLayout;
+  private envBuild!: GPUComputePipeline;
+  private envDown!: GPUComputePipeline;
   private clusterPipe: GPUComputePipeline;
   private clusterBG!: GPUBindGroup;
   private hzb: GPUTexture | null = null;
@@ -199,6 +210,72 @@ export class Renderer {
       format: 'rgba16float',
       usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
     });
+    this.envTex = d.createTexture({
+      label: 'environment-map',
+      size: [ENV_SIZE, ENV_SIZE],
+      mipLevelCount: ENV_MIPS,
+      format: 'rgba16float',
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.envOutLayout = d.createBindGroupLayout({
+      label: 'env-out-layout',
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.COMPUTE,
+          storageTexture: {format: 'rgba16float', access: 'write-only'},
+        },
+      ],
+    });
+    this.envDownLayout = d.createBindGroupLayout({
+      label: 'env-down-layout',
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.COMPUTE,
+          storageTexture: {format: 'rgba16float', access: 'write-only'},
+        },
+        {
+          binding: 1,
+          visibility: GPUShaderStage.COMPUTE,
+          texture: {sampleType: 'unfilterable-float'},
+        },
+      ],
+    });
+    {
+      const envMod = shaderModule(
+        d,
+        RENDER_PRELUDE + '\n' + envSrc,
+        'environment-map',
+      );
+      deferComputePipeline(
+        d,
+        {
+          label: 'env-build',
+          layout: d.createPipelineLayout({
+            label: 'env-build-pl',
+            bindGroupLayouts: [this.frameLayout, this.envOutLayout],
+          }),
+          compute: {module: envMod, entryPoint: 'build'},
+        },
+        p => (this.envBuild = p),
+      );
+      deferComputePipeline(
+        d,
+        {
+          label: 'env-downsample',
+          layout: d.createPipelineLayout({
+            label: 'env-down-pl',
+            bindGroupLayouts: [
+              d.createBindGroupLayout({label: 'env-empty', entries: []}),
+              this.envDownLayout,
+            ],
+          }),
+          compute: {module: envMod, entryPoint: 'downsample'},
+        },
+        p => (this.envDown = p),
+      );
+    }
     this.clusterBuf = d.createBuffer({
       label: 'light-clusters',
       size: 16 * 9 * 24 * 32 * 4,
@@ -316,7 +393,10 @@ export class Renderer {
       format: 'depth32float',
       usage: GPUTextureUsage.TEXTURE_BINDING,
     });
-    const entries = (shadowView: GPUTextureView): GPUBindGroupEntry[] => [
+    const entries = (
+      shadowView: GPUTextureView,
+      envView: GPUTextureView = this.envTex.createView(),
+    ): GPUBindGroupEntry[] => [
       {binding: 0, resource: {buffer: this.frame.buffer}},
       {binding: 1, resource: this.roadTex.createView()},
       {
@@ -335,6 +415,7 @@ export class Renderer {
       {binding: 12, resource: this.atmosphere.cloudTex.createView()},
       {binding: 13, resource: this.volTex.createView()},
       {binding: 14, resource: {buffer: this.clusterBuf}},
+      {binding: 15, resource: envView},
     ];
     this.frameBG = d.createBindGroup({
       label: 'frame-bg',
@@ -364,6 +445,44 @@ export class Renderer {
         {binding: 13, resource: this.volTex.createView()},
       ],
     });
+    // Environment-map pass: same frame resources, but with a dummy at the
+    // env slot (the pass writes the real one).
+    const dummyEnv = d.createTexture({
+      label: 'dummy-env',
+      size: [1, 1],
+      format: 'rgba16float',
+      usage: GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.envFrameBG = d.createBindGroup({
+      label: 'frame-bg-envpass',
+      layout: this.frameLayout,
+      entries: entries(
+        this.shadows.map.createView({dimension: '2d-array'}),
+        dummyEnv.createView(),
+      ),
+    });
+    const mipView = (m: number) =>
+      this.envTex.createView({
+        label: `env-mip-${m}`,
+        baseMipLevel: m,
+        mipLevelCount: 1,
+      });
+    this.envBGs = [];
+    for (let m = 0; m < ENV_MIPS; ++m) {
+      this.envBGs.push(
+        d.createBindGroup({
+          label: `env-bg-${m}`,
+          layout: m === 0 ? this.envOutLayout : this.envDownLayout,
+          entries:
+            m === 0
+              ? [{binding: 0, resource: mipView(0)}]
+              : [
+                  {binding: 0, resource: mipView(m)},
+                  {binding: 1, resource: mipView(m - 1)},
+                ],
+        }),
+      );
+    }
     this.shadowFrameBG = d.createBindGroup({
       label: 'frame-bg-shadowpass',
       layout: this.frameLayout,
@@ -437,6 +556,24 @@ export class Renderer {
           GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
       })
       .createView();
+  }
+
+  private encodeEnvMap(enc: GPUCommandEncoder) {
+    const pass = enc.beginComputePass({
+      label: 'environment-map',
+      timestampWrites: ts('envmap'),
+    });
+    pass.setPipeline(this.envBuild);
+    pass.setBindGroup(0, this.envFrameBG);
+    pass.setBindGroup(1, this.envBGs[0]);
+    pass.dispatchWorkgroups(ENV_SIZE / 8, ENV_SIZE / 8);
+    pass.setPipeline(this.envDown);
+    for (let m = 1; m < ENV_MIPS; ++m) {
+      const sz = Math.max(1, ENV_SIZE >> m);
+      pass.setBindGroup(1, this.envBGs[m]);
+      pass.dispatchWorkgroups(Math.ceil(sz / 8), Math.ceil(sz / 8));
+    }
+    pass.end();
   }
 
   private encodeHzb(enc: GPUCommandEncoder) {
@@ -792,6 +929,7 @@ export class Renderer {
     this.terrain.encodeClipmapUpdates(enc);
     if (DEBUG.has('probe')) this.terrain.probe(enc, eye[0], eye[2]);
     this.atmosphere.update(enc);
+    this.encodeEnvMap(enc);
     this.vegetation.encodeCompute(enc, this.frameBG);
 
     // Shadow cascades.
