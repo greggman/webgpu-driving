@@ -1,0 +1,17 @@
+{
+  "extends": "./node_modules/gts/tsconfig-google.json",
+  "compilerOptions": {
+    "composite": false,
+    "rootDir": ".",
+    "outDir": "build",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ES2022",
+    "types": ["@webgpu/types"],
+    "skipLibCheck": true,
+    "noEmit": true,
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts"]
+}
