@@ -164,4 +164,6 @@ export const SEDAN_BODY: BodyCurves = {
     quarterLight: [-1.34, -1.14],
   },
   chromeSill: true,
+  chromeDLO: true,
+  hoodDome: 0.015,
 };

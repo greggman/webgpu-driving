@@ -409,7 +409,13 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Fog lamp pods in the bumper corners.
     if (style != 3u && lp.z > halfL - 0.45 && ln.z > 0.2) {
             // Vertical black corner blades (fog lamps sit inside, lit at night).
-            if (abs(ax - 0.84) * halfW < 0.07 && gy > -0.44 && gy < -0.26 && ln.z > 0.35) {
+                  if (style == 0u) {
+        // Sedan: dark corner intakes with a horizontal blade.
+        if (ax > 0.7 && ax < 0.95 && gy > -0.44 && gy < -0.28 && ln.z > 0.3) {
+          part = select(4u, 5u, abs(gy + 0.36) < 0.008);
+        }
+      } else if (abs(ax - 0.84) * halfW < 0.07 && gy > -0.44 && gy < -0.26 && ln.z > 0.35) {
+        // Vertical black corner blades (fog lamps sit inside, lit at night).
         part = select(4u, 6u, lightsOn > 0.5 && abs(gy + 0.35) < 0.02);
       }
     }

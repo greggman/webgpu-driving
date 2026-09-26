@@ -76,6 +76,8 @@ export interface BodyCurves {
   // Two raised hood lines from the headlamp tops toward the A-pillar bases:
   // x as a fraction of width, raised `height` m, crease sharpness 0..1.
   hoodLines?: {x: number; height: number; crease: number};
+  hoodDome?: number; // raise of the hood centre line (m), faded at cowl / nose
+  chromeDLO?: boolean; // thin chrome trim along the top of the side glass
   cabin: {
     windscreenBase: number; // z where the windscreen meets the cowl
     roofFront: number; // z of the windscreen header
@@ -290,6 +292,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     // carry the hood lines.
     let hoodPt: [number, number] = [rx * 0.5, ry + (tp - ry) * 0.82];
     let hoodCrease = 0;
+    let dome = 0;
     if (c.hoodLines && z > cab.windscreenBase) {
       const hl = c.hoodLines;
       const f =
@@ -300,6 +303,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         hoodPt[1] + hl.height * f,
       ];
       hoodCrease = hl.crease * f;
+      dome = (c.hoodDome ?? 0) * f;
     }
     const pts: Array<[number, number]> = [
       [0, bot],
@@ -310,7 +314,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       [bx, bl],
       [rx, ry + 0.0005],
       hoodPt,
-      [0, tp],
+      [0, tp + dome],
     ];
     const cr = c.creases ?? {};
     return spline2(pts, SPAN_COUNTS, [
@@ -447,7 +451,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       if (!cabin) return end;
       const last = k === spanStart[s + 1] - 1;
       if (first) return c.chromeSill ? MAT_CHROME : MAT_TRIM; // window seal
-      if (last) return MAT_TRIM; // frame / drip rail
+      if (last) return c.chromeDLO ? MAT_CHROME : MAT_TRIM; // frame / drip rail
       const ql = cab.quarterLight;
       if (ql && z > ql[0] && z < ql[1]) return MAT_GLASS;
       if (z > cab.sideFront || z < cab.sideRear) return MAT_PAINT; // A / C pillars
