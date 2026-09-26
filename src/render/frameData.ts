@@ -93,77 +93,73 @@ export class FrameData {
   }
 }
 
+const ALL_STAGES =
+  GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE;
+
 export const FRAME_LAYOUT_ENTRIES: GPUBindGroupLayoutEntry[] = [
   {
     binding: 0,
-    visibility:
-      GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+    visibility: ALL_STAGES,
     buffer: {type: 'uniform'},
   },
   {
     binding: 1,
-    visibility:
-      GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+    visibility: ALL_STAGES,
     texture: {sampleType: 'unfilterable-float'},
   },
   {
     binding: 2,
-    visibility:
-      GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+    visibility: ALL_STAGES,
     texture: {sampleType: 'unfilterable-float', viewDimension: '2d-array'},
   },
   {
     binding: 3,
-    visibility:
-      GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+    visibility: ALL_STAGES,
     texture: {sampleType: 'float'},
   },
   {
     binding: 4,
-    visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+    visibility: ALL_STAGES,
     texture: {sampleType: 'float'},
   },
   {
     binding: 5,
-    visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+    visibility: ALL_STAGES,
     texture: {sampleType: 'float', viewDimension: '3d'},
   },
   {
     binding: 6,
-    visibility:
-      GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+    visibility: ALL_STAGES,
     sampler: {type: 'filtering'},
   },
   {
     binding: 7,
-    visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+    visibility: ALL_STAGES,
     texture: {sampleType: 'depth', viewDimension: '2d-array'},
   },
   {
     binding: 8,
-    visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+    visibility: ALL_STAGES,
     sampler: {type: 'comparison'},
   },
   {
     binding: 9,
-    visibility:
-      GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+    visibility: ALL_STAGES,
     sampler: {type: 'filtering'},
   },
   {
     binding: 10,
-    visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+    visibility: ALL_STAGES,
     buffer: {type: 'read-only-storage'},
   },
   {
     binding: 11,
-    visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
+    visibility: ALL_STAGES,
     texture: {sampleType: 'float', viewDimension: '2d-array'},
   },
   {
     binding: 12,
-    visibility:
-      GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX | GPUShaderStage.COMPUTE,
+    visibility: ALL_STAGES,
     texture: {sampleType: 'float'},
   },
 ];

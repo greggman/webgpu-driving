@@ -25,6 +25,7 @@ import {Pose} from '../sim/pose';
 import {Vegetation} from './vegetation';
 import {Props} from './props';
 import {Water} from './water';
+import {Particles} from './particles';
 
 const REBASE = 1024;
 export const DEBUG = new Set(
@@ -49,6 +50,7 @@ export interface SceneState {
   playerS: number;
   player: Pose;
   headlights: boolean;
+  frozen: boolean;
 }
 
 // Halton(2,3) jitter sequence.
@@ -74,6 +76,7 @@ export class Renderer {
   readonly vegetation: Vegetation;
   readonly props: Props;
   readonly water: Water;
+  readonly particles: Particles;
   roadMesh: RoadMesh | null = null;
   private road: Road | null = null;
   private biome: Biome | null = null;
@@ -147,6 +150,7 @@ export class Renderer {
     );
     this.props = new Props(d, this.frameLayout, this.shadows.layout);
     this.water = new Water(d, this.frameLayout);
+    this.particles = new Particles(d, this.frameLayout);
     this.createFrameBindGroups();
   }
 
@@ -236,6 +240,7 @@ export class Renderer {
     this.vegetation.setWorld(biome, road);
     this.props.setWorld(biome, road);
     this.water.enabled = biome.ocean;
+    this.particles.setWorld(biome);
   }
 
   private rebase(camX: number, camZ: number) {
@@ -247,6 +252,7 @@ export class Renderer {
       this.frameIndex === 0
     ) {
       if (nx !== this.originX || nz !== this.originZ) {
+        this.particles.shift(nx - this.originX, nz - this.originZ);
         this.originX = nx;
         this.originZ = nz;
         this.roadBase = -1e9; // force road texture re-upload
@@ -486,6 +492,23 @@ export class Renderer {
     }
     this.cars.setCars(carDraws);
     this.vegetation.update(scene, eye, planes, ox, oz);
+    {
+      const p = scene.player;
+      const rear = loc([
+        p.pos[0] - p.fwd[0] * 2.2,
+        p.pos[1],
+        p.pos[2] - p.fwd[2] * 2.2,
+      ]);
+      const pe = scene.prevCamera ? scene.prevCamera.eye : cam.eye;
+      const dt = Math.max(scene.dt, 1e-3);
+      const camVel = [0, 1, 2].map(k => (cam.eye[k] - pe[k]) / dt);
+      this.particles.update(
+        scene.time,
+        rear,
+        p.speed,
+        scene.frozen ? [0, 0, 0] : camVel,
+      );
+    }
     this.props.update(scene.playerS, ox, oz, planes, this.roadMesh!);
 
     F.upload();
@@ -560,13 +583,20 @@ export class Renderer {
     this.water.draw(main);
     main.setPipeline(this.atmosphere.skyDrawPipe);
     main.draw(3);
+    this.particles.draw(main);
     main.end();
 
     this.post.encode(
       enc,
       gpu.context.getCurrentTexture().createView({label: 'swapchain'}),
-      scene.dt,
-      this.exposureBias,
+      {
+        dt: scene.dt,
+        exposureBias: this.exposureBias,
+        focus: cam.focus,
+        aperture: DEBUG.has('nodof') ? 0 : cam.aperture,
+        near,
+        motionBlur: DEBUG.has('nomb') ? 0 : scene.frozen ? 0 : 0.5,
+      },
     );
     d.queue.submit([enc.finish()]);
     if (DEBUG.has('probe')) this.terrain.afterSubmit();
@@ -628,7 +658,8 @@ export class Renderer {
           n * 12,
         );
         n++;
-        // Tail light glow.
+        // Tail light glow (not for our own car seen from the cabin).
+        if (c.player && scene.camera.interior) continue;
         const tp = [0, 1, 2].map(
           k =>
             p.pos[k] -
@@ -639,7 +670,7 @@ export class Renderer {
         const tl = loc(tp);
         const tb = 4 + c.draw.brake * 10;
         L.set(
-          [tl[0], tl[1], tl[2], 8, 0, 0, 0, -2, tb, tb * 0.03, tb * 0.02, 0],
+          [tl[0], tl[1], tl[2], 5, 0, 0, 0, -2, tb, tb * 0.03, tb * 0.02, 0],
           n * 12,
         );
         n++;

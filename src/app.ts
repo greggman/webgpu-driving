@@ -244,6 +244,7 @@ export class App {
       playerS: player.s,
       player: pp,
       headlights: lights,
+      frozen: this.params.freeze,
     });
     this.prevCam = camera;
     this.lastCamera = camera;
