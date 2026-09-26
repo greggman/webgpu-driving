@@ -391,3 +391,97 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   col = finishColor(col, wp);
   return gbuffer(col, wp, in.prevWorld, s.n, s.rough);
 }
+
+// ---- Windshield overlay (interior view): faint reflections, snow that
+// collects on the glass, and wipers that sweep it clear. ----
+struct GlassOut {
+  @location(0) color: vec4f,
+  @location(1) velocity: vec2f,
+  @location(2) normal: vec4f,
+};
+
+fn wiperAngle(t: f32) -> f32 {
+  // Sweep up and back in 1.2 s, then rest 0.8 s.
+  let period = 2.0;
+  let ph = fract(t / period) * period;
+  if (ph > 1.2) { return 0.0; }
+  return sin(ph / 1.2 * PI) * 1.75;
+}
+
+@fragment
+fn fsGlass(in: VOut) -> GlassOut {
+  let c = cars[in.car];
+  if (in.mat != 1u || c.p4.x < 0.5) { discard; }
+  let lp = in.local;
+  var o: GlassOut;
+  o.velocity = vec2f(0.0);
+  o.normal = vec4f(0.0);
+  let wsBase = c.p3.x;
+  let roofFront = c.p3.y + (c.p3.x - c.p3.y) * 0.0;
+  // Only the windshield (front glass above the dash).
+  if (lp.z < wsBase - 0.9) { discard; }
+  let n = normalize(in.normal);
+  let v = normalize(F.cam.xyz - in.world);
+  let fres = 0.03 + 0.2 * pow(1.0 - saturate(abs(dot(n, v))), 5.0);
+  var col = skyRadiance(reflect(-v, n)) * fres * 0.5;
+  var a = fres * 0.3;
+  // Windshield coordinates: u across (-1..1), v up the glass (0..1).
+  let halfW = c.p2.y;
+  let uv = vec2f(lp.x / (halfW * 0.8), saturate((wsBase - lp.z) / 0.8));
+  let snow = F.weather.z;
+  let t = F.cam.w;
+  // Wipers pivot near the bottom of the glass.
+  let ang = wiperAngle(t);
+  var wiper = 0.0;
+  var cleared = 0.0;
+  for (var i = 0; i < 2; i++) {
+    let pivot = vec2f(select(-0.62, 0.08, i == 1), -0.05);
+    let d = uv - pivot;
+    let r = length(d * vec2f(1.0, 1.6));
+    let a0 = atan2(d.y * 1.6, -d.x);
+    let bladeA = ang;
+    if (r < 0.9) {
+      // Blade.
+      let da = abs(a0 - bladeA);
+      wiper = max(wiper, smoothstep(0.03, 0.0, da * r) * step(0.08, r));
+      // Area swept since the start of this cycle.
+      if (a0 < bladeA + 0.02 && a0 > -0.05) { cleared = 1.0; }
+    }
+  }
+  if (snow > 0.0) {
+    // Sparse flakes landing on the glass, building up between sweeps.
+    let ph = fract(t / 2.0) * 2.0;
+    let cycle = floor(t / 2.0);
+    let sinceSweep = select(ph - 1.2, ph + 0.8, ph < 1.2);
+    let g = uv * vec2f(30.0, 16.0);
+    let ci = floor(g);
+    var fl = 0.0;
+    for (var y = -1; y <= 1; y++) {
+      for (var x = -1; x <= 1; x++) {
+        let cc = ci + vec2f(f32(x), f32(y));
+        let hh = pcg(bitcast<u32>(i32(cc.x)) + pcg(bitcast<u32>(i32(cc.y)) + u32(cycle) * 7919u));
+        let h1 = rand01(hh);
+        if (h1 > 0.45 * snow) { continue; }
+        let h2 = rand01(pcg(hh + 1u));
+        let h3 = rand01(pcg(hh + 2u));
+        let h4 = rand01(pcg(hh + 3u));
+        let appear = h2 * 1.9;
+        if (sinceSweep < appear && !(cleared < 0.5 && ph < 1.2)) { continue; }
+        let center = cc + vec2f(h3, h4);
+        let r = 0.12 + 0.3 * h2 * h3;
+        let d = length((g - center) * vec2f(1.0, 0.9));
+        fl = max(fl, smoothstep(r, r * 0.35, d) * (0.55 + 0.45 * h4));
+      }
+    }
+    fl *= snow;
+    // Wet snow on glass is lit from the bright sky behind it.
+    let back = skyRadiance(normalize(-v + vec3f(0.0, 0.3, 0.0))) * 0.6 + shIrradiance(vec3f(0.0, 1.0, 0.0)) * 0.5;
+    col = col * (1.0 - fl) + back * fl;
+    a = a + fl * (1.0 - a);
+  }
+  // Wiper blade (dark rubber).
+  col = col * (1.0 - wiper) + vec3f(0.01) * wiper;
+  a = a + wiper * (1.0 - a);
+  o.color = vec4f(col, a);
+  return o;
+}

@@ -589,6 +589,7 @@ export class Renderer {
     main.setPipeline(this.atmosphere.skyDrawPipe);
     main.draw(3);
     this.particles.draw(main);
+    this.cars.drawGlass(main);
     main.end();
 
     this.post.encode(

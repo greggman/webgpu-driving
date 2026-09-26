@@ -53,6 +53,7 @@ export class CarRenderer {
   private wheelPipe!: GPURenderPipeline;
   private bodyShadowPipe!: GPURenderPipeline;
   private wheelShadowPipe!: GPURenderPipeline;
+  private glassPipe!: GPURenderPipeline;
   readonly layout: GPUBindGroupLayout;
 
   constructor(private device: GPUDevice) {
@@ -160,6 +161,40 @@ export class CarRenderer {
           depthBiasSlopeScale: -1.5,
         },
       });
+    this.glassPipe = d.createRenderPipeline({
+      label: 'car-windshield',
+      layout,
+      vertex: {module, entryPoint: 'vsBody', buffers},
+      fragment: {
+        module,
+        entryPoint: 'fsGlass',
+        targets: [
+          {
+            format: GBUFFER_TARGETS[0].format,
+            blend: {
+              color: {
+                srcFactor: 'one',
+                dstFactor: 'one-minus-src-alpha',
+                operation: 'add',
+              },
+              alpha: {
+                srcFactor: 'one',
+                dstFactor: 'one-minus-src-alpha',
+                operation: 'add',
+              },
+            },
+          },
+          {format: GBUFFER_TARGETS[1].format, writeMask: 0},
+          {format: GBUFFER_TARGETS[2].format, writeMask: 0},
+        ],
+      },
+      primitive: {topology: 'triangle-list', cullMode: 'none'},
+      depthStencil: {
+        format: DEPTH_FORMAT,
+        depthWriteEnabled: false,
+        depthCompare: 'greater',
+      },
+    });
     this.bodyPipe = main('car-body', 'vsBody');
     this.wheelPipe = main('car-wheel', 'vsWheel');
     this.bodyShadowPipe = shadow('car-body-shadow', 'vsBodyShadow');
@@ -229,6 +264,16 @@ export class CarRenderer {
 
   draw(pass: GPURenderPassEncoder) {
     this.drawWith(pass, this.bodyPipe, this.wheelPipe);
+  }
+
+  // Transparent windshield overlay for the interior camera.
+  drawGlass(pass: GPURenderPassEncoder) {
+    if (!this.interiorDraw) return;
+    const m = this.meshes.get(this.interiorDraw.kind)!;
+    pass.setPipeline(this.glassPipe);
+    pass.setBindGroup(1, this.bg);
+    pass.setVertexBuffer(0, m.buf);
+    pass.draw(m.count, 1, 0, this.interiorDraw.index);
   }
 
   drawShadow(pass: GPURenderPassEncoder) {
