@@ -2,6 +2,7 @@
 // as the camera moves) + a CDLOD quadtree of instanced 32x32 grid patches
 // with vertex morphing between LODs.
 import {shaderModule} from '../gpu/gpu';
+import {deferRenderPipeline} from '../gpu/pipelines';
 import {ts} from '../gpu/profiler';
 import {aabbInFrustum} from '../math/mat4';
 import {RENDER_PRELUDE, terrainComputePrelude} from './shaders';
@@ -219,41 +220,49 @@ export class TerrainRenderer {
       RENDER_PRELUDE + '\n' + drawSrc,
       'terrain-draw',
     );
-    this.pipeline = d.createRenderPipeline({
-      label: 'terrain',
-      layout: d.createPipelineLayout({
-        label: 'terrain-layout',
-        bindGroupLayouts: [frameLayout, nodeLayout],
-      }),
-      vertex: {module, entryPoint: 'vs'},
-      fragment: {module, entryPoint: 'fs', targets: GBUFFER_TARGETS},
-      primitive: {
-        topology: 'triangle-list',
-        cullMode: 'back',
-        frontFace: 'ccw',
+    deferRenderPipeline(
+      d,
+      {
+        label: 'terrain',
+        layout: d.createPipelineLayout({
+          label: 'terrain-layout',
+          bindGroupLayouts: [frameLayout, nodeLayout],
+        }),
+        vertex: {module, entryPoint: 'vs'},
+        fragment: {module, entryPoint: 'fs', targets: GBUFFER_TARGETS},
+        primitive: {
+          topology: 'triangle-list',
+          cullMode: 'back',
+          frontFace: 'ccw',
+        },
+        depthStencil: {
+          format: DEPTH_FORMAT,
+          depthWriteEnabled: true,
+          depthCompare: 'greater',
+        },
       },
-      depthStencil: {
-        format: DEPTH_FORMAT,
-        depthWriteEnabled: true,
-        depthCompare: 'greater',
+      p => (this.pipeline = p),
+    );
+    deferRenderPipeline(
+      d,
+      {
+        label: 'terrain-shadow',
+        layout: d.createPipelineLayout({
+          label: 'terrain-shadow-layout',
+          bindGroupLayouts: [frameLayout, nodeLayout, shadowLayout],
+        }),
+        vertex: {module, entryPoint: 'vsShadow'},
+        primitive: {topology: 'triangle-list', cullMode: 'none'},
+        depthStencil: {
+          format: DEPTH_FORMAT,
+          depthWriteEnabled: true,
+          depthCompare: 'greater',
+          depthBias: -2,
+          depthBiasSlopeScale: -2.0,
+        },
       },
-    });
-    this.shadowPipeline = d.createRenderPipeline({
-      label: 'terrain-shadow',
-      layout: d.createPipelineLayout({
-        label: 'terrain-shadow-layout',
-        bindGroupLayouts: [frameLayout, nodeLayout, shadowLayout],
-      }),
-      vertex: {module, entryPoint: 'vsShadow'},
-      primitive: {topology: 'triangle-list', cullMode: 'none'},
-      depthStencil: {
-        format: DEPTH_FORMAT,
-        depthWriteEnabled: true,
-        depthCompare: 'greater',
-        depthBias: -2,
-        depthBiasSlopeScale: -2.0,
-      },
-    });
+      p => (this.shadowPipeline = p),
+    );
     this.nodeBG = d.createBindGroup({
       label: 'terrain-node-bg',
       layout: nodeLayout,

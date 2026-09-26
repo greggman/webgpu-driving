@@ -2,6 +2,7 @@
 // rails/boards/wires), guardrails, utility poles with sagging wires, farm
 // buildings, curve warning signs, delineators and bridge piers.
 import {shaderModule} from '../gpu/gpu';
+import {deferRenderPipeline} from '../gpu/pipelines';
 import {aabbInFrustum} from '../math/mat4';
 import {Rng} from '../math/noise';
 import {Biome} from '../world/biome';
@@ -76,8 +77,8 @@ export class Props {
   private layout: GPUBindGroupLayout;
   private bg: GPUBindGroup;
   private identityBG: GPUBindGroup;
-  private pipe: GPURenderPipeline;
-  private shadowPipe: GPURenderPipeline;
+  private pipe!: GPURenderPipeline;
+  private shadowPipe!: GPURenderPipeline;
   private chunks = new Map<number, ChunkProps>();
   private freeSlots: number[] = [];
   private road: Road | null = null;
@@ -183,37 +184,45 @@ export class Props {
       },
     ];
     const empty = d.createBindGroupLayout({label: 'prop-empty', entries: []});
-    this.pipe = d.createRenderPipeline({
-      label: 'props',
-      layout: d.createPipelineLayout({
-        label: 'props-pl',
-        bindGroupLayouts: [frameLayout, this.layout, empty],
-      }),
-      vertex: {module, entryPoint: 'vs', buffers: vtx},
-      fragment: {module, entryPoint: 'fs', targets: GBUFFER_TARGETS},
-      primitive: {topology: 'triangle-list', cullMode: 'none'},
-      depthStencil: {
-        format: DEPTH_FORMAT,
-        depthWriteEnabled: true,
-        depthCompare: 'greater',
+    deferRenderPipeline(
+      d,
+      {
+        label: 'props',
+        layout: d.createPipelineLayout({
+          label: 'props-pl',
+          bindGroupLayouts: [frameLayout, this.layout, empty],
+        }),
+        vertex: {module, entryPoint: 'vs', buffers: vtx},
+        fragment: {module, entryPoint: 'fs', targets: GBUFFER_TARGETS},
+        primitive: {topology: 'triangle-list', cullMode: 'none'},
+        depthStencil: {
+          format: DEPTH_FORMAT,
+          depthWriteEnabled: true,
+          depthCompare: 'greater',
+        },
       },
-    });
-    this.shadowPipe = d.createRenderPipeline({
-      label: 'props-shadow',
-      layout: d.createPipelineLayout({
-        label: 'props-shadow-pl',
-        bindGroupLayouts: [frameLayout, this.layout, shadowLayout],
-      }),
-      vertex: {module, entryPoint: 'vsShadow', buffers: vtx},
-      primitive: {topology: 'triangle-list', cullMode: 'none'},
-      depthStencil: {
-        format: DEPTH_FORMAT,
-        depthWriteEnabled: true,
-        depthCompare: 'greater',
-        depthBias: -2,
-        depthBiasSlopeScale: -2,
+      p => (this.pipe = p),
+    );
+    deferRenderPipeline(
+      d,
+      {
+        label: 'props-shadow',
+        layout: d.createPipelineLayout({
+          label: 'props-shadow-pl',
+          bindGroupLayouts: [frameLayout, this.layout, shadowLayout],
+        }),
+        vertex: {module, entryPoint: 'vsShadow', buffers: vtx},
+        primitive: {topology: 'triangle-list', cullMode: 'none'},
+        depthStencil: {
+          format: DEPTH_FORMAT,
+          depthWriteEnabled: true,
+          depthCompare: 'greater',
+          depthBias: -2,
+          depthBiasSlopeScale: -2,
+        },
       },
-    });
+      p => (this.shadowPipe = p),
+    );
   }
 
   setWorld(biome: Biome, road: Road) {

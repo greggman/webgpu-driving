@@ -25,7 +25,8 @@ Seven environments: **country road**, **desert dirt road**, **ocean coastline**,
 
 Useful for sharing a view and for deterministic screenshots:
 
-- `biome=country|desert|coast|forest|snow|lahonda|night`
+- `biome=country|desert|coast|forest|snow|lahonda|night` (without it, a random environment
+  and seed are chosen; the page never writes it into the URL, so shared links stay plain)
 - `seed=N`: world seed
 - `s=N`: start distance along the road (m)
 - `tod=H`: time of day (hours)

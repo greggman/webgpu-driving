@@ -1,6 +1,7 @@
 // Weather and dust particles (see particles.wgsl), plus rolling tumbleweeds
 // handled on the CPU as props.
 import {shaderModule} from '../gpu/gpu';
+import {deferRenderPipeline} from '../gpu/pipelines';
 import {Biome} from '../world/biome';
 import {RENDER_PRELUDE} from './shaders';
 import partSrc from '../shaders/particles.wgsl';
@@ -26,7 +27,7 @@ interface System {
 }
 
 export class Particles {
-  private pipe: GPURenderPipeline;
+  private pipe!: GPURenderPipeline;
   private layout: GPUBindGroupLayout;
   private hist: GPUBuffer;
   private histData = new Float32Array(HIST * 4);
@@ -74,29 +75,33 @@ export class Particles {
         operation: 'add',
       },
     };
-    this.pipe = d.createRenderPipeline({
-      label: 'particles',
-      layout: d.createPipelineLayout({
-        label: 'particles-pl',
-        bindGroupLayouts: [frameLayout, this.layout],
-      }),
-      vertex: {module, entryPoint: 'vs'},
-      fragment: {
-        module,
-        entryPoint: 'fs',
-        targets: [
-          {format: HDR_FORMAT, blend: premult},
-          {format: VELOCITY_FORMAT, writeMask: 0},
-          {format: NORMAL_FORMAT, writeMask: 0},
-        ],
+    deferRenderPipeline(
+      d,
+      {
+        label: 'particles',
+        layout: d.createPipelineLayout({
+          label: 'particles-pl',
+          bindGroupLayouts: [frameLayout, this.layout],
+        }),
+        vertex: {module, entryPoint: 'vs'},
+        fragment: {
+          module,
+          entryPoint: 'fs',
+          targets: [
+            {format: HDR_FORMAT, blend: premult},
+            {format: VELOCITY_FORMAT, writeMask: 0},
+            {format: NORMAL_FORMAT, writeMask: 0},
+          ],
+        },
+        primitive: {topology: 'triangle-strip'},
+        depthStencil: {
+          format: DEPTH_FORMAT,
+          depthWriteEnabled: false,
+          depthCompare: 'greater',
+        },
       },
-      primitive: {topology: 'triangle-strip'},
-      depthStencil: {
-        format: DEPTH_FORMAT,
-        depthWriteEnabled: false,
-        depthCompare: 'greater',
-      },
-    });
+      p => (this.pipe = p),
+    );
   }
 
   setWorld(biome: Biome) {

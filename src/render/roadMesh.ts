@@ -2,6 +2,7 @@
 // chunk is a strip of cross-sections (skirts, lanes, bridge barriers and
 // underside); only chunks inside the forward streaming window exist.
 import {shaderModule} from '../gpu/gpu';
+import {deferRenderPipeline} from '../gpu/pipelines';
 import {aabbInFrustum} from '../math/mat4';
 import {Road} from '../world/road';
 import {RENDER_PRELUDE} from './shaders';
@@ -40,8 +41,9 @@ export class RoadMesh {
   private freeSlots: number[] = [];
   private originX = 0;
   private originZ = 0;
-  pipeline!: GPURenderPipeline;
-  shadowPipeline!: GPURenderPipeline;
+  // Shared by every RoadMesh (created once at start-up, compiled async).
+  static pipeline: GPURenderPipeline;
+  static shadowPipeline: GPURenderPipeline;
   visible: Chunk[] = [];
   piers = new Map<number, BridgePier[]>();
 
@@ -239,11 +241,11 @@ export class RoadMesh {
     return [...this.chunks.values()];
   }
 
-  createPipelines(
+  static createPipelines(
+    d: GPUDevice,
     frameLayout: GPUBindGroupLayout,
     shadowLayout: GPUBindGroupLayout,
   ) {
-    const d = this.device;
     const module = shaderModule(d, RENDER_PRELUDE + '\n' + roadSrc, 'road');
     const buffers: GPUVertexBufferLayout[] = [
       {
@@ -256,50 +258,58 @@ export class RoadMesh {
         ],
       },
     ];
-    this.pipeline = d.createRenderPipeline({
-      label: 'road',
-      layout: d.createPipelineLayout({
-        label: 'road-layout',
-        bindGroupLayouts: [frameLayout],
-      }),
-      vertex: {module, entryPoint: 'vs', buffers},
-      fragment: {module, entryPoint: 'fs', targets: GBUFFER_TARGETS},
-      primitive: {topology: 'triangle-list', cullMode: 'back'},
-      depthStencil: {
-        format: DEPTH_FORMAT,
-        depthWriteEnabled: true,
-        depthCompare: 'greater',
+    deferRenderPipeline(
+      d,
+      {
+        label: 'road',
+        layout: d.createPipelineLayout({
+          label: 'road-layout',
+          bindGroupLayouts: [frameLayout],
+        }),
+        vertex: {module, entryPoint: 'vs', buffers},
+        fragment: {module, entryPoint: 'fs', targets: GBUFFER_TARGETS},
+        primitive: {topology: 'triangle-list', cullMode: 'back'},
+        depthStencil: {
+          format: DEPTH_FORMAT,
+          depthWriteEnabled: true,
+          depthCompare: 'greater',
+        },
       },
-    });
-    this.shadowPipeline = d.createRenderPipeline({
-      label: 'road-shadow',
-      layout: d.createPipelineLayout({
-        label: 'road-shadow-layout',
-        bindGroupLayouts: [
-          frameLayout,
-          d.createBindGroupLayout({label: 'empty', entries: []}),
-          shadowLayout,
-        ],
-      }),
-      vertex: {module, entryPoint: 'vsShadow', buffers},
-      primitive: {topology: 'triangle-list', cullMode: 'none'},
-      depthStencil: {
-        format: DEPTH_FORMAT,
-        depthWriteEnabled: true,
-        depthCompare: 'greater',
-        depthBias: -2,
-        depthBiasSlopeScale: -2,
+      p => (RoadMesh.pipeline = p),
+    );
+    deferRenderPipeline(
+      d,
+      {
+        label: 'road-shadow',
+        layout: d.createPipelineLayout({
+          label: 'road-shadow-layout',
+          bindGroupLayouts: [
+            frameLayout,
+            d.createBindGroupLayout({label: 'empty', entries: []}),
+            shadowLayout,
+          ],
+        }),
+        vertex: {module, entryPoint: 'vsShadow', buffers},
+        primitive: {topology: 'triangle-list', cullMode: 'none'},
+        depthStencil: {
+          format: DEPTH_FORMAT,
+          depthWriteEnabled: true,
+          depthCompare: 'greater',
+          depthBias: -2,
+          depthBiasSlopeScale: -2,
+        },
       },
-    });
+      p => (RoadMesh.shadowPipeline = p),
+    );
   }
 
   draw(pass: GPURenderPassEncoder) {
-    pass.setPipeline(this.pipeline);
+    pass.setPipeline(RoadMesh.pipeline);
     this.drawChunks(pass, this.visible);
   }
 
   drawShadow(pass: GPURenderPassEncoder, emptyBG: GPUBindGroup) {
-    pass.setPipeline(this.shadowPipeline);
+    pass.setPipeline(RoadMesh.shadowPipeline);
     pass.setBindGroup(1, emptyBG);
     // Only bridges cast meaningful shadows.
     this.drawChunks(

@@ -1,6 +1,7 @@
 import {initGpu, setGpuProblemHandler, WebGpuUnavailableError} from './gpu/gpu';
 import {LOW_POWER_GRAPHICS} from './render/renderer';
 import {saveGraphics} from './ui/settings';
+import {compileDeferred, setPipelineFailHandler} from './gpu/pipelines';
 import {App, parseParams} from './app';
 
 function showError(message: string) {
@@ -53,6 +54,7 @@ async function main() {
   const dev: DevHooks = {ready: false, settled: false};
   (window as unknown as {__dev: DevHooks}).__dev = dev;
   setGpuProblemHandler(showGpuProblem);
+  setPipelineFailHandler(msg => showGpuProblem(msg, false));
   document.getElementById('gpu-dismiss')!.addEventListener('click', () => {
     document.getElementById('gpu-problem')!.classList.remove('visible');
   });
@@ -67,7 +69,17 @@ async function main() {
   status('Creating shaders and pipelines…', 0.03);
   await paint();
   const app = new App(gpu, parseParams());
+  // Compile the big render pipelines asynchronously, a few at a time, so the
+  // page stays responsive and the bar shows real progress (this is the slow
+  // part on phones).
+  await compileDeferred((done, total) => {
+    status(
+      `Compiling shaders ${done} / ${total}…`,
+      0.03 + 0.5 * (done / total),
+    );
+  });
   await paint();
+  app.progressStart = 0.55;
   await app.generate(app.params.biome);
   dev.app = app;
   dev.ready = true;

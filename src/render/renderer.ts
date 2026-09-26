@@ -269,6 +269,7 @@ export class Renderer {
       }),
     );
     this.terrain.createPipelines(this.frameLayout, this.shadows.layout);
+    RoadMesh.createPipelines(d, this.frameLayout, this.shadows.layout);
     this.cars.createPipelines(this.frameLayout, this.shadows.layout);
     this.vegetation = new Vegetation(
       d,
@@ -460,7 +461,6 @@ export class Renderer {
     this.road = road;
     this.biome = biome;
     this.roadMesh = new RoadMesh(this.gpu.device, road);
-    this.roadMesh.createPipelines(this.frameLayout, this.shadows.layout);
     this.terrain.invalidate();
     this.roadBase = -1e9;
     this.post.resetHistory = true;

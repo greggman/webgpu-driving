@@ -2,6 +2,7 @@
 // per-mesh-LOD indirect draws (LOD0 mesh, LOD1 mesh, octahedral impostor),
 // impostor baking, and frustum-based grass.
 import {shaderModule} from '../gpu/gpu';
+import {deferComputePipeline, deferRenderPipeline} from '../gpu/pipelines';
 import {ts} from '../gpu/profiler';
 import {aabbInFrustum} from '../math/mat4';
 import {Biome, TreeKind} from '../world/biome';
@@ -85,15 +86,15 @@ export class Vegetation {
   private impAlbedo: GPUTexture;
   private impNormal: GPUTexture;
   private layers: Layer[] = [];
-  private scatterPipe: GPUComputePipeline;
+  private scatterPipe!: GPUComputePipeline;
   private scatterLayout: GPUBindGroupLayout;
   private meshLayout: GPUBindGroupLayout;
   private meshBG!: GPUBindGroup;
-  private meshPipe: GPURenderPipeline;
-  private meshShadowPipe: GPURenderPipeline;
-  private impPipe: GPURenderPipeline;
-  private impShadowPipe: GPURenderPipeline;
-  private bakePipe: GPURenderPipeline;
+  private meshPipe!: GPURenderPipeline;
+  private meshShadowPipe!: GPURenderPipeline;
+  private impPipe!: GPURenderPipeline;
+  private impShadowPipe!: GPURenderPipeline;
+  private bakePipe!: GPURenderPipeline;
   private impSampler: GPUSampler;
   private leafSampler: GPUSampler;
   // Grass.
@@ -104,10 +105,10 @@ export class Vegetation {
   private bladesNear: GPUBuffer;
   private bladesFar: GPUBuffer;
   private grassArgs: GPUBuffer;
-  private grassSpawnPipe: GPUComputePipeline;
+  private grassSpawnPipe!: GPUComputePipeline;
   private grassSpawnBG!: GPUBindGroup;
-  private grassNearPipe: GPURenderPipeline;
-  private grassFarPipe: GPURenderPipeline;
+  private grassNearPipe!: GPURenderPipeline;
+  private grassFarPipe!: GPURenderPipeline;
   private grassNearBG!: GPUBindGroup;
   private grassFarBG!: GPUBindGroup;
   private tileHeights = new Map<string, number>();
@@ -258,14 +259,18 @@ export class Vegetation {
       RENDER_PRELUDE + '\n' + vegCommon + '\n' + scatterSrc,
       'veg-scatter',
     );
-    this.scatterPipe = d.createComputePipeline({
-      label: 'veg-scatter',
-      layout: d.createPipelineLayout({
-        label: 'veg-scatter-pl',
-        bindGroupLayouts: [frameLayout, this.scatterLayout],
-      }),
-      compute: {module: scatterMod, entryPoint: 'scatter'},
-    });
+    deferComputePipeline(
+      d,
+      {
+        label: 'veg-scatter',
+        layout: d.createPipelineLayout({
+          label: 'veg-scatter-pl',
+          bindGroupLayouts: [frameLayout, this.scatterLayout],
+        }),
+        compute: {module: scatterMod, entryPoint: 'scatter'},
+      },
+      p => (this.scatterPipe = p),
+    );
 
     // --- Mesh / impostor draw ---
     this.meshLayout = d.createBindGroupLayout({
@@ -358,54 +363,74 @@ export class Vegetation {
       depthBias: -2,
       depthBiasSlopeScale: -2,
     };
-    this.meshPipe = d.createRenderPipeline({
-      label: 'veg-mesh',
-      layout: mainPL,
-      vertex: {module: meshMod, entryPoint: 'vs', buffers: vtx},
-      fragment: {module: meshMod, entryPoint: 'fs', targets: GBUFFER_TARGETS},
-      primitive: {topology: 'triangle-list', cullMode: 'none'},
-      depthStencil: depth,
-    });
-    this.meshShadowPipe = d.createRenderPipeline({
-      label: 'veg-mesh-shadow',
-      layout: shadowPL,
-      vertex: {module: meshMod, entryPoint: 'vsShadow', buffers: vtx},
-      fragment: {module: meshMod, entryPoint: 'fsShadow', targets: []},
-      primitive: {topology: 'triangle-list', cullMode: 'none'},
-      depthStencil: shadowDepth,
-    });
-    this.impPipe = d.createRenderPipeline({
-      label: 'veg-impostor',
-      layout: mainPL,
-      vertex: {module: impMod, entryPoint: 'vs'},
-      fragment: {module: impMod, entryPoint: 'fs', targets: GBUFFER_TARGETS},
-      primitive: {topology: 'triangle-strip', cullMode: 'none'},
-      depthStencil: depth,
-    });
-    this.impShadowPipe = d.createRenderPipeline({
-      label: 'veg-impostor-shadow',
-      layout: shadowPL,
-      vertex: {module: impMod, entryPoint: 'vsShadow'},
-      fragment: {module: impMod, entryPoint: 'fsShadow', targets: []},
-      primitive: {topology: 'triangle-strip', cullMode: 'none'},
-      depthStencil: shadowDepth,
-    });
-    this.bakePipe = d.createRenderPipeline({
-      label: 'veg-impostor-bake',
-      layout: 'auto',
-      vertex: {module: meshMod, entryPoint: 'vsBake', buffers: vtx},
-      fragment: {
-        module: meshMod,
-        entryPoint: 'fsBake',
-        targets: [{format: 'rgba8unorm'}, {format: 'rgba8unorm'}],
+    deferRenderPipeline(
+      d,
+      {
+        label: 'veg-mesh',
+        layout: mainPL,
+        vertex: {module: meshMod, entryPoint: 'vs', buffers: vtx},
+        fragment: {module: meshMod, entryPoint: 'fs', targets: GBUFFER_TARGETS},
+        primitive: {topology: 'triangle-list', cullMode: 'none'},
+        depthStencil: depth,
       },
-      primitive: {topology: 'triangle-list', cullMode: 'none'},
-      depthStencil: {
-        format: 'depth32float',
-        depthWriteEnabled: true,
-        depthCompare: 'greater',
+      p => (this.meshPipe = p),
+    );
+    deferRenderPipeline(
+      d,
+      {
+        label: 'veg-mesh-shadow',
+        layout: shadowPL,
+        vertex: {module: meshMod, entryPoint: 'vsShadow', buffers: vtx},
+        fragment: {module: meshMod, entryPoint: 'fsShadow', targets: []},
+        primitive: {topology: 'triangle-list', cullMode: 'none'},
+        depthStencil: shadowDepth,
       },
-    });
+      p => (this.meshShadowPipe = p),
+    );
+    deferRenderPipeline(
+      d,
+      {
+        label: 'veg-impostor',
+        layout: mainPL,
+        vertex: {module: impMod, entryPoint: 'vs'},
+        fragment: {module: impMod, entryPoint: 'fs', targets: GBUFFER_TARGETS},
+        primitive: {topology: 'triangle-strip', cullMode: 'none'},
+        depthStencil: depth,
+      },
+      p => (this.impPipe = p),
+    );
+    deferRenderPipeline(
+      d,
+      {
+        label: 'veg-impostor-shadow',
+        layout: shadowPL,
+        vertex: {module: impMod, entryPoint: 'vsShadow'},
+        fragment: {module: impMod, entryPoint: 'fsShadow', targets: []},
+        primitive: {topology: 'triangle-strip', cullMode: 'none'},
+        depthStencil: shadowDepth,
+      },
+      p => (this.impShadowPipe = p),
+    );
+    deferRenderPipeline(
+      d,
+      {
+        label: 'veg-impostor-bake',
+        layout: 'auto',
+        vertex: {module: meshMod, entryPoint: 'vsBake', buffers: vtx},
+        fragment: {
+          module: meshMod,
+          entryPoint: 'fsBake',
+          targets: [{format: 'rgba8unorm'}, {format: 'rgba8unorm'}],
+        },
+        primitive: {topology: 'triangle-list', cullMode: 'none'},
+        depthStencil: {
+          format: 'depth32float',
+          depthWriteEnabled: true,
+          depthCompare: 'greater',
+        },
+      },
+      p => (this.bakePipe = p),
+    );
 
     // --- Grass ---
     this.grassParams = d.createBuffer({
@@ -467,14 +492,18 @@ export class Vegetation {
         },
       ],
     });
-    this.grassSpawnPipe = d.createComputePipeline({
-      label: 'grass-spawn',
-      layout: d.createPipelineLayout({
-        label: 'grass-spawn-pl',
-        bindGroupLayouts: [frameLayout, grassComputeLayout],
-      }),
-      compute: {module: grassMod, entryPoint: 'spawn'},
-    });
+    deferComputePipeline(
+      d,
+      {
+        label: 'grass-spawn',
+        layout: d.createPipelineLayout({
+          label: 'grass-spawn-pl',
+          bindGroupLayouts: [frameLayout, grassComputeLayout],
+        }),
+        compute: {module: grassMod, entryPoint: 'spawn'},
+      },
+      p => (this.grassSpawnPipe = p),
+    );
     this.grassSpawnBG = d.createBindGroup({
       label: 'grass-spawn-bg',
       layout: grassComputeLayout,
@@ -500,21 +529,29 @@ export class Vegetation {
       label: 'grass-draw-pl',
       bindGroupLayouts: [frameLayout, bladeLayout],
     });
-    const gp = (label: string, entry: string) =>
-      d.createRenderPipeline({
-        label,
-        layout: grassPL,
-        vertex: {module: grassMod, entryPoint: entry},
-        fragment: {
-          module: grassMod,
-          entryPoint: 'fs',
-          targets: GBUFFER_TARGETS,
+    const gp = (
+      label: string,
+      entry: string,
+      assign: (p: GPURenderPipeline) => void,
+    ) =>
+      deferRenderPipeline(
+        d,
+        {
+          label,
+          layout: grassPL,
+          vertex: {module: grassMod, entryPoint: entry},
+          fragment: {
+            module: grassMod,
+            entryPoint: 'fs',
+            targets: GBUFFER_TARGETS,
+          },
+          primitive: {topology: 'triangle-strip', cullMode: 'none'},
+          depthStencil: depth,
         },
-        primitive: {topology: 'triangle-strip', cullMode: 'none'},
-        depthStencil: depth,
-      });
-    this.grassNearPipe = gp('grass-near', 'vsNear');
-    this.grassFarPipe = gp('grass-far', 'vsFar');
+        assign,
+      );
+    gp('grass-near', 'vsNear', p => (this.grassNearPipe = p));
+    gp('grass-far', 'vsFar', p => (this.grassFarPipe = p));
     this.grassNearBG = d.createBindGroup({
       label: 'grass-near-bg',
       layout: bladeLayout,

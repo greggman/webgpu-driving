@@ -2,6 +2,7 @@
 //   AO (multiplied into HDR) -> TAA -> motion blur -> depth of field ->
 //   auto exposure -> bloom -> tonemap/grade/composite to the swapchain.
 import {shaderModule} from '../gpu/gpu';
+import {deferRenderPipeline} from '../gpu/pipelines';
 import {ts} from '../gpu/profiler';
 import {FRAME_PRELUDE} from './shaders';
 import fullscreen from '../shaders/post/fullscreen.wgsl';
@@ -34,13 +35,13 @@ export class Post {
   private postB!: GPUTexture;
   private bloomMips: GPUTexture[] = [];
   private sampler: GPUSampler;
-  private aoPipe: GPURenderPipeline;
-  private taaPipe: GPURenderPipeline;
-  private mbPipe: GPURenderPipeline;
-  private dofPipe: GPURenderPipeline;
-  private downPipe: GPURenderPipeline;
-  private upPipe: GPURenderPipeline;
-  private tonePipe: GPURenderPipeline;
+  private aoPipe!: GPURenderPipeline;
+  private taaPipe!: GPURenderPipeline;
+  private mbPipe!: GPURenderPipeline;
+  private dofPipe!: GPURenderPipeline;
+  private downPipe!: GPURenderPipeline;
+  private upPipe!: GPURenderPipeline;
+  private tonePipe!: GPURenderPipeline;
   private expBuildPipe: GPUComputePipeline;
   private expResolvePipe: GPUComputePipeline;
   private histoBuf: GPUBuffer;
@@ -85,34 +86,46 @@ export class Post {
       module: GPUShaderModule,
       entry: string,
       format: GPUTextureFormat,
+      assign: (p: GPURenderPipeline) => void,
       blend?: GPUBlendState,
     ) =>
-      device.createRenderPipeline({
-        label,
-        layout: 'auto',
-        vertex: {module, entryPoint: 'vsFull'},
-        fragment: {module, entryPoint: entry, targets: [{format, blend}]},
-        primitive: {topology: 'triangle-list'},
-      });
+      deferRenderPipeline(
+        device,
+        {
+          label,
+          layout: 'auto',
+          vertex: {module, entryPoint: 'vsFull'},
+          fragment: {module, entryPoint: entry, targets: [{format, blend}]},
+          primitive: {topology: 'triangle-list'},
+        },
+        assign,
+      );
     const bloomMod = mod(bloomSrc, 'bloom');
-    this.aoPipe = mk('ssao', mod(aoSrc, 'ssao'), 'fs', HDR_FORMAT, {
+    mk('ssao', mod(aoSrc, 'ssao'), 'fs', HDR_FORMAT, p => (this.aoPipe = p), {
       color: {srcFactor: 'dst', dstFactor: 'zero', operation: 'add'},
       alpha: {srcFactor: 'zero', dstFactor: 'one', operation: 'add'},
     });
-    this.taaPipe = mk('taa', mod(taaSrc, 'taa'), 'fs', HDR_FORMAT);
-    this.mbPipe = mk(
+    mk('taa', mod(taaSrc, 'taa'), 'fs', HDR_FORMAT, p => (this.taaPipe = p));
+    mk(
       'motion-blur',
       mod(mbSrc, 'motion-blur'),
       'fs',
       HDR_FORMAT,
+      p => (this.mbPipe = p),
     );
-    this.dofPipe = mk('dof', mod(dofSrc, 'dof'), 'fs', HDR_FORMAT);
-    this.downPipe = mk('bloom-down', bloomMod, 'down', HDR_FORMAT);
-    this.upPipe = mk('bloom-up', bloomMod, 'up', HDR_FORMAT, {
+    mk('dof', mod(dofSrc, 'dof'), 'fs', HDR_FORMAT, p => (this.dofPipe = p));
+    mk('bloom-down', bloomMod, 'down', HDR_FORMAT, p => (this.downPipe = p));
+    mk('bloom-up', bloomMod, 'up', HDR_FORMAT, p => (this.upPipe = p), {
       color: {srcFactor: 'one', dstFactor: 'one', operation: 'add'},
       alpha: {srcFactor: 'one', dstFactor: 'one', operation: 'add'},
     });
-    this.tonePipe = mk('tonemap', mod(tonemapSrc, 'tonemap'), 'fs', swapFormat);
+    mk(
+      'tonemap',
+      mod(tonemapSrc, 'tonemap'),
+      'fs',
+      swapFormat,
+      p => (this.tonePipe = p),
+    );
     const expMod = shaderModule(
       device,
       FRAME_PRELUDE + '\n' + exposureSrc,

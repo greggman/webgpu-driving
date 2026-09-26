@@ -1,6 +1,7 @@
 // Atmosphere LUTs (transmittance, multi-scattering, sky-view, aerial
 // perspective), SH ambient, cloud noise, and the sky draw.
 import {shaderModule} from '../gpu/gpu';
+import {deferRenderPipeline} from '../gpu/pipelines';
 import {ts} from '../gpu/profiler';
 import {ATMO_PRELUDE, FRAME_PRELUDE, RENDER_PRELUDE} from './shaders';
 import lutSrc from '../shaders/atmo_lut.wgsl';
@@ -178,18 +179,22 @@ export class Atmosphere {
       RENDER_PRELUDE + '\n' + skySrc,
       'sky',
     );
-    this.skyDrawPipe = this.device.createRenderPipeline({
-      label: 'sky-draw',
-      layout,
-      vertex: {module, entryPoint: 'vs'},
-      fragment: {module, entryPoint: 'fs', targets: GBUFFER_TARGETS},
-      primitive: {topology: 'triangle-list'},
-      depthStencil: {
-        format: 'depth32float',
-        depthWriteEnabled: false,
-        depthCompare: 'greater-equal',
+    deferRenderPipeline(
+      this.device,
+      {
+        label: 'sky-draw',
+        layout,
+        vertex: {module, entryPoint: 'vs'},
+        fragment: {module, entryPoint: 'fs', targets: GBUFFER_TARGETS},
+        primitive: {topology: 'triangle-list'},
+        depthStencil: {
+          format: 'depth32float',
+          depthWriteEnabled: false,
+          depthCompare: 'greater-equal',
+        },
       },
-    });
+      p => (this.skyDrawPipe = p),
+    );
   }
 
   // mieScale changes -> LUTs must be rebuilt.

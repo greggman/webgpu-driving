@@ -1,6 +1,7 @@
 // Car rendering: one body mesh per archetype, instanced; wheels drawn as 4
 // instances per car from a shared wheel mesh.
 import {shaderModule} from '../gpu/gpu';
+import {deferRenderPipeline} from '../gpu/pipelines';
 import {
   CAR_KINDS,
   CarKind,
@@ -133,72 +134,96 @@ export class CarRenderer {
       label: 'car-shadow-layout',
       bindGroupLayouts: [frameLayout, this.layout, shadowLayout],
     });
-    const main = (label: string, entry: string) =>
-      d.createRenderPipeline({
-        label,
+    const main = (
+      label: string,
+      entry: string,
+      assign: (p: GPURenderPipeline) => void,
+    ) =>
+      deferRenderPipeline(
+        d,
+        {
+          label,
+          layout,
+          vertex: {module, entryPoint: entry, buffers},
+          fragment: {module, entryPoint: 'fs', targets: GBUFFER_TARGETS},
+          primitive: {topology: 'triangle-list', cullMode: 'none'},
+          depthStencil: {
+            format: DEPTH_FORMAT,
+            depthWriteEnabled: true,
+            depthCompare: 'greater',
+          },
+        },
+        assign,
+      );
+    const shadow = (
+      label: string,
+      entry: string,
+      assign: (p: GPURenderPipeline) => void,
+    ) =>
+      deferRenderPipeline(
+        d,
+        {
+          label,
+          layout: shadowPL,
+          vertex: {module, entryPoint: entry, buffers},
+          fragment: {module, entryPoint: 'fsShadow', targets: []},
+          primitive: {topology: 'triangle-list', cullMode: 'none'},
+          depthStencil: {
+            format: DEPTH_FORMAT,
+            depthWriteEnabled: true,
+            depthCompare: 'greater',
+            depthBias: -2,
+            depthBiasSlopeScale: -1.5,
+          },
+        },
+        assign,
+      );
+    deferRenderPipeline(
+      d,
+      {
+        label: 'car-windshield',
         layout,
-        vertex: {module, entryPoint: entry, buffers},
-        fragment: {module, entryPoint: 'fs', targets: GBUFFER_TARGETS},
-        primitive: {topology: 'triangle-list', cullMode: 'none'},
-        depthStencil: {
-          format: DEPTH_FORMAT,
-          depthWriteEnabled: true,
-          depthCompare: 'greater',
-        },
-      });
-    const shadow = (label: string, entry: string) =>
-      d.createRenderPipeline({
-        label,
-        layout: shadowPL,
-        vertex: {module, entryPoint: entry, buffers},
-        fragment: {module, entryPoint: 'fsShadow', targets: []},
-        primitive: {topology: 'triangle-list', cullMode: 'none'},
-        depthStencil: {
-          format: DEPTH_FORMAT,
-          depthWriteEnabled: true,
-          depthCompare: 'greater',
-          depthBias: -2,
-          depthBiasSlopeScale: -1.5,
-        },
-      });
-    this.glassPipe = d.createRenderPipeline({
-      label: 'car-windshield',
-      layout,
-      vertex: {module, entryPoint: 'vsBody', buffers},
-      fragment: {
-        module,
-        entryPoint: 'fsGlass',
-        targets: [
-          {
-            format: GBUFFER_TARGETS[0].format,
-            blend: {
-              color: {
-                srcFactor: 'one',
-                dstFactor: 'one-minus-src-alpha',
-                operation: 'add',
-              },
-              alpha: {
-                srcFactor: 'one',
-                dstFactor: 'one-minus-src-alpha',
-                operation: 'add',
+        vertex: {module, entryPoint: 'vsBody', buffers},
+        fragment: {
+          module,
+          entryPoint: 'fsGlass',
+          targets: [
+            {
+              format: GBUFFER_TARGETS[0].format,
+              blend: {
+                color: {
+                  srcFactor: 'one',
+                  dstFactor: 'one-minus-src-alpha',
+                  operation: 'add',
+                },
+                alpha: {
+                  srcFactor: 'one',
+                  dstFactor: 'one-minus-src-alpha',
+                  operation: 'add',
+                },
               },
             },
-          },
-          {format: GBUFFER_TARGETS[1].format, writeMask: 0},
-          {format: GBUFFER_TARGETS[2].format, writeMask: 0},
-        ],
+            {format: GBUFFER_TARGETS[1].format, writeMask: 0},
+            {format: GBUFFER_TARGETS[2].format, writeMask: 0},
+          ],
+        },
+        primitive: {topology: 'triangle-list', cullMode: 'none'},
+        depthStencil: {
+          format: DEPTH_FORMAT,
+          depthWriteEnabled: false,
+          depthCompare: 'greater',
+        },
       },
-      primitive: {topology: 'triangle-list', cullMode: 'none'},
-      depthStencil: {
-        format: DEPTH_FORMAT,
-        depthWriteEnabled: false,
-        depthCompare: 'greater',
-      },
-    });
-    this.bodyPipe = main('car-body', 'vsBody');
-    this.wheelPipe = main('car-wheel', 'vsWheel');
-    this.bodyShadowPipe = shadow('car-body-shadow', 'vsBodyShadow');
-    this.wheelShadowPipe = shadow('car-wheel-shadow', 'vsWheelShadow');
+      p => (this.glassPipe = p),
+    );
+    main('car-body', 'vsBody', p => (this.bodyPipe = p));
+    main('car-wheel', 'vsWheel', p => (this.wheelPipe = p));
+    shadow('car-body-shadow', 'vsBodyShadow', p => (this.bodyShadowPipe = p));
+    shadow(
+      'car-wheel-shadow',
+      'vsWheelShadow',
+      p => (this.wheelShadowPipe = p),
+    );
   }
 
   setCars(list: CarDraw[]) {

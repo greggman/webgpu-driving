@@ -34,12 +34,19 @@ export interface Params {
 
 export function parseParams(): Params {
   const q = new URLSearchParams(location.search);
-  const biome = (q.get('biome') ?? 'country') as BiomeId;
+  // With no ?biome= (e.g. a shared link) start somewhere random.
+  const requested = q.get('biome') as BiomeId | null;
+  const known = requested !== null && BIOME_ORDER.includes(requested);
+  const biome: BiomeId = known
+    ? requested
+    : BIOME_ORDER[Math.floor(Math.random() * BIOME_ORDER.length)];
   const cam = q.get('cam') as ShotKind | null;
   const num = (k: string) => (q.has(k) ? Number(q.get(k)) : null);
   return {
-    biome: BIOME_ORDER.includes(biome) ? biome : 'country',
-    seed: num('seed') ?? 1,
+    biome,
+    // Explicit environments (tests, deliberate links) default to seed 1;
+    // random starts also get a random world.
+    seed: num('seed') ?? (known ? 1 : Math.floor(Math.random() * 1e6) + 1),
     s: num('s'),
     tod: num('tod'),
     cam: cam && SHOT_KINDS.includes(cam) ? cam : null,
@@ -113,7 +120,12 @@ export class App {
   showingProgress = false;
   private loadingNote = document.getElementById('loading-note')!;
 
-  setProgress(label: string, frac: number, note = '') {
+  // Fraction of the bar already used before world generation (start-up
+  // shader compilation); generation fills the rest.
+  progressStart = 0;
+
+  setProgress(label: string, frac0: number, note = '') {
+    const frac = this.progressStart + frac0 * (1 - this.progressStart);
     this.loadingNote.textContent = note;
     this.loadingEl.classList.add('visible');
     this.showingProgress = true;
@@ -129,9 +141,7 @@ export class App {
   settings!: SettingsPanel;
 
   private onWorldChanged(id: BiomeId) {
-    const url = new URL(location.href);
-    url.searchParams.set('biome', id);
-    history.replaceState(null, '', url);
+    void id;
     this.settings?.sync();
   }
 
@@ -179,18 +189,29 @@ export class App {
     this.settings.sync();
   }
 
+  // Load-time profile (logged with ?debug=timing).
+  timings: Array<[string, number]> = [];
+  private mark(label: string) {
+    this.timings.push([label, Math.round(performance.now())]);
+    if (location.search.includes('timing')) {
+      console.log(`[timing] ${label} ${Math.round(performance.now())}`);
+    }
+  }
+
   async generate(id: BiomeId) {
     if (this.busy) return;
     this.busy = true;
     const name = BIOMES[id].name;
     this.setProgress(`${name}: shaping the land`, 0.05);
     await this.yieldToPaint();
+    this.mark('generate start');
     this.biome = structuredClone(BIOMES[id]);
     this.onWorldChanged(id);
     if (this.params.tod !== null) this.biome.sky.timeOfDay = this.params.tod;
     this.road = new Road(this.biome, this.params.seed);
     this.setProgress(`${name}: populating traffic`, 0.2);
     await this.yieldToPaint();
+    this.mark('road done');
     const s0 = this.params.s ?? 800;
     this.traffic = new Traffic(this.biome, this.params.seed, s0);
     const ps = carSpec(this.traffic.player.kind);
@@ -230,6 +251,8 @@ export class App {
     if (this.params.s !== null) this.traffic.player.s = this.params.s;
     this.setProgress(`${name}: growing trees and baking impostors`, 0.35);
     await this.yieldToPaint();
+    this.mark('traffic done');
+    this.mark('setWorld');
     this.renderer.setWorld(this.road, this.biome);
     this.tumbleweeds =
       this.biome.scatter.tumbleweeds > 0
@@ -238,11 +261,12 @@ export class App {
     this.prevCam = null;
     this.prevPoses.clear();
     this.setProgress(
-      `${name}: compiling shaders & warming up the GPU`,
+      `${name}: warming up the GPU`,
       0.6,
       'The first time can take 10-30 seconds on phones.',
     );
     this.busy = false;
+    this.mark('world ready (setWorld done)');
   }
 
   private installInput() {
@@ -308,7 +332,9 @@ export class App {
         0.6 + 0.4 * p,
         this.loadingNote.textContent ?? '',
       );
+      this.mark(`warm frame p=${p.toFixed(2)}`);
       if (p >= 1) {
+        this.progressStart = 0;
         this.showingProgress = false;
         this.loadingEl.classList.remove('visible');
       }
