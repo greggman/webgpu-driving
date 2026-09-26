@@ -16,6 +16,55 @@ struct Car {
 };
 
 @group(1) @binding(0) var<storage, read> cars: array<Car>;
+
+// Dashboard map route (see CarRenderer.setNav): 32 points (left, forward)
+// in metres relative to the player's car; misc = car world x, z (mod
+// 1000), forward x, z.
+struct Nav {
+  pts: array<vec4f, 16>,
+  misc: vec4f,
+};
+@group(1) @binding(1) var<uniform> NAV: Nav;
+
+fn navPoint(i: u32) -> vec2f {
+  let v = NAV.pts[i / 2u];
+  return select(v.xy, v.zw, (i & 1u) == 1u);
+}
+
+fn segDist(p: vec2f, a: vec2f, b: vec2f) -> f32 {
+  let ab = b - a;
+  let t = saturate(dot(p - a, ab) / max(dot(ab, ab), 1e-6));
+  return length(p - a - ab * t);
+}
+
+// The navigation screen: north-up-free "heading up" map of the road ahead
+// over a world-aligned grid (it scrolls and turns with the car), with the
+// car as an arrow near the bottom. su in [-1, 1]^2.
+fn navScreen(su: vec2f) -> vec3f {
+  // Metres on the map: 170 m ahead fill the screen above the car.
+  let m = vec2f(su.x * 0.14, (su.y + 0.7) * 0.075) * 1330.0;
+  // World position of this map point for the grid.
+  let f = NAV.misc.zw;
+  let l = vec2f(f.y, -f.x);
+  let w = NAV.misc.xy + l * m.x + f * m.y;
+  let g = abs(fract(w / 40.0) - 0.5);
+  let grid = smoothstep(0.47, 0.49, max(g.x, g.y));
+  let g2 = abs(fract(w / 200.0) - 0.5);
+  let major = smoothstep(0.485, 0.495, max(g2.x, g2.y));
+  var d = 1e9;
+  for (var i = 0u; i < 31u; i++) {
+    d = min(d, segDist(m, navPoint(i), navPoint(i + 1u)));
+  }
+  var col = vec3f(0.015, 0.035, 0.06) + vec3f(0.03, 0.07, 0.06) * grid + vec3f(0.03, 0.06, 0.08) * major;
+  let px = 1330.0 * 0.075 / 60.0; // ~metres per screen pixel-ish
+  col = mix(col, vec3f(0.05, 0.12, 0.2), 1.0 - smoothstep(7.0, 7.0 + px, d));
+  col = mix(col, vec3f(0.15, 0.55, 1.0), 1.0 - smoothstep(3.5, 3.5 + px, d));
+  // Car arrow.
+  let q = m;
+  let arrow = step(abs(q.x) * 1.6, 9.0 - q.y) * step(-5.0, q.y) * step(q.y, 9.0);
+  col = mix(col, vec3f(1.0, 0.85, 0.3), arrow);
+  return col;
+}
 @group(2) @binding(0) var<uniform> shadowVP: mat4x4f;
 
 struct VIn {
@@ -266,11 +315,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       emissive = (speedo.rgb + tach.rgb) * dashLight;
     } else if (in.mat == 14u) {
       // Navigation screen: stylised map with the route.
-      let su = vec2f(lp.x / 0.14, (lp.y - (c.p6.y + 0.025)) / 0.075);
-      let road = smoothstep(0.08, 0.04, abs(su.x - 0.3 * sin(su.y * 2.0 + c.p1.x * 4.0)));
-      let grid = step(0.95, fract(su.x * 5.0)) + step(0.95, fract(su.y * 3.0));
-      let base = vec3f(0.02, 0.05, 0.08) + vec3f(0.03, 0.06, 0.05) * grid;
-      emissive = (base + vec3f(0.1, 0.5, 1.0) * road) * dashLight * 2.0;
+            let su = vec2f(lp.x / 0.14, (lp.y - (c.p6.y + 0.025)) / 0.075);
+      emissive = navScreen(su) * dashLight * 2.0;
       s.albedo = vec3f(0.005);
       s.rough = 0.1;
     } else if (in.mat == 16u) {

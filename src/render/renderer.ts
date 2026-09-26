@@ -14,7 +14,7 @@ import {Biome, packTerrain} from '../world/biome';
 import {Road, ROAD_DZ, ROAD_TEX_BEHIND, ROAD_TEX_SAMPLES} from '../world/road';
 import {SkyState} from '../world/sky';
 import {Atmosphere} from './atmosphere';
-import {CarDraw, CarRenderer} from './cars';
+import {CarDraw, CarRenderer, NAV_POINTS} from './cars';
 import {FRAME_LAYOUT_ENTRIES, FrameData} from './frameData';
 import {Post} from './post';
 import {RoadMesh} from './roadMesh';
@@ -993,6 +993,30 @@ export class Renderer {
       carDraws.push({...c.draw, model, prevModel});
     }
     this.cars.setCars(carDraws);
+    if (cam.interior) {
+      // Dashboard map: the road ahead in the player's (flat) car frame.
+      const pl = scene.cars.find(c => c.player);
+      if (pl) {
+        const P = scene.player;
+        const route: number[] = [];
+        for (let k = 0; k < NAV_POINTS; ++k) {
+          const q = road.pointAt(pl.s + pl.dir * (-50 + k * 12), 0).pos;
+          const rx = q[0] - P.pos[0],
+            rz = q[2] - P.pos[2];
+          route.push(
+            rx * P.baseLeft[0] + rz * P.baseLeft[2],
+            rx * P.baseFwd[0] + rz * P.baseFwd[2],
+          );
+        }
+        const mod = (x: number) => x - Math.floor(x / 1000) * 1000;
+        this.cars.setNav(route, [
+          mod(P.pos[0]),
+          mod(P.pos[2]),
+          P.baseFwd[0],
+          P.baseFwd[2],
+        ]);
+      }
+    }
     // The previous frame's Hi-Z is usable unless the camera cut or the
     // origin moved.
     this.vegetation.hzbValid =

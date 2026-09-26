@@ -17,6 +17,8 @@ import carSrc from '../shaders/car.wgsl';
 import {GBUFFER_TARGETS, DEPTH_FORMAT, GLASS_FX_FORMAT} from './targets';
 
 export const CAR_FLOATS = 68; // 2 mat4 + 9 vec4
+export const NAV_POINTS = 32;
+const NAV_FLOATS = NAV_POINTS * 2 + 4;
 const MAX_CARS = 256;
 
 export interface CarDraw {
@@ -58,6 +60,7 @@ export class CarRenderer {
   private glassPipe!: GPURenderPipeline;
   private blobPipe!: GPURenderPipeline;
   private glassFxPipe!: GPURenderPipeline;
+  private navBuf: GPUBuffer;
   private emptyLayout: GPUBindGroupLayout;
   private emptyGroup: GPUBindGroup;
   readonly layout: GPUBindGroupLayout;
@@ -111,13 +114,37 @@ export class CarRenderer {
           visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
           buffer: {type: 'read-only-storage'},
         },
+        // Navigation screen: the road ahead in the player's car frame.
+        {
+          binding: 1,
+          visibility: GPUShaderStage.FRAGMENT,
+          buffer: {type: 'uniform'},
+        },
       ],
+    });
+    this.navBuf = device.createBuffer({
+      label: 'car-nav-route',
+      size: NAV_FLOATS * 4,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.bg = device.createBindGroup({
       label: 'car-instances-bg',
       layout: this.layout,
-      entries: [{binding: 0, resource: {buffer: this.instBuf}}],
+      entries: [
+        {binding: 0, resource: {buffer: this.instBuf}},
+        {binding: 1, resource: {buffer: this.navBuf}},
+      ],
     });
+  }
+
+  // Route for the dashboard map: NAV_POINTS (left, forward) points in
+  // metres relative to the player's car, plus the car's world position
+  // (mod 1000, for the scrolling grid) and forward direction (x, z).
+  setNav(route: number[], misc: number[]) {
+    const f = new Float32Array(NAV_FLOATS);
+    f.set(route.slice(0, NAV_POINTS * 2));
+    f.set(misc, NAV_POINTS * 2);
+    this.device.queue.writeBuffer(this.navBuf, 0, f);
   }
 
   spec(kind: CarKind): CarSpec {

@@ -258,6 +258,31 @@ export class App {
     this.switchTo(next);
   }
 
+  // Dashboard gauges: speed in km/h with a little flutter, and engine rpm
+  // from a simple 6-speed gearbox (smoothed so the needle swings).
+  private gaugeState = [0, 800];
+  private gauges(speed: number, accel: number, dt: number): number[] {
+    const kmh = speed * 3.6;
+    const t = this.time;
+    const shift = [0, 18, 35, 55, 80, 110, 1e9];
+    let gear = 1;
+    while (kmh > shift[gear] && gear < 6) gear++;
+    const lo = shift[gear - 1],
+      hi = Math.min(shift[gear], 170);
+    const frac = Math.max(0, Math.min(1, (kmh - lo) / Math.max(hi - lo, 1)));
+    let rpm = kmh < 3 ? 850 : 1500 + frac * 2600 + Math.max(accel, 0) * 250;
+    rpm += Math.sin(t * 7.3) * 40 + Math.sin(t * 2.1) * 60;
+    const target = [
+      kmh + Math.sin(t * 1.7) * 0.6 + Math.sin(t * 4.3) * 0.3,
+      rpm,
+    ];
+    const k = 1 - Math.exp(-Math.max(dt, 0) * 6);
+    for (let i = 0; i < 2; ++i)
+      this.gaugeState[i] += (target[i] - this.gaugeState[i]) * k;
+    if (dt === 0) return target;
+    return [...this.gaugeState];
+  }
+
   private toastTimer = 0;
   private toast(text: string) {
     const el = document.getElementById('toast');
@@ -737,7 +762,13 @@ export class App {
     );
     const camera = camera0;
     this.renderer.exposureBias = camera.interior ? 0.45 : 1;
-    for (const c of cars) if (c.player) c.draw.interior = camera.interior;
+    for (const c of cars)
+      if (c.player) {
+        c.draw.interior = camera.interior;
+        const g = this.gauges(player.speed, player.accel, dt);
+        c.draw.speed = g[0];
+        c.draw.rpm = g[1];
+      }
     const sky = computeSky(this.biome.sky, camera.eye[1]);
     this.renderer.render({
       camera,
