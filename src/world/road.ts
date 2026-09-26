@@ -155,9 +155,9 @@ export class Road {
     const ys = this.ys.data;
     for (let i = this.finalCount; i < end; ++i) {
       let b = 0;
-      for (let k = -3; k <= 3; ++k) {
+      for (let k = -5; k <= 5; ++k) {
         const j = Math.max(0, Math.min(end - 1, i + k));
-        if (j < this.ys.length && nat[j] < ys[j] - 4) b = 1;
+        if (j < this.ys.length && nat[j] < ys[j] - 7) b = 1;
       }
       this.bridges.push(b);
     }

@@ -316,7 +316,7 @@ export const BIOMES: Record<BiomeId, Biome> = {
       coastSide: 1,
       coastOffset: 70,
       seaFloor: -30,
-      cliffWidth: 45,
+      cliffWidth: 22,
       canyonDepth: 70,
       canyonFreq: 1 / 1800,
       canyonWidth: 0.07,
@@ -337,9 +337,11 @@ export const BIOMES: Record<BiomeId, Biome> = {
     },
     palette: {
       ...basePalette,
-      grassA: [0.2, 0.3, 0.1],
-      grassB: [0.45, 0.42, 0.2],
-      rock: [0.45, 0.4, 0.34],
+      grassA: [0.15, 0.27, 0.07],
+      grassB: [0.3, 0.34, 0.12],
+      dry: [0.5, 0.45, 0.25],
+      rock: [0.42, 0.37, 0.32],
+      sand: [0.76, 0.68, 0.52],
     },
     scatter: {
       ...baseScatter,

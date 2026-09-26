@@ -1,4 +1,4 @@
 [
-  {"name": "insp-tree", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "0,-14,3", "look": "30,-40,6", "fov": "50"}},
-  {"name": "insp-grass", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "0,-7,1.2", "look": "15,-12,0", "fov": "55"}}
+  {"name": "insp-coast-a", "params": {"biome": "coast", "cam": "custom", "s": "2500", "eye": "-10,25,14", "look": "60,60,0", "fov": "55"}},
+  {"name": "insp-coast-b", "params": {"biome": "coast", "cam": "helicopter", "s": "4000", "t": "2"}}
 ]

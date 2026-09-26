@@ -24,6 +24,7 @@ import {CameraState} from '../camera/director';
 import {Pose} from '../sim/pose';
 import {Vegetation} from './vegetation';
 import {Props} from './props';
+import {Water} from './water';
 
 const REBASE = 1024;
 export const DEBUG = new Set(
@@ -72,6 +73,7 @@ export class Renderer {
   readonly post: Post;
   readonly vegetation: Vegetation;
   readonly props: Props;
+  readonly water: Water;
   roadMesh: RoadMesh | null = null;
   private road: Road | null = null;
   private biome: Biome | null = null;
@@ -144,6 +146,7 @@ export class Renderer {
       this.shadows.layout,
     );
     this.props = new Props(d, this.frameLayout, this.shadows.layout);
+    this.water = new Water(d, this.frameLayout);
     this.createFrameBindGroups();
   }
 
@@ -232,6 +235,7 @@ export class Renderer {
       80;
     this.vegetation.setWorld(biome, road);
     this.props.setWorld(biome, road);
+    this.water.enabled = biome.ocean;
   }
 
   private rebase(camX: number, camZ: number) {
@@ -552,6 +556,7 @@ export class Renderer {
     this.props.draw(main);
     this.vegetation.draw(main, this.emptyBG);
     if (!DEBUG.has('noterrain')) this.terrain.draw(main);
+    this.water.draw(main);
     main.setPipeline(this.atmosphere.skyDrawPipe);
     main.draw(3);
     main.end();
