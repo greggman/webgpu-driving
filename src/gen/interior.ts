@@ -168,7 +168,7 @@ export function buildInterior(spec: CarSpec): Interior {
   const ws = spec.wsBase;
   const dx = 0.37; // driver lateral position
   // Dashboard: top slab sloping from the windshield base toward the driver.
-  const dashFront = 0.42;
+  const dashFront = ws - 0.44;
   const dashTop = belt - 0.01;
   quad(
     [-hw, dashTop, ws - 0.02],
@@ -261,7 +261,7 @@ export function buildInterior(spec: CarSpec): Interior {
     true,
   );
   // Steering wheel (built around its own center; rotated in the shader).
-  const wc: [number, number, number] = [dx, dashTop - 0.06, 0.16];
+  const wc: [number, number, number] = [dx, dashTop - 0.06, dashFront - 0.26];
   const tilt = 0.4; // radians back from vertical
   const ringR = 0.185,
     tubeR = 0.017;

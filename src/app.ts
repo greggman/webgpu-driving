@@ -10,7 +10,11 @@ import {CameraState, Director, SHOT_KINDS, ShotKind} from './camera/director';
 import {computeSky} from './world/sky';
 import {CAR_KINDS, CarKind, carSpec, driverZ, semiLayout} from './gen/car';
 import {Tumbleweeds} from './sim/tumbleweeds';
-import {SettingsPanel, loadStoredSettings} from './ui/settings';
+import {
+  SHOT_NAMES as SHOT_LABELS,
+  SettingsPanel,
+  loadStoredSettings,
+} from './ui/settings';
 import {
   DEFAULT_GRAPHICS,
   LOW_POWER_GRAPHICS,
@@ -131,6 +135,12 @@ export class App {
       this.hudEl.classList.add('hidden');
       document.body.classList.add('ui-hidden');
     }
+    document
+      .getElementById('next-camera')!
+      .addEventListener('click', () => this.traffic && this.nextCamera());
+    document
+      .getElementById('next-car')!
+      .addEventListener('click', () => this.traffic && this.nextCar());
     document.getElementById('regen')!.addEventListener('click', () => {
       void this.regenerate();
     });
@@ -213,6 +223,40 @@ export class App {
 
   get playerCar(): CarKind {
     return this.traffic.player.kind;
+  }
+
+  // Cycle: auto director, then each shot in turn (C / camera button).
+  nextCamera() {
+    const order: Array<ShotKind | null> = [
+      null,
+      ...SHOT_KINDS.filter(k => k !== 'custom'),
+    ];
+    const i = order.indexOf(this.director.forced);
+    const next = order[(i + 1) % order.length];
+    this.setCamera(next);
+    this.settings.sync();
+    this.toast(`Camera: ${next ? SHOT_LABELS[next] : 'auto director'}`);
+  }
+
+  // Cycle the player's vehicle (V / car button).
+  nextCar() {
+    const i = CAR_KINDS.indexOf(this.traffic.player.kind);
+    const k = (i + 1) % CAR_KINDS.length;
+    this.setPlayerCar(CAR_KINDS[k]);
+    this.toast(`Car ${k + 1}`);
+  }
+
+  private toastTimer = 0;
+  private toast(text: string) {
+    const el = document.getElementById('toast');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.add('visible');
+    clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(
+      () => el.classList.remove('visible'),
+      1200,
+    );
   }
 
   setCamera(kind: ShotKind | null) {
@@ -420,22 +464,12 @@ export class App {
         case 's':
           t.adjustSpeed(-2);
           break;
-        case 'c': {
-          // Cycle: auto director, then each shot in turn.
-          const order: Array<ShotKind | null> = [
-            null,
-            ...SHOT_KINDS.filter(k => k !== 'custom'),
-          ];
-          const i = order.indexOf(this.director.forced);
-          this.setCamera(order[(i + 1) % order.length]);
-          this.settings.sync();
+        case 'c':
+          this.nextCamera();
           break;
-        }
-        case 'v': {
-          const i = CAR_KINDS.indexOf(t.player.kind);
-          this.setPlayerCar(CAR_KINDS[(i + 1) % CAR_KINDS.length]);
+        case 'v':
+          this.nextCar();
           break;
-        }
         case 'p':
           t.autopilot = !t.autopilot;
           this.settings.sync();

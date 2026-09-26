@@ -340,8 +340,9 @@ export class Director {
         const de = this.driverEye;
         eye = rigid(de[0], de[1], de[2]);
         const look = Math.sin(t * 0.2 + s.seed * 5) * 0.12;
-        target = rigid(12, de[1] + look * 10, de[2] - 0.35);
-        fov = 62 * DEG;
+                target = rigid(12, de[1] + look * 10, de[2] - 1.05);
+        // Roughly what a driver sees (a wide lens exaggerates the cabin).
+        fov = 50 * DEG;
         interior = true;
         up = car.up;
         break;
@@ -379,8 +380,9 @@ export class Director {
           Math.sin(o.pitch) * o.dist,
         ];
         eye = at(o.focus[0] + off[0], o.focus[1] + off[1], o.focus[2] + off[2]);
-        fov = 50 * DEG;
-        aperture = 0.15;
+                fov = 50 * DEG;
+        // No depth of field while the user frames the shot.
+        aperture = 0;
         smooth = 12;
         break;
       }

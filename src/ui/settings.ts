@@ -18,7 +18,7 @@ interface Stored {
   hud?: boolean;
 }
 
-const SHOT_NAMES: Record<ShotKind, string> = {
+export const SHOT_NAMES: Record<ShotKind, string> = {
   chase: 'Chase',
   helicopter: 'Helicopter',
   drone: 'Drone flyover',

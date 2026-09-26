@@ -66,11 +66,10 @@ export function semiLayout() {
   };
 }
 
-// Driver eye z (car-local): the middle of the roof for cars; trucks and
-// buses sit right behind the windscreen.
+// Driver eye z (car-local).
 export function driverZ(sp: CarSpec): number {
-  if (sp.kind === 'semi' || sp.kind === 'bus') return sp.wsBase - 1.55;
-  return (sp.roofFront + sp.roofBack) / 2 - 0.15;
+  // A driver's eyes sit ~1.25 m behind the base of the windscreen.
+  return sp.wsBase - 1.25;
 }
 
 // Material ids (see car.wgsl). 10-17 are cabin materials (interior.ts).

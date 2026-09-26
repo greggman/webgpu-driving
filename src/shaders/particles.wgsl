@@ -114,7 +114,7 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
     // Dust: cycle through lifetimes, spawning from the car history.
     let life = P.life * (0.7 + 0.6 * r4);
     let age = fract(t / life + r1) * life;
-        let hi = min(u32(age / P.life * f32(P.histCount)), P.histCount - 1u);
+            let hi = min(u32(age / (P.life * 1.3) * f32(P.histCount)), P.histCount - 1u);
     // The first 900 particles are the player's plume; the rest are shared
     // among the other nearby cars.
     var si = 0u;
@@ -125,7 +125,8 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
     let rise = vec3f((r3 - 0.5) * 1.5, 0.6 + r2 * 0.8, (r1 - 0.5) * 1.5) + vec3f(F.weather.x, 0.0, F.weather.y) * 1.5;
     center = src.xyz + spread + rise * age;
     size = P.size * (0.5 + age * 1.8) * (0.6 + 0.8 * r4);
-    alpha = live * saturate(src.w / 12.0) * (1.0 - age / life) * smoothstep(0.0, 0.25, age) * 0.3;
+    // Thin out gradually over the second half of the life (no hard end).
+    alpha = live * saturate(src.w / 12.0) * (1.0 - smoothstep(0.35, 1.0, age / life)) * smoothstep(0.0, 0.25, age) * 0.3;
     vel = rise;
   } else {
     let L = P.volume;

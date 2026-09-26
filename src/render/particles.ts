@@ -149,10 +149,10 @@ export class Particles {
     const rain = biome.weather.rain ?? 0;
     if (rain > 0)
       add(3, Math.round(200000 * rain), 40, 0.006, 9, 0, [0.75, 0.8, 0.9, 0.7]);
-    if (biome.id === 'autumn') {
-      add(1, 2500, 45, 0.05, 0.8, 0, [0.62, 0.22, 0.04, 1]);
+    // Autumn: leaves lie on the road and only fly when a car blows
+    // through them (no ambient falling leaves).
+    if (biome.id === 'autumn')
       add(4, 9000, 160, 0.055, 0, 0, [0.6, 0.22, 0.04, 1]);
-    }
     if (biome.id === 'forest')
       add(1, 1800, 45, 0.045, 0.7, 0, [0.3, 0.26, 0.08, 1]);
     if (biome.weather.dust > 0 || biome.road.dirt)
@@ -173,7 +173,8 @@ export class Particles {
     for (let k = 0; k < this.sources; ++k) {
       const src = sources[k];
       for (let i = 0; i < HIST; ++i) {
-        const p = src.trail((i / HIST) * 2.6);
+        // History spans the longest particle life (life * 1.3).
+        const p = src.trail((i / HIST) * 2.6 * 1.3);
         this.histData.set(
           [p[0], p[1] + 0.3, p[2], src.speed],
           (k * HIST + i) * 4,

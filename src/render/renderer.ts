@@ -37,6 +37,7 @@ import {FRAME_PRELUDE, RENDER_PRELUDE} from './shaders';
 import {shaderModule} from '../gpu/gpu';
 
 const REBASE = 1024;
+const DUST_SLOTS = 8; // player + 7 nearest cars (see Particles)
 
 // User-adjustable graphics settings (see src/ui/settings.ts).
 export interface GraphicsSettings {
@@ -158,6 +159,7 @@ export class Renderer {
   readonly particles: Particles;
   readonly tracks: TireTracks;
   private glassFxOn = false;
+  private dustSlots = new Map<number, {index: number; fade: number}>();
   roadMesh: RoadMesh | null = null;
   private road: Road | null = null;
   private biome: Biome | null = null;
@@ -980,9 +982,10 @@ export class Renderer {
       const dt = Math.max(scene.dt, 1e-3);
       const camVel = [0, 1, 2].map(k => (cam.eye[k] - pe[k]) / dt);
       const road = this.road!;
-      // Dust from the player and the nearest moving cars (player first).
-      const movers = scene.cars
-        .filter(c => c.speed > 3)
+      // Dust: slot 0 is the player; the nearest moving cars get stable
+      // slots that fade in / out (no popping when the set changes).
+      const cand = scene.cars
+        .filter(c => !c.player && c.speed > 3)
         .map(c => ({
           c,
           dist: Math.hypot(
@@ -991,18 +994,42 @@ export class Renderer {
           ),
         }))
         .filter(m => m.dist < 250)
-        .sort(
-          (a, b) => Number(b.c.player) - Number(a.c.player) || a.dist - b.dist,
-        )
-        .slice(0, 8)
-        .map(({c}) => ({
-          speed: c.speed,
-          trail: (age: number) =>
-            loc(
-              road.pointAt(c.s - c.dir * (c.length * 0.45 + c.speed * age), c.d)
-                .pos,
-            ),
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, DUST_SLOTS - 1)
+        .map(m => m.c);
+      const byId = new Map(scene.cars.map(c => [c.id, c]));
+      const want = new Set(cand.map(c => c.id));
+      for (const [id, slot] of this.dustSlots) {
+        const on = want.has(id) && byId.has(id);
+        slot.fade = Math.max(0, Math.min(1, slot.fade + (on ? dt : -dt) / 1.5));
+        if (!on && (slot.fade <= 0 || !byId.has(id))) this.dustSlots.delete(id);
+      }
+      for (const c of cand) {
+        if (this.dustSlots.has(c.id)) continue;
+        const used = new Set([...this.dustSlots.values()].map(s => s.index));
+        for (let k = 1; k < DUST_SLOTS; ++k)
+          if (!used.has(k)) {
+            this.dustSlots.set(c.id, {index: k, fade: 0});
+            break;
+          }
+      }
+      const trailOf = (c: WorldCar) => (age: number) =>
+        loc(
+          road.pointAt(c.s - c.dir * (c.length * 0.45 + c.speed * age), c.d)
+            .pos,
+        );
+      const player = scene.cars.find(c => c.player)!;
+      const movers: Array<{trail: (a: number) => number[]; speed: number}> =
+        Array.from({length: DUST_SLOTS}, () => ({
+          trail: trailOf(player),
+          speed: 0,
         }));
+      movers[0] = {trail: trailOf(player), speed: player.speed};
+      for (const [id, slot] of this.dustSlots) {
+        const c = byId.get(id);
+        if (c)
+          movers[slot.index] = {trail: trailOf(c), speed: c.speed * slot.fade};
+      }
       this.tracks.update(
         road,
         scene.cars.map(c => ({

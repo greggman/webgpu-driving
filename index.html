@@ -64,6 +64,24 @@
     }
     #gear:hover { background: rgba(0,0,0,0.55); transform: rotate(45deg); }
     #gear:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    /* Quick buttons next to the gear: next camera (C), next vehicle (V). */
+    .quick {
+      position: absolute; top: 12px; width: 40px; height: 40px; padding: 0;
+      border: 1px solid rgba(255,255,255,0.35); border-radius: 50%; background: rgba(0,0,0,0.35);
+      color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(6px); transition: background 0.15s, transform 0.15s; z-index: 3;
+    }
+    .quick:hover { background: rgba(0,0,0,0.55); }
+    .quick:active { transform: scale(0.92); }
+    .quick:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    #next-camera { left: 60px; }
+    #next-car { left: 108px; }
+    #toast {
+      position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+      padding: 6px 14px; border-radius: 16px; background: rgba(0,0,0,0.5); color: #fff;
+      font: 13px system-ui, sans-serif; pointer-events: none; opacity: 0; transition: opacity 0.25s;
+    }
+    #toast.visible { opacity: 1; }
     #settings {
       position: absolute; top: 64px; left: 12px; bottom: 12px; width: 300px;
       max-width: calc(100% - 24px); display: flex; flex-direction: column;
@@ -114,7 +132,7 @@
     }
     #settings select option { color: #111; }
     #settings .hint { color: #9aa3ad; font-size: 12px; margin: 8px 0 0; }
-    body.ui-hidden #gear, body.ui-hidden #regen, body.ui-hidden #settings { display: none; }
+    body.ui-hidden #gear, body.ui-hidden .quick, body.ui-hidden #regen, body.ui-hidden #settings { display: none; }
     #error {
       position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
       color: #fff; font: 16px system-ui, sans-serif; text-align: center; padding: 24px;
@@ -124,10 +142,21 @@
 <body>
   <canvas id="screen"></canvas>
   <div id="hud"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
   <button id="gear" title="Settings" aria-label="Settings" aria-expanded="false" aria-controls="settings">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="3"/>
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  </button>
+  <button id="next-camera" class="quick" title="Next camera (C)" aria-label="Next camera">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+    </svg>
+  </button>
+  <button id="next-car" class="quick" title="Next vehicle (V)" aria-label="Next vehicle">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 16v-3.5l2.2-4.4A2 2 0 0 1 7 7h10a2 2 0 0 1 1.8 1.1l2.2 4.4V16a1 1 0 0 1-1 1h-1"/><path d="M5 17H4a1 1 0 0 1-1-1"/><path d="M9 17h6"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><path d="M4 12.5h16"/>
     </svg>
   </button>
   <aside id="settings" role="dialog" aria-label="Settings" inert>
