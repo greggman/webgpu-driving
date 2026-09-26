@@ -92,10 +92,13 @@ fn vegMaterial(mat: u32, uv: vec2f, tint: f32, localPos: vec3f) -> VegMat {
   if (mat == 1u || mat == 2u) {
     var c = foliage * (0.85 + 0.5 * t);
     c = mix(c, c * vec3f(1.25, 1.15, 0.6), saturate(t * 1.5));   // yellowish variation
-    if (mat == 2u) { c *= vec3f(0.7, 0.85, 0.8); }
     m.albedo = c;
     m.rough = 0.65;
     m.sss = 0.6;
+    if (mat == 2u) {
+      m.albedo = c * vec3f(0.62, 0.78, 0.72);
+      m.sss = 0.3;
+    }
   } else if (mat == 7u) {
     m.albedo = vec3f(0.35, 0.22, 0.1);
     m.sss = 0.3;

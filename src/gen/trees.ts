@@ -228,23 +228,20 @@ function conifer(
           windAt,
         );
       }
-      // Needle cards along the branch, roughly horizontal, drooping.
-      const cards = lod === 0 ? Math.max(1, Math.round(L / 0.7)) : 1;
+      // Needle tufts along the branch: many small cards, drooping, each
+      // twisted around the branch so the silhouette isn't a flat fan.
+      const cards = lod === 0 ? Math.max(2, Math.round(L / 0.5)) : Math.max(1, Math.round(L / 1.1));
       for (let c = 0; c < cards; ++c) {
-        const f = (c + 0.6) / (cards + 0.2);
-        const pc = lerp3(start, end, f);
-        const right = norm(cross([0, 1, 0], dir));
-        const fwd = norm(add(dir, [0, -0.35, 0]));
-        const sz = Math.max(0.55, L * 0.55) * (lod === 0 ? 1 : 1.5);
-        const nrm = norm(add([dir[0] * 0.6, 1, dir[2] * 0.6], [0, 0, 0]));
-        mb.card(
-          pc,
-          mul(right, sz * 0.6),
-          mul(fwd, sz * 0.55),
-          nrm,
-          MAT_NEEDLE,
-          1,
-        );
+        const f = (c + 0.5) / cards;
+        const pc = add(lerp3(start, end, f), [0, -0.12 * f * f * L, 0]);
+        const fwd = norm(add(dir, [0, -0.3 - 0.3 * f, 0]));
+        let side = norm(cross([0, 1, 0], fwd));
+        const twist = rng.range(-0.8, 0.8);
+        side = rotate(side, fwd, twist);
+        const up = norm(cross(fwd, side));
+        const sz = (0.35 + 0.3 * L) * (1.15 - 0.5 * f) * (lod === 0 ? 1 : 1.6);
+        const nrm = norm(add(mul(up, 0.6), add(mul(dir, 0.5), [0, 0.5, 0])));
+        mb.card(pc, mul(side, sz * 0.75), mul(fwd, sz * 0.6), nrm, MAT_NEEDLE, 1);
       }
     }
   }

@@ -1,6 +1,6 @@
 [
-  {"name": "insp-p-snow", "params": {"biome": "snow", "cam": "chase", "s": "1800", "t": "1"}},
-  {"name": "insp-p-snownight", "params": {"biome": "snow", "cam": "interior", "s": "1800", "t": "1", "tod": "20.5"}},
-  {"name": "insp-p-desert", "params": {"biome": "desert", "cam": "custom", "s": "1800", "eye": "-14,6,3", "look": "-4,0,1"}},
-  {"name": "insp-p-forest", "params": {"biome": "forest", "cam": "chase", "s": "1800", "t": "1"}}
+  {"name": "insp-conifer-redwood", "params": {"biome": "lahonda", "cam": "custom", "s": "2400", "eye": "0,-8,1.6", "look": "20,-30,14", "fov": "60"}},
+  {"name": "insp-conifer-pine", "params": {"biome": "coast", "cam": "custom", "s": "2500", "eye": "0,-8,1.6", "look": "30,-40,6", "fov": "55"}},
+  {"name": "insp-conifer-snow", "params": {"biome": "snow", "cam": "custom", "s": "2000", "eye": "0,-8,1.6", "look": "30,-40,6", "fov": "55"}},
+  {"name": "insp-conifer-forest", "params": {"biome": "forest", "cam": "custom", "s": "2000", "eye": "0,-6,1.6", "look": "25,-30,8", "fov": "60"}}
 ]
