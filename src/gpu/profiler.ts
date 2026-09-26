@@ -68,34 +68,40 @@ export class Profiler {
   afterSubmit() {
     for (const [buf, labels] of this.pending) {
       if (buf.mapState !== 'unmapped') continue;
-      void buf.mapAsync(GPUMapMode.READ).then(() => {
-        const t = new BigUint64Array(
-          buf.getMappedRange().slice(0, labels.length * 16),
-        );
-        const sums: Record<string, number> = {};
-        let total = 0;
-        let lo = t[0],
-          hi = t[1];
-        labels.forEach((l, i) => {
-          if (t[i * 2] < lo) lo = t[i * 2];
-          if (t[i * 2 + 1] > hi) hi = t[i * 2 + 1];
-          const d = Number(t[i * 2 + 1] - t[i * 2]) / 1e6;
-          if (d >= 0 && d < 1000) {
-            sums[l] = (sums[l] ?? 0) + d;
-            total += d;
+      void buf
+        .mapAsync(GPUMapMode.READ)
+        .then(() => {
+          const t = new BigUint64Array(
+            buf.getMappedRange().slice(0, labels.length * 16),
+          );
+          const sums: Record<string, number> = {};
+          let total = 0;
+          let lo = t[0],
+            hi = t[1];
+          labels.forEach((l, i) => {
+            if (t[i * 2] < lo) lo = t[i * 2];
+            if (t[i * 2 + 1] > hi) hi = t[i * 2 + 1];
+            const d = Number(t[i * 2 + 1] - t[i * 2]) / 1e6;
+            if (d >= 0 && d < 1000) {
+              sums[l] = (sums[l] ?? 0) + d;
+              total += d;
+            }
+          });
+          sums.total = total;
+          // Wall-clock GPU span of the frame (passes can overlap on TBDR GPUs,
+          // so the per-pass sum overestimates).
+          sums.span = Number(hi - lo) / 1e6;
+          for (const [k, v] of Object.entries(sums)) {
+            this.ms[k] =
+              this.ms[k] === undefined ? v : this.ms[k] * 0.9 + v * 0.1;
           }
+          buf.unmap();
+          this.pending.delete(buf);
+        })
+        .catch(() => {
+          // Device lost / buffer destroyed: drop this sample.
+          this.pending.delete(buf);
         });
-        sums.total = total;
-        // Wall-clock GPU span of the frame (passes can overlap on TBDR GPUs,
-        // so the per-pass sum overestimates).
-        sums.span = Number(hi - lo) / 1e6;
-        for (const [k, v] of Object.entries(sums)) {
-          this.ms[k] =
-            this.ms[k] === undefined ? v : this.ms[k] * 0.9 + v * 0.1;
-        }
-        buf.unmap();
-        this.pending.delete(buf);
-      });
     }
   }
 }

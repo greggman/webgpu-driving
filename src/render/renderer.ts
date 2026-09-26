@@ -46,6 +46,7 @@ export interface GraphicsSettings {
   filmGrain: boolean;
   letterbox: boolean;
   renderScale: number; // 0.5 .. 1
+  lowPower: boolean; // phones: DPR 1, sparser grass, shorter vegetation ranges
 }
 
 export const DEFAULT_GRAPHICS: GraphicsSettings = {
@@ -58,7 +59,28 @@ export const DEFAULT_GRAPHICS: GraphicsSettings = {
   filmGrain: true,
   letterbox: false,
   renderScale: 1,
+  lowPower: false,
 };
+
+// Preset applied when low-power mode is chosen (and by default on phones).
+export const LOW_POWER_GRAPHICS: GraphicsSettings = {
+  ...DEFAULT_GRAPHICS,
+  volumetrics: false,
+  ssao: false,
+  renderScale: 0.8,
+  lowPower: true,
+};
+
+export function isMobileDevice(): boolean {
+  try {
+    return (
+      matchMedia('(pointer: coarse)').matches &&
+      Math.min(screen.width, screen.height) < 900
+    );
+  } catch {
+    return false;
+  }
+}
 export const DEBUG = new Set(
   (new URLSearchParams(location.search).get('debug') ?? '').split(','),
 );
@@ -524,7 +546,8 @@ export class Renderer {
     const d = gpu.device;
     const canvas = gpu.canvas;
     const dpr =
-      Math.min(window.devicePixelRatio || 1, 2) * this.graphics.renderScale;
+      Math.min(window.devicePixelRatio || 1, this.graphics.lowPower ? 1 : 2) *
+      this.graphics.renderScale;
     const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
     const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
     if (canvas.width !== w || canvas.height !== h) {
@@ -868,6 +891,7 @@ export class Renderer {
     this.encodeHzb(enc);
     this.post.aoEnabled = this.graphics.ssao;
     this.vegetation.grassEnabled = this.graphics.grass;
+    this.vegetation.lowPower = this.graphics.lowPower;
     this.post.encode(
       enc,
       gpu.context.getCurrentTexture().createView({label: 'swapchain'}),

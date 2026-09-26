@@ -25,7 +25,7 @@ struct GrassParams {
   tileCount: u32,
   capNear: u32,
   capFar: u32,
-  pad: u32,
+  densityScale: f32,
 };
 
 @group(1) @binding(0) var<uniform> GP: GrassParams;
@@ -95,7 +95,7 @@ fn spawn(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) li: 
     let dist = distance(p, F.cam.xz);
     // Continuous blade density (per m^2) filled coarse classes first:
     // class 3 holds 4/m^2, class 2 12, class 1 48, class 0 192.
-    let D = 190.0 * min(1.0, pow(6.0 / max(dist, 0.1), 1.3)) * saturate((132.0 - dist) / 20.0);
+    let D = 190.0 * GP.densityScale * min(1.0, pow(6.0 / max(dist, 0.1), 1.3)) * saturate((132.0 - dist) / 20.0);
     let below = array<f32, 4>(64.0, 16.0, 4.0, 0.0);
     let capOnly = array<f32, 4>(192.0, 48.0, 12.0, 4.0);
     let prob = saturate((D - below[cls]) / capOnly[cls]);

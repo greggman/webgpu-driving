@@ -31,7 +31,31 @@
     }
     #loading.visible { opacity: 1; }
     #loading-track { height: 4px; margin-top: 8px; border-radius: 2px; background: rgba(255,255,255,0.2); overflow: hidden; }
-    #loading-bar { height: 100%; width: 0; background: #fff; transition: width 0.25s; }
+    #loading-bar { position: relative; height: 100%; width: 0; background: #fff; transition: width 0.25s; }
+    /* Always-moving shimmer so it's clear work is happening even while a
+       single step (e.g. shader compilation on a phone) takes a long time. */
+    #loading-track { position: relative; }
+    #loading-track::after {
+      content: ""; position: absolute; top: 0; bottom: 0; width: 30%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent);
+      animation: loading-sweep 1.2s linear infinite;
+    }
+    @keyframes loading-sweep { from { left: -30%; } to { left: 100%; } }
+    @media (prefers-reduced-motion: reduce) { #loading-track::after { animation: none; } }
+    #loading-head { display: flex; justify-content: space-between; gap: 12px; }
+    #loading-time { color: rgba(255,255,255,0.6); font-variant-numeric: tabular-nums; }
+    #loading-note { margin-top: 6px; color: rgba(255,255,255,0.6); font-size: 12px; }
+    #gpu-problem {
+      position: absolute; top: 64px; left: 50%; transform: translateX(-50%);
+      width: min(520px, calc(100% - 32px)); display: none; padding: 12px 14px; border-radius: 10px;
+      background: rgba(120, 20, 20, 0.9); color: #fff; font: 13px/1.4 system-ui, sans-serif; z-index: 5;
+    }
+    #gpu-problem.visible { display: block; }
+    #gpu-problem p { margin: 0 0 8px; word-break: break-word; }
+    #gpu-problem button {
+      border: 1px solid rgba(255,255,255,0.5); border-radius: 8px; background: transparent;
+      color: #fff; padding: 6px 10px; font: inherit; cursor: pointer; margin-right: 6px;
+    }
     #gear {
       position: absolute; top: 12px; left: 12px; width: 40px; height: 40px; padding: 0;
       border: 1px solid rgba(255,255,255,0.35); border-radius: 50%; background: rgba(0,0,0,0.35);
@@ -115,9 +139,15 @@
       <path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/>
     </svg>
   </button>
-  <div id="loading" role="status" aria-live="polite">
-    <div id="loading-label">Generating…</div>
+  <div id="loading" class="visible" role="status" aria-live="polite">
+    <div id="loading-head"><span id="loading-label">Starting WebGPU…</span><span id="loading-time"></span></div>
     <div id="loading-track"><div id="loading-bar"></div></div>
+    <div id="loading-note"></div>
+  </div>
+  <div id="gpu-problem" role="alert">
+    <p id="gpu-problem-msg"></p>
+    <button type="button" id="gpu-reload-low">Reload in low-power mode</button>
+    <button type="button" id="gpu-dismiss">Dismiss</button>
   </div>
   <div id="error"></div>
   <script type="module" src="main.js"></script>

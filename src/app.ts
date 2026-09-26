@@ -11,7 +11,11 @@ import {computeSky} from './world/sky';
 import {carSpec} from './gen/car';
 import {Tumbleweeds} from './sim/tumbleweeds';
 import {SettingsPanel, loadStoredSettings} from './ui/settings';
-import {DEFAULT_GRAPHICS} from './render/renderer';
+import {
+  DEFAULT_GRAPHICS,
+  LOW_POWER_GRAPHICS,
+  isMobileDevice,
+} from './render/renderer';
 
 export interface Params {
   biome: BiomeId;
@@ -91,7 +95,12 @@ export class App {
       void this.regenerate();
     });
     const stored = loadStoredSettings();
-    this.renderer.graphics = {...DEFAULT_GRAPHICS, ...stored.graphics};
+    // First visit on a phone: start in low-power mode.
+    const base =
+      !stored.graphics && isMobileDevice()
+        ? LOW_POWER_GRAPHICS
+        : DEFAULT_GRAPHICS;
+    this.renderer.graphics = {...base, ...stored.graphics};
     if (stored.hud === false) this.hudEl.classList.add('hidden');
     this.settings = new SettingsPanel(this);
   }
@@ -101,9 +110,11 @@ export class App {
   private loadingEl = document.getElementById('loading')!;
   private loadingLabel = document.getElementById('loading-label')!;
   private loadingBar = document.getElementById('loading-bar')!;
-  private showingProgress = false;
+  showingProgress = false;
+  private loadingNote = document.getElementById('loading-note')!;
 
-  private setProgress(label: string, frac: number) {
+  setProgress(label: string, frac: number, note = '') {
+    this.loadingNote.textContent = note;
     this.loadingEl.classList.add('visible');
     this.showingProgress = true;
     this.loadingLabel.textContent = label;
@@ -226,7 +237,11 @@ export class App {
         : null;
     this.prevCam = null;
     this.prevPoses.clear();
-    this.setProgress(`${name}: streaming terrain`, 0.6);
+    this.setProgress(
+      `${name}: compiling shaders & warming up the GPU`,
+      0.6,
+      'The first time can take 10-30 seconds on phones.',
+    );
     this.busy = false;
   }
 
@@ -288,7 +303,11 @@ export class App {
       // Terrain clipmaps, road chunks and TAA/exposure warm up over the
       // first frames of a new world.
       const p = this.renderer.worldProgress;
-      this.setProgress(this.loadingLabel.textContent ?? '', 0.6 + 0.4 * p);
+      this.setProgress(
+        this.loadingLabel.textContent ?? '',
+        0.6 + 0.4 * p,
+        this.loadingNote.textContent ?? '',
+      );
       if (p >= 1) {
         this.showingProgress = false;
         this.loadingEl.classList.remove('visible');

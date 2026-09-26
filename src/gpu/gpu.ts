@@ -2,6 +2,15 @@
 
 export class WebGpuUnavailableError extends Error {}
 
+// Called for device loss and for the first occurrence of each uncaptured
+// WebGPU error, so the page can show the problem instead of a black screen.
+let problemHandler: ((msg: string, fatal: boolean) => void) | null = null;
+export function setGpuProblemHandler(
+  fn: (msg: string, fatal: boolean) => void,
+) {
+  problemHandler = fn;
+}
+
 export interface Gpu {
   adapter: GPUAdapter;
   device: GPUDevice;
@@ -10,6 +19,7 @@ export interface Gpu {
   format: GPUTextureFormat;
   hasTimestamps: boolean;
   hasFloat32Filterable: boolean;
+  lost: boolean;
 }
 
 export async function initGpu(canvas: HTMLCanvasElement): Promise<Gpu> {
@@ -52,8 +62,14 @@ export async function initGpu(canvas: HTMLCanvasElement): Promise<Gpu> {
       ),
     },
   });
+  const result = {lost: false};
   void device.lost.then(info => {
+    result.lost = true;
     console.error(`[gpu-error] device lost: ${info.reason} ${info.message}`);
+    problemHandler?.(
+      `The GPU device was lost (${info.reason || 'unknown'}): ${info.message}`,
+      true,
+    );
   });
   // Every uncaptured validation / OOM / internal error is printed with a
   // greppable prefix; the puppeteer harness fails the run when it sees one.
@@ -65,6 +81,7 @@ export async function initGpu(canvas: HTMLCanvasElement): Promise<Gpu> {
     const msg = `${err.constructor.name}: ${err.message}`;
     const n = (seen.get(msg) ?? 0) + 1;
     seen.set(msg, n);
+    if (n === 1) problemHandler?.(msg, false);
     if (n === 1 || n === 100 || n === 10000) {
       console.error(`[gpu-error]${n > 1 ? ` (x${n})` : ''} ${msg}`);
     }
@@ -75,7 +92,7 @@ export async function initGpu(canvas: HTMLCanvasElement): Promise<Gpu> {
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({device, format, alphaMode: 'opaque'});
 
-  return {
+  return Object.assign(result, {
     adapter,
     device,
     context,
@@ -83,7 +100,7 @@ export async function initGpu(canvas: HTMLCanvasElement): Promise<Gpu> {
     format,
     hasTimestamps: device.features.has('timestamp-query'),
     hasFloat32Filterable: device.features.has('float32-filterable'),
-  };
+  });
 }
 
 export function createBuffer(

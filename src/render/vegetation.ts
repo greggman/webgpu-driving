@@ -115,6 +115,7 @@ export class Vegetation {
   private biome: Biome | null = null;
   enabled = true;
   grassEnabled = true;
+  lowPower = false;
   // Previous frame's Hi-Z pyramid (set by the renderer).
   hzbView!: GPUTextureView;
   hzbValid = false;
@@ -900,9 +901,10 @@ export class Vegetation {
       f[1] = wz0 - oz;
       f[2] = cellW;
       u[3] = dim;
-      f[4] = l.lod0;
-      f[5] = l.lod1;
-      f[6] = l.maxDist;
+      const rs = this.lowPower ? 0.65 : 1;
+      f[4] = l.lod0 * rs;
+      f[5] = l.lod1 * rs;
+      f[6] = l.maxDist * (this.lowPower ? 0.75 : 1);
       u[7] = l.types.length;
       f.set(planes.subarray(0, 24), 8);
       l.types.slice(0, 8).forEach((t, i) => {
@@ -958,7 +960,11 @@ export class Vegetation {
         if (n >= 4096) break;
         // Tile grid level: capacity (n^2/64 per m^2) must cover the blade
         // density at the tile's nearest point (see grass.wgsl).
-        const bladeN = dist < 14 ? 128 : dist < 41 ? 64 : dist < 117 ? 32 : 16;
+        // (Low power: a third of the density, which never needs n=128.)
+        const dScale = this.lowPower ? 0.33 : 1;
+        const D =
+          190 * dScale * Math.min(1, Math.pow(6 / Math.max(dist, 0.1), 1.3));
+        const bladeN = D > 64 ? 128 : D > 16 ? 64 : D > 4 ? 32 : 16;
         this.tileData.set([lx, lz, bladeN, 0], n * 4);
         n++;
       }
@@ -973,6 +979,7 @@ export class Vegetation {
     gu[24] = n;
     gu[25] = GRASS_CAP_NEAR;
     gu[26] = GRASS_CAP_FAR;
+    gf[27] = this.lowPower ? 0.33 : 1;
     this.device.queue.writeBuffer(this.grassParams, 0, gpBuf);
     this.device.queue.writeBuffer(
       this.grassArgs,

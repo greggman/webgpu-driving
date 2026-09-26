@@ -4,7 +4,11 @@
 import type {App} from '../app';
 import {BIOMES, BIOME_ORDER, BiomeId} from '../world/biome';
 import {SHOT_KINDS, ShotKind} from '../camera/director';
-import {DEFAULT_GRAPHICS, GraphicsSettings} from '../render/renderer';
+import {
+  DEFAULT_GRAPHICS,
+  GraphicsSettings,
+  LOW_POWER_GRAPHICS,
+} from '../render/renderer';
 
 const STORAGE_KEY = 'webgpu-driving-settings';
 
@@ -56,6 +60,16 @@ function formatTime(h: number): string {
   return `${String(hh).padStart(2, '0')}:${String(mm % 60).padStart(2, '0')}`;
 }
 
+export function saveGraphics(g: GraphicsSettings) {
+  try {
+    const cur = loadStoredSettings();
+    cur.graphics = g;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cur));
+  } catch {
+    // Storage may be unavailable.
+  }
+}
+
 export function loadStoredSettings(): Stored {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Stored;
@@ -79,6 +93,7 @@ export class SettingsPanel {
   private hud!: HTMLInputElement;
   private graphicsInputs = new Map<keyof GraphicsSettings, HTMLInputElement>();
   private scale!: HTMLInputElement;
+  private quality!: HTMLSelectElement;
   private scaleOut!: HTMLOutputElement;
 
   constructor(private app: App) {
@@ -185,7 +200,10 @@ export class SettingsPanel {
         {type: 'button', 'aria-pressed': 'false', title: `Key ${i + 1}`},
         BIOMES[id].name,
       );
-      b.addEventListener('click', () => app.switchTo(id));
+      b.addEventListener('click', () => {
+        app.switchTo(id);
+        this.close();
+      });
       grid.appendChild(b);
       this.envButtons.set(id, b);
     });
@@ -260,6 +278,23 @@ export class SettingsPanel {
 
     // Graphics.
     const gfx = this.section('Graphics');
+    const qId = 's-quality';
+    gfx.appendChild(el('label', {for: qId, class: 'block'}, 'Quality'));
+    this.quality = el('select', {id: qId});
+    this.quality.appendChild(el('option', {value: 'high'}, 'High (desktop)'));
+    this.quality.appendChild(
+      el('option', {value: 'low'}, 'Low power (phones, tablets)'),
+    );
+    this.quality.addEventListener('change', () => {
+      app.renderer.graphics = {
+        ...(this.quality.value === 'low'
+          ? LOW_POWER_GRAPHICS
+          : DEFAULT_GRAPHICS),
+      };
+      this.save();
+      this.sync();
+    });
+    gfx.appendChild(this.quality);
     for (const [key, label] of GRAPHICS_LABELS) {
       const input = this.checkbox(gfx, label, v => {
         (app.renderer.graphics[key] as boolean) = v;
@@ -279,17 +314,6 @@ export class SettingsPanel {
         this.save();
       },
     );
-    const reset = el(
-      'button',
-      {type: 'button', class: 'wide secondary'},
-      'Reset graphics to defaults',
-    );
-    reset.addEventListener('click', () => {
-      app.renderer.graphics = {...DEFAULT_GRAPHICS};
-      this.save();
-      this.sync();
-    });
-    gfx.appendChild(reset);
 
     // Interface.
     const ui = this.section('Interface');
@@ -331,6 +355,7 @@ export class SettingsPanel {
     const g = app.renderer.graphics;
     for (const [k, input] of this.graphicsInputs)
       input.checked = g[k] as boolean;
+    this.quality.value = g.lowPower ? 'low' : 'high';
     this.scale.value = String(g.renderScale);
     this.scaleOut.value = `${Math.round(g.renderScale * 100)}%`;
     this.hud.checked = !app.hudHidden;

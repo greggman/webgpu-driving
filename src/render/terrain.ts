@@ -336,12 +336,17 @@ export class TerrainRenderer {
 
   afterSubmit() {
     if (!this.probeBusy || this.probeRead.mapState !== 'unmapped') return;
-    void this.probeRead.mapAsync(GPUMapMode.READ).then(() => {
-      const a = new Float32Array(this.probeRead.getMappedRange().slice(0));
-      this.probeResult = [...a.slice(4, 8)];
-      this.probeRead.unmap();
-      this.probeBusy = false;
-    });
+    void this.probeRead
+      .mapAsync(GPUMapMode.READ)
+      .then(() => {
+        const a = new Float32Array(this.probeRead.getMappedRange().slice(0));
+        this.probeResult = [...a.slice(4, 8)];
+        this.probeRead.unmap();
+        this.probeBusy = false;
+      })
+      .catch(() => {
+        this.probeBusy = false;
+      });
   }
 
   encodeClipmapUpdates(enc: GPUCommandEncoder) {
