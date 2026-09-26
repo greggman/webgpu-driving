@@ -82,7 +82,11 @@ export class App {
   ) {
     this.renderer = new Renderer(gpu);
     this.installInput();
-    if (!params.hud) this.hudEl.classList.add('hidden');
+    if (!params.hud) {
+      // hud=0 (screenshots): hide all on-screen UI.
+      this.hudEl.classList.add('hidden');
+      document.body.classList.add('ui-hidden');
+    }
     document.getElementById('regen')!.addEventListener('click', () => {
       void this.regenerate();
     });

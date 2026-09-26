@@ -185,11 +185,15 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
   let l1 = SP.lod1 * (0.6 + 0.4 * scale) * jit;
   let base = mesh * 3u;
   inst.fade = 0.0;
+  // Grow in over the outer 15% of the range instead of popping in.
+  let edge = SP.maxDist * (0.9 + 0.1 * jit);
+  inst.scale *= smoothstep(edge, edge * 0.85, dist);
+  if (inst.scale <= 0.01) { return; }
   if (d3 < l0) {
     emit(base, inst);
   } else if (d3 < l1) {
     emit(base + 1u, inst);
-  } else if (SP.impostors != 0u && dist < SP.maxDist * (0.9 + 0.1 * jit)) {
+  } else if (SP.impostors != 0u) {
     emit(base + 2u, inst);
   }
 }

@@ -66,30 +66,44 @@ fn spawn(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) li: 
   let tile = tiles[wg.x];
   let n = u32(tile.n);
   let total = n * n;
-  let spacing = 8.0 / tile.n;
   let halfW = F.road.w;
   let density = F.palette[0].w;
   let hScale = F.palette[1].w;
   let crops = F.palette[10].x;
   let flowers = F.palette[11].x;
+  // Nested grids: tiles use spacing 1/16, 1/8, 1/4 or 1/2 m (n = 128..16),
+  // and every candidate is identified by its index on the finest grid, so a
+  // coarse tile's candidates are exactly a subset of a fine tile's. Each
+  // candidate belongs to the coarsest "class" grid it lies on; its jittered
+  // position and existence depend only on that, never on the tile level, so
+  // tiles changing LOD as the camera moves swap nothing.
+  let step = 128u / n; // finest cells per candidate
+  let origin = vec2i(floor((vec2f(tile.minX, tile.minZ) + F.misc.xy) * 16.0 + 0.5));
   for (var k = li; k < total; k += 64u) {
-    let cx = k % n;
-    let cz = k / n;
-    let cell = vec2f(tile.minX, tile.minZ) + vec2f(f32(cx), f32(cz)) * spacing;
-    let wc = cell + F.misc.xy;
-    let ix = i32(floor(wc.x / spacing + 0.5));
-    let iz = i32(floor(wc.y / spacing + 0.5));
-    let h0 = pcg(bitcast<u32>(ix) * 3u + pcg(bitcast<u32>(iz) + u32(tile.n)));
+    let fi = origin + vec2i(i32(k % n), i32(k / n)) * i32(step);
+    // Class = coarsest level (0..3) whose grid contains this point.
+    let tz = min(countTrailingZeros(bitcast<u32>(fi.x) | 0x80000000u),
+                 countTrailingZeros(bitcast<u32>(fi.y) | 0x80000000u));
+    let cls = min(tz, 3u);
+    let cellSize = f32(1u << cls) / 16.0;
+    let h0 = pcg(bitcast<u32>(fi.x) * 3u + pcg(bitcast<u32>(fi.y) + 77u));
     let r1 = rand01(h0);
     let r2 = rand01(pcg(h0 + 11u));
     let r3 = rand01(pcg(h0 + 12u));
-    let p = cell + vec2f(r1, r2) * spacing;
-    let world = p + F.misc.xy;
+    let world = vec2f(fi) / 16.0 + (vec2f(r1, r2) - 0.5) * cellSize;
+    let p = world - F.misc.xy;
     let dist = distance(p, F.cam.xz);
-    // Distance thinning (hash-stable, so blades fade rather than pop).
-    let keep = saturate(1.0 - (dist - 18.0) / 110.0);
-    let keep2 = keep * keep;
-    if (r3 > keep2 * 1.0 + 0.02) { continue; }
+    // Continuous blade density (per m^2) filled coarse classes first:
+    // class 3 holds 4/m^2, class 2 12, class 1 48, class 0 192.
+    let D = 190.0 * min(1.0, pow(6.0 / max(dist, 0.1), 1.3)) * saturate((132.0 - dist) / 20.0);
+    let below = array<f32, 4>(64.0, 16.0, 4.0, 0.0);
+    let capOnly = array<f32, 4>(192.0, 48.0, 12.0, 4.0);
+    let prob = saturate((D - below[cls]) / capOnly[cls]);
+    if (r3 >= prob) { continue; }
+    // Blades shrink to nothing just before they drop out (no popping).
+    let grow = saturate((prob - r3) / 0.12);
+    // Wider blades as density falls keep the coverage constant.
+    let widen = min(sqrt(190.0 / max(D, 1.0)), 6.0);
     let g = clipSample(p, 0);
     let nrm = terrainNormal(g);
     let roadD = abs(g.w);
@@ -134,12 +148,13 @@ fn spawn(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) li: 
     if (!visible(pos + vec3f(0.0, height * 0.5, 0.0), height + 0.5)) { continue; }
     var b: Blade;
     b.pos = pos;
-    b.height = height;
-    b.width = (0.012 + 0.012 * rand01(pcg(h0 + 19u))) * sqrt(spacing / 0.07) / max(keep, 0.3);
+    b.height = height * grow;
+    b.width = (0.012 + 0.012 * rand01(pcg(h0 + 19u))) * widen * grow;
     b.rot = rand01(pcg(h0 + 20u)) * 6.2831;
     b.bend = bend;
     b.kindTint = kind * 10.0 + tint;
-    if (dist < 22.0) {
+    // Geometry LOD switches per blade somewhere in 26-36 m (spread out).
+    if (dist < 26.0 + 10.0 * rand01(pcg(h0 + 21u))) {
       let slot = atomicAdd(&gargs[1], 1u);
       if (slot < GP.capNear) { bladesNear[slot] = b; }
     } else {
@@ -199,11 +214,9 @@ fn vsNear(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> G
 
 @vertex
 fn vsFar(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> GOut {
-  var o = bladeVertex(blades[ii], vi, 1u);
-  // Far blades are single triangles: keep their bases from reading as dark
-  // cones (the base darkening is mostly hidden in the coverage anyway).
-  o.t = 0.45 + 0.55 * o.t;
-  return o;
+  // Two segments (5 verts): close enough in shape to the 3-segment near
+  // blades that the switch is invisible.
+  return bladeVertex(blades[ii], vi, 2u);
 }
 
 @fragment

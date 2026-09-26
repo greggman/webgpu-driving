@@ -784,8 +784,9 @@ export class Vegetation {
       this.layers.push(
         mkLayer(
           biome.id === 'forest' ? 5 : 6,
-          55,
-          200,
+          // Dense forests can't afford full-detail trees as far out.
+          biome.id === 'forest' ? 65 : 85,
+          biome.id === 'forest' ? 260 : 320,
           2200,
           true,
           treeTypes,
@@ -794,7 +795,7 @@ export class Vegetation {
       );
     }
     if (smallTypes.length) {
-      this.layers.push(mkLayer(2.5, 30, 110, 180, false, smallTypes, 202));
+      this.layers.push(mkLayer(2.5, 45, 170, 280, false, smallTypes, 202));
     }
   }
 
@@ -955,7 +956,9 @@ export class Vegetation {
         if (!aabbInFrustum(planes, lx, h - 6, lz, lx + TILE, h + 6, lz + TILE))
           continue;
         if (n >= 4096) break;
-        const bladeN = dist < 12 ? 112 : dist < 26 ? 64 : dist < 55 ? 32 : 16;
+        // Tile grid level: capacity (n^2/64 per m^2) must cover the blade
+        // density at the tile's nearest point (see grass.wgsl).
+        const bladeN = dist < 14 ? 128 : dist < 41 ? 64 : dist < 117 ? 32 : 16;
         this.tileData.set([lx, lz, bladeN, 0], n * 4);
         n++;
       }
@@ -974,7 +977,7 @@ export class Vegetation {
     this.device.queue.writeBuffer(
       this.grassArgs,
       0,
-      new Uint32Array([7, 0, 0, 0, 3, 0, 0, 0]),
+      new Uint32Array([7, 0, 0, 0, 5, 0, 0, 0]),
     );
   }
 
