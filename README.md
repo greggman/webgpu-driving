@@ -32,6 +32,7 @@ Useful for sharing a view and for deterministic screenshots:
 - `t=N`: time into the camera shot
 - `freeze=1`: stop the simulation clock (the renderer keeps running so TAA converges)
 - `hud=0`: hide the HUD
+- `speed=N`: simulation time scale (e.g. `speed=8` for soak testing)
 - `debug=noterrain,nodof,nomb,nobody,novegshadow,nograss,nolod0,probe`: debugging toggles
 
 ## Development
@@ -54,6 +55,8 @@ Other tools:
   (timestamp queries).
 - `node test/probe.js "<query>" "<js expression>"`: evaluate an expression in a running
   page.
+- `npm run soak`: drives several environments at 8× for about 8 km each (origin rebasing,
+  streaming, clipmap recentering, camera cuts) and fails on any GPU or page error.
 - `.claude/agents/aaa-judge.md`: an agent whose only job is to judge screenshots against
   AAA and car-commercial quality and rank fixes.
 

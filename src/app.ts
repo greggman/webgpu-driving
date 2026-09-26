@@ -23,6 +23,7 @@ export interface Params {
   eye: [number, number, number] | null;
   look: [number, number, number] | null;
   fov: number | null;
+  timeScale: number;
 }
 
 export function parseParams(): Params {
@@ -42,6 +43,7 @@ export function parseParams(): Params {
     eye: vec3Param(q.get('eye')),
     look: vec3Param(q.get('look')),
     fov: num('fov'),
+    timeScale: num('speed') ?? 1,
   };
 }
 
@@ -188,7 +190,7 @@ export class App {
       this.fpsAcc = 0;
       this.fpsFrames = 0;
     }
-    const dt = this.params.freeze ? 0 : dtReal;
+    const dt = this.params.freeze ? 0 : dtReal * this.params.timeScale;
     this.time += dt;
     this.idle += dtReal;
     if (dt > 0) this.traffic.update(dt);
