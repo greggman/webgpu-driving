@@ -142,15 +142,16 @@ export const SEDAN_BODY: BodyCurves = {
   ],
   // Lower door character line: rises gently toward the rear.
   doorLine: [
-    [-2.2, 0.6],
-    [-1.3, 0.56],
+    [-2.2, 0.65],
+    [-1.3, 0.575],
     [0.0, 0.5],
     [1.5, 0.46],
     [2.2, 0.45],
   ],
   noseRake: {bumperY: 0.42, depth: 0.07, cornerDepth: 0.06},
-  tailRake: {bumperY: 0.52, depth: 0.05, cornerDepth: 0.04},
-  creases: {door: 1.0, shoulder: 1.0, belt: 0.5},
+  tailRake: {bumperY: 0.52, depth: 0.05, cornerDepth: 0.07},
+  creases: {door: 0.8, shoulder: 0.9, belt: 0.8},
+  hoodLines: {x: 0.38, height: 0.025, crease: 0.8},
   cabin: {
     windscreenBase: 1.18,
     roofFront: 0.25,
