@@ -175,12 +175,17 @@ fn fs(in: VOut) -> GBufferOut {
   albedo = mix(albedo, pal(5) * (0.9 + 0.2 * fine), saturate(sandMask));
   // Wet sand where waves wash up (darker, glossy).
   let wet = smoothstep(1.4, 0.3, wp.y) * F.palette[9].w * step(0.5, abs(F.terrain[3].x));
-  albedo *= 1.0 - 0.45 * wet;
+    albedo *= 1.0 - 0.45 * wet;
   rough = mix(rough, 0.2, wet);
+  
 
   // Road shoulder: gravel/dirt strip.
   let shoulder = 1.0 - smoothstep(halfW + 0.3, halfW + 2.2 + mid * 1.5, roadD);
-  albedo = mix(albedo, pal(3) * (0.8 + 0.4 * fine), shoulder);
+    albedo = mix(albedo, pal(3) * (0.8 + 0.4 * fine), shoulder);
+  // Rain soaks the ground: darker, a little glossier.
+  let soak = F.weather2.x;
+  albedo *= 1.0 - 0.45 * soak;
+  rough = mix(rough, 0.45, soak * 0.5);
 
   // Snow cover (flat areas first).
   let snowAmt = F.palette[7].w;

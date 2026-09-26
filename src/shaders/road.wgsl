@@ -170,8 +170,12 @@ fn fs(in: VOut) -> GBufferOut {
     let laneC = fract((d + halfW) / laneW) * laneW;
     let ruts = saturate(lineMask(laneC, laneW * 0.28, 0.35, 0.3) + lineMask(laneC, laneW * 0.72, 0.35, 0.3));
     let puddle = smoothstep(0.52, 0.66, big + mid * 0.25);
-    albedo *= mix(1.0, 0.42, wet);
-    coat = wet * saturate(0.55 + 0.25 * ruts + 0.5 * puddle);
+        // Water-saturated asphalt is much darker, and at the grazing angles
+    // of headlights most of their light reflects forward off the water
+    // instead of reaching it: a wet road barely shows a beam pool.
+    albedo *= mix(1.0, 0.28, wet);
+        coat = wet * saturate(0.55 + 0.25 * ruts + 0.5 * puddle);
+    albedo *= 1.0 - 0.7 * coat;
     n = normalize(mix(n, nCoat, coat * 0.7));
     // Rain ripples: expanding rings from drops landing in the water.
     let rain = F.weather2.x;
@@ -229,14 +233,16 @@ fn fs(in: VOut) -> GBufferOut {
     var w: Surface;
     w.albedo = vec3f(0.0);
     w.n = nCoat;
-    w.rough = 0.05;
+        // Slightly rough water (ripples, spray): light sources smear into the
+    // long vertical streaks of a wet night road.
+    w.rough = 0.12;
     w.metal = 0.0;
     w.ao = 1.0;
     w.spec = 0.5;
     w.sss = 0.0;
     let l = F.sun.xyz;
     let h = normalize(v + l);
-    let glint = D_GGX(saturate(dot(nCoat, h)), 0.0025) * V_SmithGGX(max(nv, 1e-3), saturate(dot(nCoat, l)), 0.0025) * fres;
+        let glint = D_GGX(saturate(dot(nCoat, h)), 0.01) * V_SmithGGX(max(nv, 1e-3), saturate(dot(nCoat, l)), 0.01) * fres;
     let refl = envRadiance(r, 0.03) * fres + F.sunColor.rgb * min(glint, 400.0) * sh * saturate(dot(nCoat, l)) + localLights(w, wp, v);
     col = col * (1.0 - fres * coat) + refl * coat;
     // Mark the coat for screen-space reflections (roughness < 0.09).

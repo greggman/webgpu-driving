@@ -15,7 +15,7 @@ page.on('console', e => {
 });
 await page.goto(`http://localhost:8124/?freeze=1&hud=0&${query}`);
 await page.waitForFunction('window.__dev && window.__dev.settled', {timeout: 25000});
-const r = await page.evaluate(e => JSON.stringify(eval(e), null, 1), expr);
+const r = await page.evaluate(async e => JSON.stringify(await eval(e), null, 1), expr);
 console.log(r);
 await browser.close();
 server.close();

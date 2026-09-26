@@ -643,7 +643,8 @@ export const BIOMES: Record<BiomeId, Biome> = {
       clouds: 0.15,
       fogDensity: 0.00004,
     },
-    weather: {...noWeather, wetness: 0.7},
+    // Dry: the beams light the road (a wet road would swallow them).
+    weather: {...noWeather},
     ocean: false,
     headlights: true,
     shotWeights: {chase: 2, interior: 2, helicopter: 1},

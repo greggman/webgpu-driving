@@ -38,7 +38,13 @@ fn fs(in: FsOut) -> @location(0) vec4f {
   let nr = textureLoad(normalTex, px, 0);
   if (nr.a >= SSR_ROUGH) { return vec4f(0.0); }
   let coverage = saturate((SSR_ROUGH - nr.a) / (SSR_ROUGH - 0.02));
-  let n = normalize(nr.xyz * 2.0 - 1.0);
+    // Glossy, not mirror: jitter the normal a little per pixel and frame
+  // (TAA averages it). Seen at grazing angles this stretches reflections
+  // of lights into vertical streaks.
+  let h1 = fract(sin(dot(in.pos.xy + F.misc2.z * 17.0, vec2f(12.9898, 78.233))) * 43758.5453);
+  let h2 = fract(sin(dot(in.pos.xy + F.misc2.z * 31.0, vec2f(39.346, 11.135))) * 24634.6345);
+  let gloss = 0.07 * (1.0 - coverage * 0.4);
+  let n = normalize(nr.xyz * 2.0 - 1.0 + vec3f(h1 - 0.5, 0.0, h2 - 0.5) * gloss * 2.0);
   let P = worldAt(px, size);
   let v = normalize(F.cam.xyz - P);
   let r = reflect(-v, n);

@@ -321,6 +321,24 @@ export class Post {
     this.resetHistory = true;
   }
 
+  // Debug / tests: [exposure, average scene luminance].
+  async readExposure(): Promise<number[]> {
+    const d = this.device;
+    const b = d.createBuffer({
+      label: 'exposure-readback',
+      size: 16,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+    const enc = d.createCommandEncoder({label: 'exposure-readback'});
+    enc.copyBufferToBuffer(this.exposureBuf, 0, b, 0, 16);
+    d.queue.submit([enc.finish()]);
+    await b.mapAsync(GPUMapMode.READ);
+    const r = Array.from(new Float32Array(b.getMappedRange()));
+    b.unmap();
+    b.destroy();
+    return r;
+  }
+
   encode(enc: GPUCommandEncoder, swapView: GPUTextureView, s: PostSettings) {
     if (this.version !== this.targets.version) this.rebuild();
     const d = this.device;

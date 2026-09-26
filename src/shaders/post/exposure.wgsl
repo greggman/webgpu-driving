@@ -56,8 +56,12 @@ fn resolve(@builtin(local_invocation_index) li: u32) {
     }
     let avgLog = select(0.0, sum / max(wsum, 1.0), wsum > 0.0);
     let avgLum = exp2(avgLog);
-    // Key value: mid-gray target, a little brighter in dark scenes.
-    let key = 0.16 * ep.z;
+        // Key value: mid-gray by day, but dark scenes stay dark (like the eye
+    // or a camera at night): the key falls off with the scene luminance
+    // (day ~0.3-0.6, a rainy night ~0.007) instead of lifting the night to
+    // daylight brightness.
+    let dark = smoothstep(-8.0, -2.5, avgLog);
+    let key = 0.16 * ep.z * mix(0.3, 1.0, dark);
     var tgt = key / max(avgLum, 1e-4);
     tgt = clamp(tgt, 0.02, 400.0);
     var cur = expo[0];
