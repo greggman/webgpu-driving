@@ -364,7 +364,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   if (body && lp.z > 0.0) {
     // Headlight units in the upper corners of the nose, wrapping around
     // onto the fender.
-    let hu = (ax - 0.5) / 0.42;
+    let hu = (ax - select(0.5, 0.46, style == 0u)) / select(0.42, 0.46, style == 0u);
         // Thickens and sweeps up outboard.
     var top = 0.03 + 0.07 * saturate(hu);
     var bot = -0.035 - 0.02 * saturate(hu);
@@ -376,7 +376,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     }
     // Main grille: shape per kind, chrome / gloss surround.
     if (lp.z > halfL - 0.35 && ln.z > 0.25) {
-                        var y0 = -0.3; var y1 = -0.04; var wt = 0.34; var wb = 0.4;
+                              var y0 = -0.23; var y1 = 0.0; var wt = 0.47; var wb = 0.52;
       cell = 0u;
       if (style == 1u) { y0 = -0.07; y1 = 0.0; wt = 0.4; wb = 0.36; }
       if (style == 2u) { y0 = -0.26; y1 = 0.05; wt = 0.46; wb = 0.46; cell = 1u; }
@@ -393,19 +393,23 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
         recess = smoothstep(0.0, 0.05, edge);
       }
       // Lower intake below a body-colour bumper bar.
-      let li0 = select(-0.42, -0.36, style == 3u);
-      let lw = select(0.62, 0.72, style == 1u);
-      if (style != 3u && gy > li0 && gy < y0 - 0.07 && gx < lw && gy < -0.12) {
+            var li0 = select(-0.42, -0.36, style == 3u);
+      var lw = select(0.62, 0.72, style == 1u);
+      var liTop = y0 - 0.07;
+      if (style == 0u) { li0 = -0.46; lw = 0.58; liTop = y0 - 0.05; }
+      if (style != 3u && gy > li0 && gy < liTop && gx < lw && gy < -0.12) {
         part = 3u;
-        cell = select(1u, 2u, style == 5u);
+        cell = select(select(1u, 2u, style == 5u), 0u, style == 0u);
         recess = smoothstep(0.0, 0.04, min(gy - li0, (lw - gx) * halfW));
       }
     }
     if (lp.z > halfL - 0.4 && gy < -0.44) { part = 4u; }
     // Fog lamp pods in the bumper corners.
     if (style != 3u && lp.z > halfL - 0.45 && ln.z > 0.2) {
-      let fd = length(vec2f((ax - 0.8) * halfW, gy + 0.36));
-            if (fd < 0.035) { part = select(5u, 6u, fd < 0.025); }
+            // Vertical black corner blades (fog lamps sit inside, lit at night).
+      if (abs(ax - 0.84) * halfW < 0.07 && gy > -0.44 && gy < -0.26) {
+        part = select(4u, 6u, lightsOn > 0.5 && abs(gy + 0.35) < 0.02);
+      }
     }
   }
   if (body && lp.z < 0.0) {
@@ -429,11 +433,13 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       if (lamp) { part = 2u; } else if (bezel) { part = 4u; }
     }
     // Rear diffuser with exhaust tips.
-    if (lp.z < -halfL + 0.4 && lp.y < ty - 0.48) {
+        if (lp.z < -halfL + 0.4 && lp.y < ty - 0.4) {
       part = 4u;
       if (style != 2u && style != 5u && ln.z < -0.2) {
-        let ed = length(vec2f((ax - 0.55) * halfW, lp.y - (ty - 0.53)));
-        if (ed < 0.04) { part = select(5u, 7u, ed < 0.03); }
+                // Rectangular black exhaust finishers.
+        let ex = vec2f((ax - 0.55) * halfW, lp.y - (ty - 0.5));
+        let eb = max(abs(ex.x) - 0.05, abs(ex.y) - 0.018);
+        if (eb < 0.0) { part = select(4u, 7u, eb < -0.006); }
       }
     }
   }
@@ -459,14 +465,14 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     s.albedo = mix(s.albedo, vec3f(0.35), bowl * 0.5);
         s.albedo = mix(s.albedo, vec3f(0.25), ring);
     s.rough = mix(s.rough, 0.06, ring);
-    let hu = (ax - 0.5) / 0.42;
+    let hu = (ax - select(0.5, 0.46, style == 0u)) / select(0.42, 0.46, style == 0u);
     var drl = (1.0 - smoothstep(0.004, 0.008, abs(dy + 0.035))) * step(0.03, hu) * step(hu, 1.05);
     if (style == 2u || style == 5u) {
       // C-shaped signature.
       drl = max(drl, (1.0 - smoothstep(0.004, 0.008, abs(hu - 0.08) * halfW * 0.42)) * step(abs(dy), 0.05));
       drl = max(drl, (1.0 - smoothstep(0.004, 0.008, abs(dy - 0.055))) * step(0.03, hu) * step(hu, 0.5));
     } else {
-      drl = max(drl, (1.0 - smoothstep(0.006, 0.012, abs(hu - 0.97) * halfW * 0.42)) * step(dy, 0.06));
+            drl = max(drl, (1.0 - smoothstep(0.006, 0.012, abs(min(hu, 0.98) - 0.97) * halfW * 0.42)) * step(dy, 0.03) * step(-0.05, dy));
     }
     let white = vec3f(1.0, 0.97, 0.92);
     emissive = white * (saturate(drl) * (2.5 + 6.0 * lightsOn) + lens * (0.05 + 40.0 * lightsOn));
@@ -562,11 +568,12 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     }
             // Bumper parting lines front and rear.
     if (lp.z < -halfL + 0.6 || lp.z > halfL - 0.6) { seam = min(seam, abs(lp.y - 0.55)); }
-    if (ln.z < -0.3) { seam = min(seam, abs(lp.y - (ty - 0.2)) * 0.7); }
+    
     if (ln.z < -0.3) {
       // Trunk / tailgate opening on the rear face.
-      if (ax < 0.8) { seam = min(seam, abs(lp.y - (ty - 0.13))); }
-      if (lp.y > ty - 0.13) { seam = min(seam, abs(ax - 0.8) * halfW); }
+            // The trunk lid shuts just above the lamps.
+      if (ax < 0.8) { seam = min(seam, abs(lp.y - (ty + 0.13))); }
+      if (lp.y > ty + 0.13) { seam = min(seam, abs(ax - 0.8) * halfW); }
       // Recessed plate pocket.
       let pp = vec2f(abs(lp.x) - 0.3, abs(lp.y - (ty - 0.3)) - 0.09);
       if (max(pp.x, pp.y) < 0.0) { s.ao = 0.55; }
@@ -618,7 +625,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     s.ao = 0.6;
   } else if (mat == 20u) {
     // Licence plate: white retro-reflective sheet, dark border and characters.
-    let py = lp.y - (select(ty, hy, lp.z > 0.0) - 0.3);
+        let py = lp.y - select(ty - 0.3, hy - 0.32, lp.z > 0.0);
     let px = lp.x + 0.26;
     let border = step(0.5, f32(abs(py) > 0.05 || px < 0.012 || px > 0.508));
     let ci = floor((px - 0.04) / 0.064);
@@ -646,7 +653,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Alloy rim: bright machined spoke faces, darker barrel and cap.
     let r = length(lp.yz);
     let face = saturate(abs(ln.x) * 2.0 - 0.6);
-        s.albedo = mix(vec3f(0.06), vec3f(0.72), face);
+            s.albedo = mix(vec3f(0.08), vec3f(0.6), face);
     s.metal = 1.0;
     s.rough = mix(0.45, 0.25, face);
     // Polished lip at the rim edge.

@@ -164,11 +164,11 @@ export function carSpec(kind: CarKind): CarSpec {
         tailY: 1.0,
         roofY: 1.44,
         roofW: 0.78,
-        wsBase: 0.86,
-        roofFront: -0.06,
-        roofBack: -0.72,
-        rearBase: -1.58,
-        sideRear: -1.28,
+        wsBase: 1.02,
+        roofFront: 0.08,
+        roofBack: -0.64,
+        rearBase: -1.52,
+        sideRear: -1.2,
       });
     case 'hatch':
       return spec({
@@ -561,6 +561,13 @@ export function buildCarBody(sp: CarSpec): MeshData {
     const u = t - (Math.sin(t * Math.PI * 2) / (Math.PI * 2)) * 0.6;
     zs.push(nose - u * L);
   }
+  // Extra stations around each wheel arch (a smooth lip).
+  for (const az of axles)
+    for (let q = 0; q < 30; ++q) {
+      const z = az + (archR + 0.05) * ((q / 29) * 2 - 1);
+      if (z < nose - 0.01 && z > tail + 0.01) zs.push(z);
+    }
+  zs.sort((a, b) => b - a);
   const NH = 44; // points per half section
   const kq = (k26: number) => Math.round((k26 * NH) / 26); // (tuned at NH=26)
   const nExp = sp.boxy;
@@ -601,7 +608,16 @@ export function buildCarBody(sp: CarSpec): MeshData {
       x +=
         0.03 * Math.exp(-Math.abs(y - sh) / 0.01) * smooth(0.3, 0.6, yn + 0.5);
       x -=
-        0.012 * Math.exp(-Math.pow((y - (bot + (top - bot) * 0.3)) / 0.04, 2));
+        0.022 *
+        Math.exp(
+          -Math.pow(
+            (y - (bot + (top - bot) * (0.26 + 0.1 * clamp01((nose - z) / L)))) /
+              0.05,
+            2,
+          ),
+        );
+      // The sill reads as its own piece below the doors.
+      x -= 0.008 * smooth(-0.7, -0.8, yn);
       if (hood && s > 0) {
         // Hood: centre lowered between two creases running to the lamps.
         const xr = x / w;
@@ -626,6 +642,14 @@ export function buildCarBody(sp: CarSpec): MeshData {
     const z = (zs[i] + zs[i + 1]) / 2;
     const k = j < NH ? j : RN - 2 - j; // 0 (bottom) .. NH-1 (top)
     const p = lower[i][j];
+    // Quad-average height: material boundaries follow the surface, not the
+    // mesh stair-step.
+    const qy =
+      (lower[i][j][1] +
+        lower[i + 1][j][1] +
+        lower[i][j + 1][1] +
+        lower[i + 1][j + 1][1]) /
+      4;
     if (k < kq(3)) return MAT_UNDER;
     // Rear diffuser / lower valance.
     if (z < tail + 0.25 && p[1] < bottomLine(z, topLine(z)) + 0.16)
@@ -640,11 +664,10 @@ export function buildCarBody(sp: CarSpec): MeshData {
     if (sp.cladding && p[1] < bot + 0.1) return MAT_TRIM;
     // Arch lips / liners: the downward-facing skin around each wheel.
     for (const az of axles) {
-      if (Math.abs(z - az) < archR + 0.03 && p[1] < bot + 0.03)
-        return MAT_UNDER;
+      if (Math.abs(z - az) < archR + 0.03 && qy < bot + 0.015) return MAT_UNDER;
     }
     const between = Math.abs(z - sp.axleShift) < sp.wheelbase / 2 - archR;
-    if (between && p[1] < bot + 0.05) return MAT_TRIM;
+    if (between && qy < bot + 0.05) return MAT_TRIM;
     if (z > nose - 0.3) return MAT_FRONT;
     if (z < tail + 0.3) return MAT_REAR;
     if (pickup && z < sp.bedFront! && k > NH - kq(5)) return MAT_TRIM;
@@ -685,7 +708,7 @@ export function buildCarBody(sp: CarSpec): MeshData {
   // Fascia end caps.
   for (const [row, dir] of [
     [lower[0], 1],
-    [lower[NS - 1], -1],
+    [lower[lower.length - 1], -1],
   ] as Array<[P3[], number]>) {
     let cx = 0,
       cy = 0;
@@ -1039,7 +1062,7 @@ export function buildCarBody(sp: CarSpec): MeshData {
   // Plates.
   box(
     push,
-    [0, sp.headlightY - 0.3, nose + 0.005],
+    [0, sp.headlightY - 0.32, nose + 0.005],
     [0.26, 0.06, 0.006],
     MAT_PLATE,
   );
