@@ -94,7 +94,14 @@ export class Director {
       side,
     };
     if (kind === 'roadside') {
-      const s = sCar + this.rng.range(70, 110);
+      // Frame a bridge if one is coming up, otherwise a spot ahead.
+      let s = sCar + this.rng.range(70, 110);
+      for (let q = sCar + 50; q < sCar + 220; q += 10) {
+        if (this.road.atS(q).bridge > 0.5) {
+          s = q + 15;
+          break;
+        }
+      }
       const hw = this.road.halfWidth;
       const p = this.road.pointAt(s, side * (hw + this.rng.range(3, 9)));
       const g = this.road.groundHeight(p.pos[0], p.pos[2]);
@@ -108,14 +115,28 @@ export class Director {
   }
 
   cut(sCar: number, kind?: ShotKind) {
-    const k = kind ?? this.pickShot();
+    const k = kind ?? this.pickShot(sCar);
     this.shot = this.newShot(k, sCar);
     this.smoothEye = null;
     this.smoothTarget = null;
     this.cutCount++;
   }
 
-  private pickShot(): ShotKind {
+  // Look ahead along the road for features worth a particular shot.
+  private roadAhead(sCar: number): ShotKind | null {
+    for (let s = sCar + 40; s < sCar + 220; s += 10) {
+      if (this.road.atS(s).bridge > 0.5) return 'roadside';
+    }
+    const h0 = this.road.atS(sCar).heading,
+      h1 = this.road.atS(sCar + 300).heading;
+    if (Math.abs(h1 - h0) < 0.08 && this.rng.next() < 0.5) return 'helicopter';
+    if (Math.abs(h1 - h0) > 0.6 && this.rng.next() < 0.5) return 'chase';
+    return null;
+  }
+
+  private pickShot(sCar = 0): ShotKind {
+    const ahead = this.roadAhead(sCar);
+    if (ahead && ahead !== this.shot.kind && this.rng.next() < 0.6) return ahead;
     const base: Record<ShotKind, number> = {
       chase: 1.5,
       helicopter: 1.3,

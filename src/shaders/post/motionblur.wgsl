@@ -9,7 +9,21 @@
 fn fs(in: FsOut) -> @location(0) vec4f {
   let size = vec2f(textureDimensions(srcTex));
   let px = vec2i(in.pos.xy);
-  let c0 = textureSampleLevel(srcTex, samp, in.uv, 0.0);
+  var uv0 = in.uv;
+  // Heat shimmer over hot ground (desert): refraction that grows with
+  // distance, wobbling upward.
+  let dust = F.sky.z;
+  let dRaw = textureLoad(depthTex, px, 0);
+  if (dust > 0.0 && dRaw > 0.0) {
+    let viewZ = 0.15 / dRaw;
+    let k = saturate((viewZ - 40.0) / 400.0) * dust * F.sun.w;
+    let t = F.cam.w;
+    let w = vec2f(
+      vnoise(in.uv * vec2f(90.0, 260.0) + vec2f(0.0, t * 4.0)) - 0.5,
+      vnoise(in.uv * vec2f(70.0, 200.0) + vec2f(13.0, t * 3.0)) - 0.5);
+    uv0 += w * k * vec2f(0.0012, 0.002);
+  }
+  let c0 = textureSampleLevel(srcTex, samp, uv0, 0.0);
   var vel = textureLoad(velTex, px, 0).xy * mb.x;
   // Clamp to a maximum blur length (in pixels).
   let lenPx = length(vel * size);
@@ -23,7 +37,7 @@ fn fs(in: FsOut) -> @location(0) vec4f {
   var wsum = 1.0;
   for (var i = 0; i < N; i++) {
     let t = (f32(i) + noise + 0.5) / f32(N) - 0.5;
-    let uv = in.uv - vel * t;
+    let uv = uv0 - vel * t;
     let q = vec2i(clamp(uv * size, vec2f(0.0), size - 1.0));
     let dq = textureLoad(depthTex, q, 0);
     let vq = textureLoad(velTex, q, 0).xy * mb.x;
