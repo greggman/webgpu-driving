@@ -221,7 +221,10 @@ fn clearcoatShade(base: Surface, wp: vec3f, sh: f32, coat: f32) -> vec3f {
   let h = normalize(v + l);
   let nl = saturate(dot(n, l));
   let spec = D_GGX(saturate(dot(n, h)), 0.035) * V_SmithGGX(max(nv, 1e-3), nl, 0.035) * fc;
-  col = col * (1.0 - fc * coat) + (carEnv(r, 0.03) * fc + spec * F.sunColor.rgb * sh * nl) * coat;
+    // Reflection occlusion: surfaces facing the ground mirror the road, not
+  // the sky (and occluded ones mirror little).
+  let envOcc = mix(0.15, 1.0, smoothstep(-0.2, 0.08, r.y)) * base.ao;
+  col = col * (1.0 - fc * coat) + (carEnv(r, 0.03) * envOcc * fc + spec * F.sunColor.rgb * sh * nl) * coat;
   return col;
 }
 
@@ -452,7 +455,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Reflector bowls behind the lenses.
     let bowl = 1.0 - smoothstep(0.03, 0.06, abs(dy - 0.01));
     s.albedo = mix(s.albedo, vec3f(0.35), bowl * 0.5);
-    s.albedo = mix(s.albedo, vec3f(0.8), ring);
+        s.albedo = mix(s.albedo, vec3f(0.25), ring);
     s.rough = mix(s.rough, 0.06, ring);
     let hu = (ax - 0.5) / 0.42;
     var drl = (1.0 - smoothstep(0.004, 0.008, abs(dy + 0.035))) * step(0.03, hu) * step(hu, 1.05);
@@ -470,15 +473,15 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Layered tail lamp: smoked outer lens, bright inner light-guide lines.
     let brake = c.p1.y;
     let dy = lp.y - ty;
-    var lines = 1.0 - smoothstep(0.1, 0.25, abs(fract(dy * 38.0) - 0.5));
+        // Smoked lens with one LED light guide along its upper edge.
+    var strip = 1.0 - smoothstep(0.004, 0.009, abs(dy - 0.03));
     if (style == 2u || style == 4u || style == 5u) {
-      lines = 1.0 - smoothstep(0.1, 0.3, abs(fract(dy * 16.0) - 0.5));
+      strip = max(strip, 1.0 - smoothstep(0.004, 0.009, abs(dy + 0.06)));
     }
-        s.albedo = vec3f(0.3, 0.015, 0.012);
+    s.albedo = vec3f(0.08, 0.004, 0.004);
     s.rough = 0.05;
     coat = 1.0;
-    let glow = 1.2 + 5.0 * lightsOn + 14.0 * brake;
-    emissive = vec3f(1.0, 0.04, 0.02) * glow * (0.3 + 0.7 * lines);
+    emissive = vec3f(1.0, 0.04, 0.02) * (strip * (3.0 + 5.0 * lightsOn) + 0.15 + 14.0 * brake);
   } else if (part == 3u) {
     // Grille insert, recessed: bright walls, dark cells, shadowed toward
     // the surround.
@@ -529,10 +532,12 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     let fh = hash01(i32(flakeCell.x + flakeCell.z * 13.0), i32(flakeCell.y));
     let fn2 = vec3f(hash01(i32(flakeCell.x), i32(flakeCell.y + 7.0)), fh, hash01(i32(flakeCell.z), i32(flakeCell.x + 3.0))) - 0.5;
     s.n = normalize(n + fn2 * 0.06 * c.color.w);
-    s.albedo = c.color.rgb;
+        s.albedo = c.color.rgb;
     s.metal = c.color.w;
-    s.rough = 0.26;
+    s.rough = mix(0.45, 0.3, c.color.w);
     coat = 1.0;
+    // Lower body AO: sills and bumper undersides stop mirroring the sky.
+    s.ao = min(s.ao, 0.35 + 0.65 * saturate((lp.y - 0.15) / 0.35));
     // Road grime toward the bottom.
     let grime = saturate((0.45 - lp.y) * 3.0) * c.p1.w;
     s.albedo = mix(s.albedo, vec3f(0.12, 0.1, 0.08), grime);
@@ -553,6 +558,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       // Trunk lid (sedan, coupe) front edge.
       if (style == 0u || style == 3u) { seam = min(seam, abs(lp.z - (c.p3.z - 0.05))); }
     }
+        // Bumper parting lines front and rear.
+    if (lp.z < -halfL + 0.6 || lp.z > halfL - 0.6) { seam = min(seam, abs(lp.y - 0.55)); }
     if (ln.z < -0.3) {
       // Trunk / tailgate opening on the rear face.
       if (ax < 0.8) { seam = min(seam, abs(lp.y - (ty - 0.13))); }
