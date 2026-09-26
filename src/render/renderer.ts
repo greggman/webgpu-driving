@@ -27,6 +27,7 @@ import {Vegetation} from './vegetation';
 import {Props} from './props';
 import {Water} from './water';
 import {Particles} from './particles';
+import {TireTracks} from './tracks';
 import volSrc from '../shaders/volumetric.wgsl';
 import clusterSrc from '../shaders/clusters.wgsl';
 import envSrc from '../shaders/envmap.wgsl';
@@ -107,6 +108,14 @@ export interface WorldCar {
   pose: Pose;
   prevPose: Pose | null;
   player: boolean;
+  // Road coordinates (dust trails, tyre tracks).
+  id: number;
+  s: number;
+  d: number;
+  dir: number; // +1 with increasing s
+  length: number;
+  track: number;
+  speed: number;
 }
 
 export interface SceneState {
@@ -147,6 +156,7 @@ export class Renderer {
   readonly props: Props;
   readonly water: Water;
   readonly particles: Particles;
+  readonly tracks: TireTracks;
   roadMesh: RoadMesh | null = null;
   private road: Road | null = null;
   private biome: Biome | null = null;
@@ -360,6 +370,7 @@ export class Renderer {
     this.props = new Props(d, this.frameLayout, this.shadows.layout);
     this.water = new Water(d, this.frameLayout);
     this.particles = new Particles(d, this.frameLayout);
+    this.tracks = new TireTracks(d, this.frameLayout);
     this.createFrameBindGroups();
   }
 
@@ -621,6 +632,8 @@ export class Renderer {
     this.water.enabled = biome.ocean;
     if (biome.ocean) this.water.setWind(biome.weather.wind);
     this.particles.setWorld(biome);
+    this.tracks.enabled = biome.road.dirt;
+    this.tracks.reset();
   }
 
   private rebase(camX: number, camZ: number) {
@@ -915,14 +928,43 @@ export class Renderer {
       const pe = scene.prevCamera ? scene.prevCamera.eye : cam.eye;
       const dt = Math.max(scene.dt, 1e-3);
       const camVel = [0, 1, 2].map(k => (cam.eye[k] - pe[k]) / dt);
-      const sp = scene.player.speed;
       const road = this.road!;
+      // Dust from the player and the nearest moving cars (player first).
+      const movers = scene.cars
+        .filter(c => c.speed > 3)
+        .map(c => ({
+          c,
+          dist: Math.hypot(
+            c.pose.pos[0] - cam.eye[0],
+            c.pose.pos[2] - cam.eye[2],
+          ),
+        }))
+        .filter(m => m.dist < 250)
+        .sort(
+          (a, b) => Number(b.c.player) - Number(a.c.player) || a.dist - b.dist,
+        )
+        .slice(0, 8)
+        .map(({c}) => ({
+          speed: c.speed,
+          trail: (age: number) =>
+            loc(
+              road.pointAt(c.s - c.dir * (c.length * 0.45 + c.speed * age), c.d)
+                .pos,
+            ),
+        }));
+      this.tracks.update(
+        road,
+        scene.cars.map(c => ({
+          id: c.id,
+          s: c.s - c.dir * c.length * 0.3,
+                    d: c.d,
+          track: c.track,
+          dir: c.dir,
+        })),
+        loc,
+      );
       this.particles.update(
-        age => {
-          const q = road.pointAt(scene.playerS - 2.2 - sp * age, scene.playerD);
-          return loc(q.pos);
-        },
-        sp,
+        movers,
         scene.frozen ? [0, 0, 0] : camVel,
         loc(scene.player.pos),
         scene.player.fwd,
@@ -1031,6 +1073,7 @@ export class Renderer {
     this.water.draw(main);
     main.setPipeline(this.atmosphere.skyDrawPipe);
     main.draw(3);
+    this.tracks.draw(main);
     this.particles.draw(main);
     this.cars.drawGlass(main);
     main.end();

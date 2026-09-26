@@ -494,6 +494,13 @@ export class App {
         pose,
         prevPose: prev,
         player: v === player,
+        id: v.id,
+        s: v.s,
+        d: v.d,
+        dir: v.dir,
+        length: v.length,
+        track: carSpec(v.kind).track,
+        speed: v.speed,
       });
     }
     const pp = playerPose!;

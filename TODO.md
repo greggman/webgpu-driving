@@ -39,7 +39,7 @@
     I get that it has lots of trees. But a AAA game would have no problem
     displaying a scene like this. What would they do to make it performant?
 
-[ ] The desert biome needs tire marks behind the cars as well as dust
+[x] The desert biome needs tire marks behind the cars as well as dust
     behind other cars.
 
 [x] The snow flake motion in the snow storm seems unrelated to the car's motion.
@@ -85,3 +85,6 @@
     * Semi Trucks
     * Passenger Busses
  
+[ ] In a previous demo we needed a 2 frame cap using onSubmittedWorkDone.
+
+    That way we don't flood the GPU with too many frames.

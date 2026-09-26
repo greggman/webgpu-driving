@@ -13,6 +13,8 @@ import {
 } from './targets';
 
 const HIST = 64;
+const MAX_SRC = 8; // dust sources (cars)
+const PLAYER_DUST = 900; // particles reserved for the player's plume
 
 interface System {
   kind: number;
@@ -30,7 +32,8 @@ export class Particles {
   private pipe!: GPURenderPipeline;
   private layout: GPUBindGroupLayout;
   private hist: GPUBuffer;
-  private histData = new Float32Array(HIST * 4);
+  private histData = new Float32Array(MAX_SRC * HIST * 4);
+  private sources = 0;
   private systems: System[] = [];
 
   constructor(
@@ -55,7 +58,7 @@ export class Particles {
     });
     this.hist = d.createBuffer({
       label: 'dust-car-history',
-      size: HIST * 16,
+      size: MAX_SRC * HIST * 16,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     const module = shaderModule(
@@ -146,21 +149,29 @@ export class Particles {
     if (biome.id === 'forest')
       add(1, 1800, 45, 0.045, 0.7, 0, [0.3, 0.26, 0.08, 1]);
     if (biome.weather.dust > 0 || biome.road.dirt)
-      add(2, 900, 0, 0.5, 0, 2.6, [0.62, 0.48, 0.34, 1]);
+      add(2, PLAYER_DUST + 1800, 0, 0.5, 0, 2.6, [0.62, 0.48, 0.34, 1]);
   }
 
   // trail(age) gives the (local) position of the player's rear wheels `age`
   // seconds ago, derived from the road so it also works with frozen time.
+  // Each source is a car: trail(age) is where its rear wheels were `age`
+  // seconds ago (local coordinates). The first source is the player.
   update(
-    trail: (age: number) => number[],
-    speed: number,
+    sources: Array<{trail: (age: number) => number[]; speed: number}>,
     camVel: number[],
     carPos: number[],
     carFwd: number[],
   ) {
-    for (let i = 0; i < HIST; ++i) {
-      const p = trail((i / HIST) * 2.6);
-      this.histData.set([p[0], p[1] + 0.3, p[2], speed], i * 4);
+    this.sources = Math.min(sources.length, MAX_SRC);
+    for (let k = 0; k < this.sources; ++k) {
+      const src = sources[k];
+      for (let i = 0; i < HIST; ++i) {
+        const p = src.trail((i / HIST) * 2.6);
+        this.histData.set(
+          [p[0], p[1] + 0.3, p[2], src.speed],
+          (k * HIST + i) * 4,
+        );
+      }
     }
     this.device.queue.writeBuffer(this.hist, 0, this.histData);
     for (const s of this.systems) {
@@ -174,6 +185,7 @@ export class Particles {
       f[4] = s.fall;
       f[5] = s.life;
       u[6] = HIST;
+      u[7] = this.sources;
       f.set([camVel[0], camVel[1], camVel[2], 0], 8);
       f.set(s.color, 12);
       f.set([carPos[0], carPos[1], carPos[2], 2.9], 16);

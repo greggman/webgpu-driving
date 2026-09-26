@@ -12,8 +12,8 @@ struct PP {
   size: f32,
   fall: f32,        // fall speed (m/s)
   life: f32,        // dust lifetime (s)
-  histCount: u32,
-  pad: u32,
+    histCount: u32,   // history samples per source
+  sources: u32,     // dust sources (cars); 0 = player
     camVel: vec4f,    // camera velocity (local, m/s)
   color: vec4f,
   carPos: vec4f,    // player car position (local), half length
@@ -73,13 +73,18 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
     // Dust: cycle through lifetimes, spawning from the car history.
     let life = P.life * (0.7 + 0.6 * r4);
     let age = fract(t / life + r1) * life;
-    let hi = min(u32(age / P.life * f32(P.histCount)), P.histCount - 1u);
-    let src = hist[hi];
+        let hi = min(u32(age / P.life * f32(P.histCount)), P.histCount - 1u);
+    // The first 900 particles are the player's plume; the rest are shared
+    // among the other nearby cars.
+    var si = 0u;
+    if (ii >= 900u && P.sources > 1u) { si = 1u + (ii - 900u) % (P.sources - 1u); }
+        let live = select(1.0, 0.0, P.sources == 0u || (ii >= 900u && P.sources < 2u));
+    let src = hist[si * P.histCount + hi];
     let spread = vec3f(r2 - 0.5, 0.0, r3 - 0.5) * 2.2;
     let rise = vec3f((r3 - 0.5) * 1.5, 0.6 + r2 * 0.8, (r1 - 0.5) * 1.5) + vec3f(F.weather.x, 0.0, F.weather.y) * 1.5;
     center = src.xyz + spread + rise * age;
     size = P.size * (0.5 + age * 1.8) * (0.6 + 0.8 * r4);
-    alpha = saturate(src.w / 12.0) * (1.0 - age / life) * smoothstep(0.0, 0.25, age) * 0.3;
+    alpha = live * saturate(src.w / 12.0) * (1.0 - age / life) * smoothstep(0.0, 0.25, age) * 0.3;
     vel = rise;
   } else {
     let L = P.volume;
