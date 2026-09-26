@@ -17,7 +17,7 @@ export interface TrackSource {
   id: number;
   s: number; // arc length of the car's rear axle
   d: number; // lateral offset
-    track: number; // wheel track (m)
+  track: number; // wheel track (m)
   dir: number; // +1 when driving toward increasing s
 }
 
@@ -110,7 +110,7 @@ export class TireTracks {
     for (const c of cars) {
       seen.add(c.id);
       let path = this.paths.get(c.id);
-            if (!path) {
+      if (!path) {
         // A car we haven't seen yet already drove here along its lane.
         path = [];
         for (let k = KEEP - 1; k >= 1; --k)

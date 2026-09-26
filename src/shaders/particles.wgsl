@@ -6,7 +6,7 @@
 //    cycle; its spawn point comes from a short history of car positions.
 
 struct PP {
-  kind: u32,        // 0 = snow, 1 = leaves, 2 = dust
+    kind: u32,        // 0 = snow, 1 = leaves, 2 = dust, 3 = rain
   count: u32,
   volume: f32,      // wrap volume size (m)
   size: f32,
@@ -88,8 +88,9 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
     vel = rise;
   } else {
     let L = P.volume;
-    let wind = vec3f(F.weather.x, 0.0, F.weather.y) * select(3.0, 1.5, P.kind == 1u);
-    let swirl = vec3f(sin(t * 0.7 + r1 * 30.0), 0.0, cos(t * 0.6 + r2 * 30.0)) * select(0.4, 0.8, P.kind == 1u);
+        let wind = vec3f(F.weather.x, 0.0, F.weather.y) * select(3.0, 1.5, P.kind == 1u);
+    var swirl = vec3f(sin(t * 0.7 + r1 * 30.0), 0.0, cos(t * 0.6 + r2 * 30.0)) * select(0.4, 0.8, P.kind == 1u);
+    if (P.kind == 3u) { swirl = vec3f(0.0); }
     vel = wind + swirl + vec3f(0.0, -P.fall * (0.7 + 0.6 * r3), 0.0);
     let base = vec3f(r1, r2, r3) * L * 7.0;
     center = wrapAround(base + vel * t, F.cam.xyz + P.camVel.xyz * 0.25, L);
@@ -130,10 +131,11 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
     up = up * c - r0 * s;
     stretch = 1.0;
   }
-  let world = center + right * corner.x * size + up * corner.y * size * min(stretch, 12.0);
+    let maxStretch = select(12.0, 80.0, P.kind == 3u);
+  let world = center + right * corner.x * size + up * corner.y * size * min(stretch, maxStretch);
   o.pos = F.viewProj * vec4f(world, 1.0);
   o.light = lightAt(center, toCam);
-  o.alpha = alpha * P.color.a / sqrt(min(stretch, 12.0));
+    o.alpha = alpha * P.color.a / sqrt(min(stretch, maxStretch));
   return o;
 }
 
@@ -155,6 +157,9 @@ fn fs(in: POut) -> TOut {
     // Vein + per-leaf tint (autumn yellows to greens).
     let vein = 1.0 - 0.3 * step(abs(in.uv.x), 0.06);
     col = mix(P.color.rgb, P.color.rgb * vec3f(1.5, 0.9, 0.35), fract(in.alpha * 97.0)) * vein;
+    } else if (in.kind == 3u) {
+    // Rain streak: thin across, soft ends.
+    a = (1.0 - smoothstep(0.2, 1.0, abs(in.uv.x))) * (1.0 - smoothstep(0.5, 1.0, abs(in.uv.y)));
   } else if (in.kind == 2u) {
     a = smoothstep(1.0, 0.0, r) * (0.6 + 0.4 * vnoise(in.uv * 3.0 + in.pos.xy * 0.01));
   } else {

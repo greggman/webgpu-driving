@@ -157,6 +157,7 @@ export class Renderer {
   readonly water: Water;
   readonly particles: Particles;
   readonly tracks: TireTracks;
+  private glassFxOn = false;
   roadMesh: RoadMesh | null = null;
   private road: Road | null = null;
   private biome: Biome | null = null;
@@ -786,6 +787,38 @@ export class Renderer {
       biome.weather.snow,
       biome.weather.wetness,
     ]);
+    // Lightning: a strike every ~60/rate s, each a few decaying pulses.
+    const rain = biome.weather.rain ?? 0;
+    let flash = 0,
+      strikeAz = 0;
+    const rate = biome.weather.lightning ?? 0;
+    if (rate > 0) {
+      const period = 60 / rate;
+      const seg = Math.floor(scene.time / period);
+      const hash = (k: number) => {
+        const x = Math.sin(seg * 127.1 + k * 311.7) * 43758.5453;
+        return x - Math.floor(x);
+      };
+      const dt = scene.time - (seg + hash(1) * 0.7) * period;
+      strikeAz = hash(2) * Math.PI * 2;
+      if (dt >= 0 && dt < 0.8) {
+        const pulse = (t0: number, k: number, a: number) =>
+          dt >= t0 ? a * Math.exp(-(dt - t0) * k) : 0;
+        flash =
+          (pulse(0, 22, 1) + pulse(0.11, 18, 0.8) + pulse(0.29, 10, 0.6)) *
+          (0.6 + 0.8 * hash(3));
+      }
+    }
+        if (DEBUG.has('lightning') && rate > 0) flash = 1;
+    F.set('weather2', [rain, flash, Math.sin(strikeAz), Math.cos(strikeAz)]);
+    const precip = rain > 0 || biome.weather.snow > 0;
+    this.glassFxOn = cam.interior && rain > 0;
+    F.set('glass', [
+      scene.player.speed,
+      this.glassFxOn ? 1 : 0,
+      precip ? 1 : 0,
+      0,
+    ]);
     F.set('camRight', [...right, 0]);
     F.set('camUp', [...upv, 0]);
     F.set('camFwd', [...f, Math.tan(cam.fov / 2)]);
@@ -824,7 +857,7 @@ export class Renderer {
       0,
       0,
       0,
-      biome.ocean || biome.id === 'desert' ? 1 : 0,
+      biome.ocean || biome.id === 'desert' || biome.id === 'arizona' ? 1 : 0,
       S.crops,
       S.hedges,
       S.buildings,
@@ -1096,6 +1129,28 @@ export class Renderer {
     this.particles.draw(main);
     this.cars.drawGlass(main);
     main.end();
+
+    // Rain drops on the player's glass (interior cameras).
+    if (this.glassFxOn) {
+      const gp = enc.beginRenderPass({
+        label: 'glass-fx',
+        colorAttachments: [
+          {
+            view: t.glassFx.createView(),
+            clearValue: {r: 0, g: 0, b: 0, a: 0},
+            loadOp: 'clear',
+            storeOp: 'store',
+          },
+        ],
+        depthStencilAttachment: {
+          view: t.depth.createView(),
+          depthReadOnly: true,
+        },
+      });
+      gp.setBindGroup(0, this.frameBG);
+      this.cars.drawGlassFx(gp);
+      gp.end();
+    }
 
     this.encodeHzb(enc);
     this.post.aoEnabled = this.graphics.ssao;

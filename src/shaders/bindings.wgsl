@@ -148,6 +148,10 @@ fn shIrradiance(n: vec3f) -> vec3f {
   let x = n.x; let y = n.y; let z = n.z;
   let e = c1 * L22 * (x * x - y * y) + c3 * L20 * z * z + c4 * L00 - c5 * L20
     + 2.0 * c1 * (L2m2 * x * y + L21 * x * z + L2m1 * y * z)
-    + 2.0 * c2 * (L11 * x + L1m1 * y + L10 * z);
-  return max(e, vec3f(0.0)) / PI;
+        + 2.0 * c2 * (L11 * x + L1m1 * y + L10 * z);
+  // Lightning: a brief cold flash of sky light from above.
+  let flash = LIGHTNING_COLOR * F.weather2.y * (0.35 + 0.65 * saturate(y * 0.5 + 0.5));
+  return max(e, vec3f(0.0)) / PI + flash;
 }
+
+const LIGHTNING_COLOR = vec3f(0.55, 0.6, 0.85) * 0.5;

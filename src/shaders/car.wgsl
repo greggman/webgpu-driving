@@ -602,20 +602,117 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   return gbuffer(col, wp, in.prevWorld, s.n, s.rough);
 }
 
-// ---- Windshield overlay (interior view): faint reflections, snow that
-// collects on the glass, and wipers that sweep it clear. ----
+// ---- Glass (blended pass): tinted reflective glass on every car; from the
+// inside of the player's car also snow that collects on the windows, wipers
+// that sweep the windshield, and (fsGlassFx) rain drops that refract the
+// view. ----
 struct GlassOut {
   @location(0) color: vec4f,
   @location(1) velocity: vec2f,
   @location(2) normal: vec4f,
 };
 
+const WIPE_PERIOD = 2.0;
+const WIPE_SWEEP = 1.2;
+const WIPE_MAX = 1.8; // radians
+
 fn wiperAngle(t: f32) -> f32 {
-  // Sweep up and back in 1.2 s, then rest 0.8 s.
-  let period = 2.0;
-  let ph = fract(t / period) * period;
-  if (ph > 1.2) { return 0.0; }
-  return sin(ph / 1.2 * PI) * 1.75;
+  // Sweep up and back in WIPE_SWEEP s, then rest.
+  let ph = t - floor(t / WIPE_PERIOD) * WIPE_PERIOD;
+  if (ph > WIPE_SWEEP) { return 0.0; }
+  return sin(ph / WIPE_SWEEP * PI) * WIPE_MAX;
+}
+
+// Seconds since a blade last passed the angle `a` around its pivot.
+fn sinceBlade(t: f32, a: f32) -> f32 {
+  if (a > WIPE_MAX || a < 0.0) { return 1e3; }
+  let ph = t - floor(t / WIPE_PERIOD) * WIPE_PERIOD;
+  let p1 = asin(saturate(a / WIPE_MAX)) / PI * WIPE_SWEEP;
+  let p2 = WIPE_SWEEP - p1;
+  var last = p2 - WIPE_PERIOD;
+  if (ph >= p2) { last = p2; } else if (ph >= p1) { last = p1; }
+  return ph - last;
+}
+
+// Glass-plane coordinates in metres: windshield (across, up the glass),
+// side windows (along the car, up), rear glass (across, up).
+struct GlassCoord {
+  uv: vec2f,
+  region: u32, // 0 windshield, 1 side, 2 rear
+};
+
+fn glassCoord(lp: vec3f, ln: vec3f, c: Car) -> GlassCoord {
+  var g: GlassCoord;
+  let ws = c.p3.x;
+  let belt = c.p3.w;
+    if (abs(ln.x) > 0.55) {
+    g.region = 1u;
+    g.uv = vec2f(lp.z, lp.y - belt);
+  } else if (lp.z > c.p3.y) {
+    g.region = 0u;
+    g.uv = vec2f(lp.x, length(vec2f(ws - lp.z, max(lp.y - belt, 0.0))));
+  } else {
+    g.region = 2u;
+    g.uv = vec2f(lp.x, lp.y - belt);
+  }
+  return g;
+}
+
+// Wiper k: pivot, blade radial range. Driver sits on +x (left-hand drive);
+// blades rest pointing across toward the passenger and sweep up.
+fn wiperPivot(k: u32) -> vec2f { return select(vec2f(-0.08, -0.04), vec2f(0.6, -0.04), k == 0u); }
+fn wiperRange(k: u32) -> vec2f { return select(vec2f(0.12, 0.7), vec2f(0.14, 0.8), k == 0u); }
+
+fn wiperPolar(uv: vec2f, k: u32) -> vec2f {
+  let q = uv - wiperPivot(k);
+  return vec2f(length(q), atan2(q.y, -q.x)); // r, angle from the rest direction
+}
+
+// Seconds since this windshield point was last wiped (1e3 if never).
+fn sinceWiped(uv: vec2f, t: f32) -> f32 {
+  if (F.glass.z < 0.5) { return 1e3; }
+  var best = 1e3;
+  for (var k = 0u; k < 2u; k++) {
+    let pr = wiperPolar(uv, k);
+    let rr = wiperRange(k);
+    if (pr.x > rr.x - 0.02 && pr.x < rr.y + 0.02) {
+      best = min(best, sinceBlade(t, pr.y));
+    }
+  }
+  return best;
+}
+
+// Snow flakes stuck to the glass (0..1 coverage). Windshield flakes build
+// up between wipes; side / rear windows are never wiped, and the airflow
+// drags their flakes slowly backward.
+fn glassSnow(g: GlassCoord, t: f32) -> f32 {
+  let snow = F.weather.z;
+  if (snow <= 0.0) { return 0.0; }
+  var uv = g.uv;
+  if (g.region == 1u) { uv.x += t * min(F.glass.x, 30.0) * 0.004; }
+  let cell = 0.035;
+  let gc = uv / cell;
+  let ci = floor(gc);
+  var since = 1e3;
+  if (g.region == 0u) { since = sinceWiped(g.uv, t); }
+  var fl = 0.0;
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      let cc = ci + vec2f(f32(x), f32(y));
+      let hh = pcg(bitcast<u32>(i32(cc.x)) + pcg(bitcast<u32>(i32(cc.y)) + g.region * 977u));
+      if (rand01(hh) > 0.5 * snow) { continue; }
+      let h2 = rand01(pcg(hh + 1u));
+      let h3 = rand01(pcg(hh + 2u));
+      let h4 = rand01(pcg(hh + 3u));
+      // Arrival time after the last wipe.
+      if (since < h2 * 3.0) { continue; }
+      let center = cc + vec2f(h3, h4);
+      let r = 0.1 + 0.3 * h2 * h3;
+      let d = length(gc - center);
+      fl = max(fl, smoothstep(r, r * 0.35, d) * (0.55 + 0.45 * h4));
+    }
+  }
+  return fl * snow;
 }
 
 @fragment
@@ -626,89 +723,119 @@ fn fsGlass(in: VOut) -> GlassOut {
   var o: GlassOut;
   o.velocity = vec2f(0.0);
   o.normal = vec4f(0.0);
-  let wsBase = c.p3.x;
   let n = normalize(in.normal);
   let v = normalize(F.cam.xyz - in.world);
-  // Only the windshield (front glass above the dash) from inside gets the
-  // wipers and snow; everything else is tinted, reflective glass.
-  if (c.p4.x < 0.5 || lp.z < wsBase - 0.9) {
-    let nn = select(-n, n, dot(n, v) > 0.0);
-    let nv = saturate(dot(nn, v));
-    let fres = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
+  let nn = select(-n, n, dot(n, v) > 0.0);
+  let nv = saturate(dot(nn, v));
+  let fres = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
+  let interior = c.p4.x > 0.5;
+  if (!interior) {
+    // Tinted, reflective glass seen from outside.
     let r = reflect(-v, nn);
     let l = F.sun.xyz;
     let h = normalize(v + l);
     let sh = sunShadow(in.world, nn);
     let spec = D_GGX(saturate(dot(nn, h)), 0.0004) * V_SmithGGX(max(nv, 1e-3), saturate(dot(nn, l)), 0.0004) * fres;
-    var refl = envRadiance(r, 0.02) * fres + F.sunColor.rgb * min(spec, 200.0) * sh * saturate(dot(nn, l));
-    // Tint: traffic glass is darker (privacy glass), windscreens lighter.
-    let tint = select(0.68, 0.5, lp.z > wsBase - 0.9 && nn.y > 0.2 && c.p4.x < 0.5);
+    let refl = envRadiance(r, 0.02) * fres + F.sunColor.rgb * min(spec, 200.0) * sh * saturate(dot(nn, l));
+    // Traffic glass is darker (privacy glass) than windscreens.
+    let tint = select(0.68, 0.5, lp.z > c.p3.x - 0.9 && nn.y > 0.2);
     let a = 1.0 - (1.0 - tint) * (1.0 - fres);
     o.color = vec4f(refl, a);
     return o;
   }
-  let fres = 0.03 + 0.2 * pow(1.0 - saturate(abs(dot(n, v))), 5.0);
-  var col = skyRadiance(reflect(-v, n)) * fres * 0.5;
-  var a = fres * 0.3;
-  // Windshield coordinates: u across (-1..1), v up the glass (0..1).
-  let halfW = c.p2.y;
-  let uv = vec2f(lp.x / (halfW * 0.8), saturate((wsBase - lp.z) / 0.8));
-  let snow = F.weather.z;
+  // From inside: faint reflections, snow on the glass, wipers.
+  let g = glassCoord(lp, normalize(in.lnormal), c);
   let t = F.cam.w;
-  // Wipers pivot near the bottom of the glass.
-  let ang = wiperAngle(t);
-  var wiper = 0.0;
-  var cleared = 0.0;
-  for (var i = 0; i < 2; i++) {
-    let pivot = vec2f(select(-0.62, 0.08, i == 1), -0.05);
-    let d = uv - pivot;
-    let r = length(d * vec2f(1.0, 1.6));
-    let a0 = atan2(d.y * 1.6, -d.x);
-    let bladeA = ang;
-    if (r < 0.9) {
-      // Blade.
-      let da = abs(a0 - bladeA);
-      wiper = max(wiper, smoothstep(0.03, 0.0, da * r) * step(0.08, r));
-      // Area swept since the start of this cycle.
-      if (a0 < bladeA + 0.02 && a0 > -0.05) { cleared = 1.0; }
-    }
-  }
-  if (snow > 0.0) {
-    // Sparse flakes landing on the glass, building up between sweeps.
-    let ph = fract(t / 2.0) * 2.0;
-    let cycle = floor(t / 2.0);
-    let sinceSweep = select(ph - 1.2, ph + 0.8, ph < 1.2);
-    let g = uv * vec2f(30.0, 16.0);
-    let ci = floor(g);
-    var fl = 0.0;
-    for (var y = -1; y <= 1; y++) {
-      for (var x = -1; x <= 1; x++) {
-        let cc = ci + vec2f(f32(x), f32(y));
-        let hh = pcg(bitcast<u32>(i32(cc.x)) + pcg(bitcast<u32>(i32(cc.y)) + u32(cycle) * 7919u));
-        let h1 = rand01(hh);
-        if (h1 > 0.45 * snow) { continue; }
-        let h2 = rand01(pcg(hh + 1u));
-        let h3 = rand01(pcg(hh + 2u));
-        let h4 = rand01(pcg(hh + 3u));
-        let appear = h2 * 1.9;
-        if (sinceSweep < appear && !(cleared < 0.5 && ph < 1.2)) { continue; }
-        let center = cc + vec2f(h3, h4);
-        let r = 0.12 + 0.3 * h2 * h3;
-        let d = length((g - center) * vec2f(1.0, 0.9));
-        fl = max(fl, smoothstep(r, r * 0.35, d) * (0.55 + 0.45 * h4));
-      }
-    }
-    fl *= snow;
+  var col = skyRadiance(reflect(-v, nn)) * fres * 0.25;
+  var a = fres * 0.15;
+  let fl = glassSnow(g, t);
+  if (fl > 0.0) {
     // Wet snow on glass is lit from the bright sky behind it.
     let back = vec3f(luminance(skyRadiance(normalize(-v + vec3f(0.0, 0.3, 0.0))) * 0.6 + shIrradiance(vec3f(0.0, 1.0, 0.0)) * 0.5));
     col = col * (1.0 - fl) + back * fl;
     a = a + fl * (1.0 - a);
   }
-  // Wiper blade (dark rubber).
-  col = col * (1.0 - wiper) + vec3f(0.01) * wiper;
-  a = a + wiper * (1.0 - a);
+  if (g.region == 0u && F.glass.z > 0.5) {
+    // Wiper arms and blades (dark rubber / painted steel).
+    let ang = wiperAngle(t);
+    var wiper = 0.0;
+    for (var k = 0u; k < 2u; k++) {
+      let pr = wiperPolar(g.uv, k);
+      let rr = wiperRange(k);
+      let off = abs(pr.y - ang) * pr.x; // metres from the blade line
+      let blade = (1.0 - smoothstep(0.009, 0.013, off)) * step(rr.x, pr.x) * step(pr.x, rr.y);
+      let arm = (1.0 - smoothstep(0.005, 0.008, off - 0.01)) * step(pr.x, rr.x + 0.3) * step(0.0, pr.x);
+      wiper = max(wiper, max(blade, arm * 0.9));
+      // Pivot cap.
+      wiper = max(wiper, 1.0 - smoothstep(0.018, 0.024, pr.x));
+    }
+    col = col * (1.0 - wiper) + vec3f(0.008) * wiper;
+    a = a + wiper * (1.0 - a);
+  }
   o.color = vec4f(col, a);
   return o;
+}
+
+// ---- Rain on the player's glass (interior cameras): each drop is a tiny
+// lens showing an inverted, magnified view. Writes a screen-space sampling
+// offset + rim darkening + highlight into the glass-FX target, which the
+// tonemap pass applies. ----
+@fragment
+fn fsGlassFx(in: VOut) -> @location(0) vec4f {
+  let c = cars[in.car];
+  let g = glassCoord(in.local, normalize(in.lnormal), c);
+  // Derivatives first (uniform control flow): glass metres per pixel.
+  let dx = dpdx(g.uv);
+  let dy = dpdy(g.uv);
+  if (in.mat != 1u) { discard; }
+  let rain = F.weather2.x;
+  let t = F.cam.w;
+  let speed = min(F.glass.x, 35.0);
+  var uv = g.uv;
+  var stretch = 1.0;
+  var since = 1e3;
+  if (g.region == 0u) {
+    since = sinceWiped(g.uv, t);
+    // Airflow creeps drops up the windshield.
+    uv.y -= min(since, 4.0) * speed * 0.004;
+  } else if (g.region == 1u) {
+    // Side windows: drops run backward, stretched by the airflow.
+    uv.x += t * speed * 0.03;
+    stretch = 1.0 + speed * 0.06;
+  }
+      // The windshield is further from the eye: bigger beads so they read.
+  let cell = select(0.024, 0.034, g.region == 0u);
+  let gc = vec2f(uv.x / (cell * stretch), uv.y / cell);
+  let ci = floor(gc);
+  var best = vec4f(0.0);
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      let cc = ci + vec2f(f32(x), f32(y));
+      let hh = pcg(bitcast<u32>(i32(cc.x)) + pcg(bitcast<u32>(i32(cc.y)) + g.region * 131u + 7u));
+      if (rand01(hh) > 0.75 * rain) { continue; }
+      let h2 = rand01(pcg(hh + 1u));
+      let h3 = rand01(pcg(hh + 2u));
+      let h4 = rand01(pcg(hh + 3u));
+      if (since < h2 * h2 * 1.6 / max(rain, 0.2)) { continue; }
+      let center = (cc + vec2f(0.2 + 0.6 * h3, 0.2 + 0.6 * h4)) * vec2f(cell * stretch, cell);
+      let r = cell * (0.12 + 0.26 * h3 * h3);
+      var q = uv - center;
+      q.x /= stretch;
+      let d2 = dot(q, q) / (r * r);
+      if (d2 >= 1.0) { continue; }
+      let h = sqrt(1.0 - d2);
+      // Inverted, magnified image: sample mirrored through the centre.
+      let offG = -q * 2.2;
+      let det = dx.x * dy.y - dx.y * dy.x;
+      if (abs(det) < 1e-12) { continue; }
+      let offPx = vec2f(dy.y * offG.x - dy.x * offG.y, -dx.y * offG.x + dx.x * offG.y) / det;
+      let offUv = offPx / F.misc.zw;
+      let rim = smoothstep(0.35, 0.0, h);
+      let hi = pow(saturate(1.0 - length(q / r - vec2f(-0.35, 0.4)) * 2.5), 3.0);
+      best = vec4f(offUv, 0.12 + rim * 0.45, hi * 2.0);
+    }
+  }
+  return best;
 }
 
 // ---- Contact shadow: a soft darkening under the car (sky occlusion the

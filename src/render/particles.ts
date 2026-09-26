@@ -146,6 +146,9 @@ export class Particles {
     };
     if (biome.weather.snow > 0)
       add(0, 260000, 60, 0.03, 1.4, 0, [1.0, 1.0, 1.0, 1.0]);
+    const rain = biome.weather.rain ?? 0;
+    if (rain > 0)
+      add(3, Math.round(200000 * rain), 40, 0.006, 9, 0, [0.75, 0.8, 0.9, 0.7]);
     if (biome.id === 'forest')
       add(1, 1800, 45, 0.045, 0.7, 0, [0.3, 0.26, 0.08, 1]);
     if (biome.weather.dust > 0 || biome.road.dirt)

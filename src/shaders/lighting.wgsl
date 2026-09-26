@@ -98,7 +98,12 @@ fn cloudLayer(dir: vec3f, skyCol: vec3f) -> CloudResult {
   let hg = mix(0.9 * (1.0 + 2.2 * pow(saturate(cph), 12.0)), 1.0, 0.3);
   let amb = shIrradiance(vec3f(0.0, 1.0, 0.0)) * PI * 0.42;
   let sunLit = F.sunColor.rgb * sunT * powder * hg * 0.25;
-  var col = sunLit + amb * (0.7 + 0.3 * (1.0 - dens));
+    var col = sunLit + amb * (0.7 + 0.3 * (1.0 - dens));
+  // Lightning lights the cloud deck, brightest toward the strike.
+  if (F.weather2.y > 0.0) {
+    let toward = saturate(dot(normalize(dir.xz + vec2f(1e-4)), F.weather2.zw));
+    col += LIGHTNING_COLOR * F.weather2.y * (0.6 + 6.0 * pow(toward, 6.0)) * (0.5 + dens);
+  }
   // Overcast: darker undersides.
   col *= mix(1.0, 0.65, saturate(F.sky.x * 1.3 - 0.4) * saturate(thickness));
   let alpha = saturate(1.0 - exp(-dens * 4.0));

@@ -5,8 +5,10 @@ The world, the cars and the car interior are all procedural. The car drives itse
 "car commercial" camera director cuts between helicopter, drone, chase, roadside, dolly,
 wheel, hood and interior shots.
 
-Seven environments: **country road**, **desert dirt road**, **ocean coastline**,
-**forest flower road**, **Pennsylvania snowstorm**, **La Honda Road** and **night drive**.
+Eight environments: **country road**, **desert dirt road**, **ocean coastline**,
+**forest flower road**, **Pennsylvania snowstorm**, **La Honda Road**, **night drive** and
+**Arizona storm** (rainy desert night with lightning; rain on the glass refracts the view
+from inside and the wipers clear it).
 
 ## Controls
 
@@ -19,14 +21,14 @@ Seven environments: **country road**, **desert dirt road**, **ocean coastline**,
 | R (or the ↻ button, top right) | generate a new world (new seed) |
 | P | toggle autopilot |
 | ⚙ (top left) | settings: environment, time of day, clouds, speed, camera, graphics toggles |
-| 1 – 7 | switch environment |
+| 1 – 8 | switch environment |
 | H | hide the HUD |
 
 ## URL parameters
 
 Useful for sharing a view and for deterministic screenshots:
 
-- `biome=country|desert|coast|forest|snow|lahonda|night` (without it, a random environment
+- `biome=country|desert|coast|forest|snow|lahonda|night|arizona` (without it, a random environment
   and seed are chosen; the page never writes it into the URL, so shared links stay plain)
 - `seed=N`: world seed
 - `s=N`: start distance along the road (m)

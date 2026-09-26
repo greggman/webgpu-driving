@@ -17,7 +17,7 @@
     I think the post at the top of the telephone pole is supposed to be
     perpendicular to wires it is carrying. Currently they are parallel
 
-[ ] The windshield wipers are way too small for the window they are wiping
+[x] The windshield wipers are way too small for the window they are wiping
 
     Further, it would be nice to actually wipe the windows and maybe even warp
     the view outside through the water on the windows.

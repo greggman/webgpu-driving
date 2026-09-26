@@ -719,7 +719,7 @@ export class Vegetation {
         minRoad: road.halfWidth + 1.8,
         maxSlope: 1,
         scaleMin: 0.25,
-        scaleMax: biome.id === 'desert' ? 2.2 : 1.3,
+        scaleMax: biome.id === 'desert' || biome.id === 'arizona' ? 2.2 : 1.3,
       });
     }
     // Build and upload meshes.

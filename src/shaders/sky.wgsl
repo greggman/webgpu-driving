@@ -92,11 +92,25 @@ fn fs(in: VOut) -> GBufferOut {
   let night = F.moon.w;
   if (night > 0.0) {
     let horizon = saturate(dir.y * 8.0 + 0.2);
-    col += (starField(dir) * F.sky.w + moonDisk(dir)) * night * horizon * (1.0 - F.sky.x * 0.8);
+    col += (starField(dir) * F.sky.w + moonDisk(dir)) * night * horizon * (1.0 - F.sky.x * 0.8) * smoothstep(0.95, 0.75, F.sky.x);
   }
   col += sunDisk(dir);
-  let cl = cloudLayer(dir, col);
+    let cl = cloudLayer(dir, col);
   col = mix(col, cl.color, cl.alpha);
+  // Lightning bolt from the cloud base down to the horizon.
+  let flash = F.weather2.y;
+  if (flash > 0.02 && dir.y > -0.01 && dir.y < 0.32) {
+    let az = atan2(dir.x, dir.z);
+    let az0 = atan2(F.weather2.z, F.weather2.w);
+    let seed = floor(F.cam.w / 3.0);
+    let e = dir.y;
+    let wiggle = (vnoise(vec2f(e * 14.0, seed)) - 0.5) * 0.05 + (vnoise(vec2f(e * 60.0, seed + 7.0)) - 0.5) * 0.012;
+    var da = az - (az0 + wiggle);
+    da = da - 6.2831853 * round(da / 6.2831853);
+    let core = 1.0 - smoothstep(0.0006, 0.0018, abs(da));
+    let glow = exp(-abs(da) * 120.0) * 0.25;
+    col += LIGHTNING_COLOR * flash * (core * 400.0 + glow * 40.0) * smoothstep(0.32, 0.26, e);
+  }
   // Snow / fog: blend to fog color toward the horizon.
   if (F.fog.x > 0.0) {
     let far = F.cam.xyz + dir * 20000.0;

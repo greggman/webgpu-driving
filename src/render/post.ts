@@ -278,6 +278,7 @@ export class Post {
       {binding: 2, resource: this.bloomMips[0].createView()},
       {binding: 3, resource: this.sampler},
       {binding: 4, resource: {buffer: this.exposureBuf}},
+      {binding: 5, resource: t.glassFx.createView()},
     ]);
     this.expBG = d.createBindGroup({
       label: 'exposure-build-bg',

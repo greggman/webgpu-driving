@@ -327,7 +327,7 @@ export class Props {
             x: pa.pos[0],
             y: ga,
             z: pa.pos[2],
-                        // Local x (the crossarm) across the road, perpendicular to the
+            // Local x (the crossarm) across the road, perpendicular to the
             // wires.
             yaw: pa.heading,
             stretch: 1,
@@ -353,7 +353,7 @@ export class Props {
       }
     }
     // Delineators at night.
-    if (biome.id === 'night') {
+    if (biome.id === 'night' || biome.id === 'arizona') {
       for (let s = Math.ceil(s0 / 40) * 40; s < s1; s += 40) {
         for (const side of sides) {
           const p = road.pointAt(s, side * (hw + 1.1));

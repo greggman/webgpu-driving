@@ -4,6 +4,7 @@
 @group(0) @binding(2) var bloomTex: texture_2d<f32>;
 @group(0) @binding(3) var samp: sampler;
 @group(0) @binding(4) var<storage, read> exposureBuf: array<f32>;
+@group(0) @binding(5) var glassFxTex: texture_2d<f32>;
 
 fn agxContrast(x: vec3f) -> vec3f {
   let x2 = x * x;
@@ -72,7 +73,13 @@ fn hash12(p: vec2f) -> f32 {
 
 @fragment
 fn fs(in: FsOut) -> @location(0) vec4f {
-  let uv = in.uv;
+    var uv = in.uv;
+  // Rain drops on the car's glass refract the view (see fsGlassFx).
+  var fx = vec4f(0.0);
+  if (F.glass.y > 0.5) {
+    fx = textureSampleLevel(glassFxTex, samp, uv, 0.0);
+    uv = clamp(uv + fx.xy, vec2f(0.0), vec2f(1.0));
+  }
   // Letterbox for "commercial" framing.
   let lb = F.grade2.w;
   if (lb > 0.0 && (uv.y < lb || uv.y > 1.0 - lb)) {
@@ -85,6 +92,8 @@ fn fs(in: FsOut) -> @location(0) vec4f {
     textureSampleLevel(hdrTex, samp, uv - cc * ca, 0.0).r,
     textureSampleLevel(hdrTex, samp, uv, 0.0).g,
     textureSampleLevel(hdrTex, samp, uv + cc * ca, 0.0).b);
+    hdr *= 1.0 - fx.z;
+  hdr += fx.w * textureSampleLevel(bloomTex, samp, clamp(uv - vec2f(0.0, 0.2), vec2f(0.0), vec2f(1.0)), 0.0).rgb * 1.5;
   let bloom = textureSampleLevel(bloomTex, samp, uv, 0.0).rgb;
   hdr = mix(hdr, bloom, 0.05 * F.post.x);
   hdr += lensFlare(uv);

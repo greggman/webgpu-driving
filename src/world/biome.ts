@@ -2,7 +2,14 @@
 // parameters, road style, palette, scatter density, sky/time, and weather.
 
 export type BiomeId =
-  'country' | 'desert' | 'coast' | 'forest' | 'snow' | 'lahonda' | 'night';
+  | 'country'
+  | 'desert'
+  | 'coast'
+  | 'forest'
+  | 'snow'
+  | 'lahonda'
+  | 'night'
+  | 'arizona';
 
 export interface TerrainParams {
   hillAmp: number;
@@ -100,6 +107,8 @@ export interface Weather {
   dust: number;
   wetness: number;
   wind: number;
+  rain?: number; // 0..1
+  lightning?: number; // strikes per minute
 }
 
 export interface Biome {
@@ -304,6 +313,72 @@ export const BIOMES: Record<BiomeId, Biome> = {
     ocean: false,
     headlights: false,
     shotWeights: {helicopter: 3, drone: 2, roadside: 1.5},
+  },
+  arizona: {
+    id: 'arizona',
+    name: 'Arizona Storm',
+    terrain: {
+      ...baseTerrain,
+      hillAmp: 18,
+      hillFreq: 1 / 700,
+      baseHeight: 400,
+      mountAmp: 900,
+      mountFreq: 1 / 7000,
+      mountStart: 1500,
+      mountEnd: 7000,
+      terraceAmt: 0.6,
+      terraceStep: 14,
+      macroAmp: 40,
+      valleyDepth: 5,
+      dunes: 3,
+    },
+    road: {
+      ...baseRoad,
+      laneWidth: 3.5,
+      centerLine: 'dashed-yellow',
+      maxHeading: 0.5,
+      wiggle: 0.3,
+      smoothing: 60,
+      poles: true,
+      cruise: 24,
+      traffic: 0.7,
+    },
+    palette: {
+      ...basePalette,
+      grassA: [0.42, 0.36, 0.2],
+      grassB: [0.55, 0.45, 0.25],
+      dry: [0.62, 0.45, 0.28],
+      dirt: [0.62, 0.42, 0.26],
+      rock: [0.55, 0.33, 0.2],
+      sand: [0.78, 0.58, 0.38],
+      foliage: [0.3, 0.33, 0.14],
+    },
+    scatter: {
+      ...baseScatter,
+      grass: 0.18,
+      grassHeight: 0.35,
+      trees: 0.01,
+      treeKinds: ['cactus', 'cactus', 'bare'],
+      bushes: 0.25,
+      rocks: 0.12,
+      cactus: 1,
+      tumbleweeds: 0,
+      forestEdge: 8,
+    },
+    sky: {
+      ...baseSky,
+      timeOfDay: 22.5,
+      sunAzimuth: -30,
+      clouds: 0.97,
+      cloudScale: 0.7,
+      fogDensity: 0.00007,
+      fogHeight: 500,
+      grade: [0.95, 0.98, 1.08],
+    },
+    weather: {...noWeather, rain: 0.85, lightning: 6, wetness: 1, wind: 0.6},
+    ocean: false,
+    headlights: true,
+    shotWeights: {chase: 2, interior: 2.5, passenger: 1, roadside: 1},
   },
   coast: {
     id: 'coast',
@@ -527,8 +602,9 @@ export const BIOME_ORDER: BiomeId[] = [
   'coast',
   'forest',
   'snow',
-  'lahonda',
+    'lahonda',
   'night',
+  'arizona',
 ];
 
 // Packs terrain params into 8 vec4s, matching src/shaders/terrain.wgsl.
