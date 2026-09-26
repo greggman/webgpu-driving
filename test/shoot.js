@@ -42,7 +42,10 @@ for (const shot of shots) {
   const errors = [];
   page.on('console', e => {
     const t = e.text();
-    if (t.includes('[gpu-error]')) errors.push(t);
+    if (t.includes('[gpu-error]')) {
+      if (errors.includes(t)) return;
+      errors.push(t);
+    }
     if (e.type() === 'error' || t.includes('[gpu-error]') || t.startsWith('[log]')) {
       console.log(`  [${shot.name}] ${t}`);
     }
@@ -69,13 +72,15 @@ for (const shot of shots) {
   const el = await page.$('#screen');
   await el.screenshot({path: file});
 
-  // Blank-frame check: sample the screenshot through the page canvas.
-  const variance = await page.evaluate(async () => {
-    const c = document.getElementById('screen');
-    const bmp = await createImageBitmap(c);
+  // Blank-frame check on the captured PNG (decoded in the page).
+  const png = await fs.readFile(file);
+  const variance = await page.evaluate(async b64 => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
     const oc = new OffscreenCanvas(64, 36);
     const ctx = oc.getContext('2d');
-    ctx.drawImage(bmp, 0, 0, 64, 36);
+    ctx.drawImage(img, 0, 0, 64, 36);
     const d = ctx.getImageData(0, 0, 64, 36).data;
     let sum = 0, sum2 = 0;
     for (let i = 0; i < d.length; i += 4) {
@@ -84,12 +89,12 @@ for (const shot of shots) {
     }
     const n = d.length / 4;
     return sum2 / n - (sum / n) ** 2;
-  });
+  }, png.toString('base64'));
   if (variance < 1) errors.push(`blank frame (variance ${variance.toFixed(2)})`);
   const ms = Date.now() - t0;
   report.push({name: shot.name, params: shot.params, errors, stats, ms});
   console.log(`${errors.length ? 'FAIL' : 'ok  '} ${shot.name} (${ms} ms)${stats ? ' ' + JSON.stringify(stats) : ''}`);
-  for (const e of errors) console.log(`     ${e}`);
+  for (const e of errors.slice(0, 6)) console.log(`     ${e}`);
   if (errors.length) failed = true;
   await page.close();
 }

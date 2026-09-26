@@ -116,7 +116,9 @@ export function roadBlend(
   const delta = natural - target;
   const cutLim = excess * P[21];
   const fillLim = mix(excess * P[22], 1e5, bridge);
-  // clamp(delta, -fillLim, cutLim), smoothed
-  const c = smin(delta, cutLim, 2);
-  return target - smin(-c, fillLim, 2);
+  // clamp(delta, -fillLim, cutLim), smoothed; the smoothing width shrinks to
+  // zero inside the corridor so the terrain sits exactly under the road.
+  const k = Math.min(Math.max(excess * 0.5, 0.001), 2);
+  const c = smin(delta, cutLim, k);
+  return target - smin(-c, fillLim, k);
 }

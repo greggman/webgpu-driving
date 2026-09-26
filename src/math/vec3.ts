@@ -1,6 +1,6 @@
 // Minimal vec3 helpers operating on plain tuples / Float32Arrays.
 
-export type Vec3 = [number, number, number] | Float32Array | Float64Array;
+export type Vec3 = ArrayLike<number>;
 
 export function v3(x = 0, y = 0, z = 0): [number, number, number] {
   return [x, y, z];

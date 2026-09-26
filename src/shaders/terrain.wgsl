@@ -78,13 +78,14 @@ fn sminf(a: f32, b: f32, k: f32) -> f32 {
 }
 
 fn roadBlend(natural: f32, d: f32, roadY: f32, bridge: f32) -> f32 {
-  let target = roadY - 0.12;
+  let tgt = roadY - 0.12;
   let excess = max(abs(d) - tp(20), 0.0);
-  let delta = natural - target;
+  let delta = natural - tgt;
   let cutLim = excess * tp(21);
   let fillLim = mix(excess * tp(22), 1e5, bridge);
-  let c = sminf(delta, cutLim, 2.0);
-  return target - sminf(-c, fillLim, 2.0);
+  let k = clamp(excess * 0.5, 0.001, 2.0);
+  let c = sminf(delta, cutLim, k);
+  return tgt - sminf(-c, fillLim, k);
 }
 
 // Road samples: texture row of (x_local, y, heading, bridge) every F.road.y

@@ -57,9 +57,17 @@ export async function initGpu(canvas: HTMLCanvasElement): Promise<Gpu> {
   });
   // Every uncaptured validation / OOM / internal error is printed with a
   // greppable prefix; the puppeteer harness fails the run when it sees one.
+  // Repeats of the same message (e.g. every frame) are counted, not
+  // re-printed, so the first (root-cause) error stays visible.
+  const seen = new Map<string, number>();
   device.addEventListener('uncapturederror', e => {
     const err = (e as GPUUncapturedErrorEvent).error;
-    console.error(`[gpu-error] ${err.constructor.name}: ${err.message}`);
+    const msg = `${err.constructor.name}: ${err.message}`;
+    const n = (seen.get(msg) ?? 0) + 1;
+    seen.set(msg, n);
+    if (n === 1 || n === 100 || n === 10000) {
+      console.error(`[gpu-error]${n > 1 ? ` (x${n})` : ''} ${msg}`);
+    }
   });
 
   const context = canvas.getContext('webgpu');
