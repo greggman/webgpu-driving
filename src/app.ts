@@ -226,7 +226,8 @@ export class App {
     if (this.params.car && kinds.includes(this.params.car)) {
       p.kind = this.params.car as typeof p.kind;
     }
-    if (this.params.paint && PAINTS[this.params.paint]) p.color = PAINTS[this.params.paint];
+    if (this.params.paint && PAINTS[this.params.paint])
+      p.color = PAINTS[this.params.paint];
     t.vehicles = [p];
     t.autopilot = false;
     p.speed = 0;

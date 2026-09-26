@@ -22,6 +22,9 @@
   Further, it would be nice to actually wipe the windows and maybe even warp
   the view outside through the water on the windows.
 
+  That also means the passenger view's windows would have snow/water on them
+  that is never wiped, though maybe pushed by the wind.
+
   The wiper is on in night drive biome even though there is no rain
 
 * pressing C should probably cycle the camera through the modes. I think now
@@ -29,3 +32,15 @@
   (though they can choose a camera in the settings)
 
 * Pressing a number to switch biomes should not change the camera mode
+
+* Forest biome is slow
+
+  I get that it has lots of trees. But a AAA game would have no problem
+  displaying a scene like this. What would they do to make it performant?
+
+* The desert biome needs tire marks behind the cars as well as dust
+  behind other cars.
+
+* The snow flake motion in the snow storm seems unrelated to the car's motion.
+
+  Given the speed of the car the snow should be passing the camera at a higher speed.
