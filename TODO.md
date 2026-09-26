@@ -1,4 +1,4 @@
-[ ] Don't pick a static camera below the car?
+[x] Don't pick a static camera below the car?
 
     Quite often the auto camera picks a static point below the car in a spot
     where the car will be invisible. For example the camera is in a valley

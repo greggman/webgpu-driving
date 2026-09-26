@@ -71,6 +71,8 @@ export class Director {
   private weights: Partial<Record<ShotKind, number>>;
   cutCount = 0;
   canopy = 12; // min aerial clearance above ground (m)
+  // Roadside fence line (lateral offset from the road centre, top height).
+  fence: {offset: number; top: number} | null = null;
   // Driver eye in car-local (forward, left, up), set from the car's proportions.
   driverEye: [number, number, number] = [-0.35, 0.37, 1.1];
 
@@ -94,24 +96,80 @@ export class Director {
       side,
     };
     if (kind === 'roadside') {
-      // Frame a bridge if one is coming up, otherwise a spot ahead.
-      let s = sCar + this.rng.range(70, 110);
-      for (let q = sCar + 50; q < sCar + 220; q += 10) {
-        if (this.road.atS(q).bridge > 0.5) {
-          s = q + 15;
-          break;
-        }
-      }
-      const hw = this.road.halfWidth;
-      const p = this.road.pointAt(s, side * (hw + this.rng.range(3, 9)));
-      const g = this.road.groundHeight(p.pos[0], p.pos[2]);
-      st.anchor = [p.pos[0], g + this.rng.range(0.6, 2.0), p.pos[2]];
-      st.anchorS = s;
+      const a = this.roadsideAnchor(sCar);
+      if (!a) return this.newShot('chase', sCar);
+      st.anchor = a.eye;
+      st.anchorS = a.s;
       st.duration = 14;
     }
     if (kind === 'drone') st.duration = 9;
     if (kind === 'interior') st.duration = this.rng.range(8, 14);
     return st;
+  }
+
+  // A static roadside camera spot that can actually see the car along its
+  // coming path: tries a few candidates and rejects any whose view is
+  // blocked by terrain (valleys, crests), a bridge deck, or the fence line.
+  // Returns null if none works (the caller picks another shot).
+  private roadsideAnchor(
+    sCar: number,
+  ): {eye: [number, number, number]; s: number} | null {
+    const road = this.road;
+    const hw = road.halfWidth;
+    let bridgeS = -1;
+    for (let q = sCar + 50; q < sCar + 220; q += 10) {
+      if (road.atS(q).bridge > 0.5) {
+        bridgeS = q + 15;
+        break;
+      }
+    }
+    for (let attempt = 0; attempt < 10; ++attempt) {
+      // Frame a bridge if one is coming up (first tries), else a spot ahead.
+      const s =
+        bridgeS > 0 && attempt < 4
+          ? bridgeS + this.rng.range(-10, 25)
+          : sCar + this.rng.range(60, 130);
+      const side = this.rng.next() < 0.5 ? 1 : -1;
+      const off = hw + this.rng.range(1.8, 9);
+      const p = road.pointAt(s, side * off);
+      const g = road.terrainHeight(p.pos[0], p.pos[2]);
+      // Outside the fence / guardrail line the lens has to clear it.
+      let h = this.rng.range(0.6, 2.0);
+      if (this.fence && off > this.fence.offset - 0.4)
+        h = Math.max(h, this.fence.top + 0.5);
+      const eye: [number, number, number] = [p.pos[0], g + h, p.pos[2]];
+      // Never under a bridge deck.
+      if (road.groundHeight(eye[0], eye[2]) > eye[1] - 0.3) continue;
+      if (
+        this.sees(eye, s, s) &&
+        this.sees(eye, Math.max(sCar + 10, s - 90), s + 40)
+      )
+        return {eye, s};
+    }
+    return null;
+  }
+
+  // Fraction of sample points on the car's path [s0, s1] visible from eye
+  // (terrain + road deck heightfield) must be high.
+  private sees(eye: [number, number, number], s0: number, s1: number) {
+    const road = this.road;
+    const N = s1 > s0 ? 9 : 1,
+      STEPS = 32;
+    let visible = 0;
+    for (let i = 0; i < N; ++i) {
+      const p = road.pointAt(s0 + ((s1 - s0) * i) / Math.max(N - 1, 1), 0).pos;
+      const tgt = [p[0], p[1] + 1.0, p[2]];
+      let ok = true;
+      for (let k = 1; k < STEPS && ok; ++k) {
+        const t = k / STEPS;
+        const x = eye[0] + (tgt[0] - eye[0]) * t,
+          y = eye[1] + (tgt[1] - eye[1]) * t,
+          z = eye[2] + (tgt[2] - eye[2]) * t;
+        if (road.groundHeight(x, z) > y + 0.05) ok = false;
+      }
+      if (ok) visible++;
+    }
+    return visible >= N - Math.floor(N / 4);
   }
 
   cut(sCar: number, kind?: ShotKind) {

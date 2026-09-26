@@ -306,6 +306,13 @@ export class App {
     // Aerial shots must clear the canopy (vegetation is GPU-scattered, so we
     // use a conservative per-biome height).
     this.updateDriverEye();
+    const fence = this.biome.road.fence;
+    this.director.fence =
+      fence === 'none'
+        ? null
+        : fence === 'guardrail'
+          ? {offset: this.road.halfWidth + 0.7, top: 0.8}
+          : {offset: this.road.halfWidth + 3.2, top: 1.4};
     const kinds = this.biome.scatter.treeKinds;
     this.director.canopy = kinds.includes('redwood')
       ? 55
