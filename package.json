@@ -9,7 +9,7 @@
     "dev": "node build.mjs --watch",
     "serve": "node test/server.js",
     "shoot": "node test/shoot.js",
-    "unit": "node --test test/unit/",
+    "unit": "node test/unit/build-and-run.mjs",
     "lint": "gts lint",
     "fix": "gts fix",
     "typecheck": "tsc --noEmit",
