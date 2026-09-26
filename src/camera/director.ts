@@ -261,8 +261,8 @@ export class Director {
         break;
       }
       case 'wheel': {
-        eye = rigid(1.9, s.side * 1.15, 0.45);
-        target = rigid(-3, s.side * 0.9, 0.35);
+        eye = rigid(2.3, s.side * 1.75, 0.45);
+        target = rigid(-0.8, s.side * 0.7, 0.55);
         fov = 62 * DEG;
         aperture = 0.15;
         up = car.up;
@@ -357,7 +357,15 @@ export class Director {
     }
     this.smoothEye = eye;
     this.smoothTarget = target;
-    const focus = Math.hypot(eye[0] - P[0], eye[1] - P[1], eye[2] - P[2]);
+    // Focus on the subject: the car body, or the framed target for
+    // car-mounted shots (e.g. the rear wheel for the wheel cam).
+    const subject = s.kind === 'hood' ? target : [P[0], P[1] + 0.7, P[2]];
+    const focus = Math.hypot(
+      eye[0] - subject[0],
+      eye[1] - subject[1],
+      eye[2] - subject[2],
+    );
+    if (s.kind === 'wheel') aperture = 0.06;
     void carLen;
     return {eye, target, up, fov, focus, aperture, interior, shot: s.kind};
   }

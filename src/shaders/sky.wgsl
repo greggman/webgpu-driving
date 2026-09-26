@@ -36,8 +36,8 @@ fn starField(dir: vec3f) -> vec3f {
       let tw = 0.75 + 0.25 * sin(F.cam.w * (2.0 + h * 9.0) + h * 100.0);
       let temp = hash01(i32(ci.x) + 91, i32(ci.y) + 7);
       let tint = mix(vec3f(0.7, 0.8, 1.0), vec3f(1.0, 0.85, 0.65), temp);
-      let px = 6.0 / scale; // keep stars ~1-2 pixels wide
-      col += tint * mag * tw * exp(-dist * dist / (px * px * 0.02)) * 5.0;
+      let px = 9.0 / scale; // keep stars ~2 pixels wide
+      col += tint * (0.3 + mag) * tw * exp(-dist * dist / (px * px * 0.02)) * 10.0;
     }
   }
   // Milky Way band along a tilted great circle.

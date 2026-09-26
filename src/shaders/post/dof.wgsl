@@ -31,11 +31,14 @@ fn fs(in: FsOut) -> @location(0) vec4f {
   let maxR = dp.z;
   var acc = c0.rgb;
   var wsum = 1.0;
-  let N = 32;
+  let N = 48;
+  // Per-pixel, per-frame rotation of the golden-angle spiral (TAA-friendly
+  // noise instead of fixed-pattern hatching).
+  let rot = fract(52.9829189 * fract(dot(in.pos.xy, vec2f(0.06711056, 0.00583715)))) * 6.2831853;
   for (var i = 1; i < N; i++) {
     let fi = f32(i);
     let r = sqrt(fi / f32(N)) * maxR;
-    let a = fi * 2.39996323;
+    let a = fi * 2.39996323 + rot;
     let off = vec2f(cos(a), sin(a)) * r;
     let q = in.uv + off / size;
     let qp = vec2i(clamp(q * size, vec2f(0.0), size - 1.0));

@@ -91,9 +91,9 @@ fn fs(in: POut, @builtin(front_facing) ff: bool) -> GBufferOut {
     case 0u: { s.albedo = vec3f(0.36, 0.27, 0.17) * (0.75 + 0.35 * grain) * (0.9 + 0.3 * t); }
     case 10u: { s.albedo = vec3f(0.2, 0.15, 0.1) * (0.7 + 0.4 * grain); }
     case 1u: {
-      s.albedo = vec3f(0.55, 0.57, 0.58) * (0.8 + 0.3 * dirt);
-      s.metal = 0.8;
-      s.rough = 0.35 + 0.3 * dirt;
+      s.albedo = vec3f(0.42, 0.43, 0.44) * (0.8 + 0.3 * dirt);
+      s.metal = 0.6;
+      s.rough = 0.5 + 0.3 * dirt;
     }
     case 2u: { s.albedo = vec3f(0.52, 0.5, 0.46) * (0.75 + 0.35 * dirt); s.rough = 0.9; }
     case 3u: {

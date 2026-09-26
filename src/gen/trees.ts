@@ -230,7 +230,10 @@ function conifer(
       }
       // Needle tufts along the branch: many small cards, drooping, each
       // twisted around the branch so the silhouette isn't a flat fan.
-      const cards = lod === 0 ? Math.max(2, Math.round(L / 0.5)) : Math.max(1, Math.round(L / 1.1));
+      const cards =
+        lod === 0
+          ? Math.max(2, Math.round(L / 0.5))
+          : Math.max(1, Math.round(L / 1.1));
       for (let c = 0; c < cards; ++c) {
         const f = (c + 0.5) / cards;
         const pc = add(lerp3(start, end, f), [0, -0.12 * f * f * L, 0]);
@@ -241,7 +244,14 @@ function conifer(
         const up = norm(cross(fwd, side));
         const sz = (0.35 + 0.3 * L) * (1.15 - 0.5 * f) * (lod === 0 ? 1 : 1.6);
         const nrm = norm(add(mul(up, 0.6), add(mul(dir, 0.5), [0, 0.5, 0])));
-        mb.card(pc, mul(side, sz * 0.75), mul(fwd, sz * 0.6), nrm, MAT_NEEDLE, 1);
+        mb.card(
+          pc,
+          mul(side, sz * 0.75),
+          mul(fwd, sz * 0.6),
+          nrm,
+          MAT_NEEDLE,
+          1,
+        );
       }
     }
   }

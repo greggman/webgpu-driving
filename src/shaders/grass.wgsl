@@ -199,7 +199,11 @@ fn vsNear(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> G
 
 @vertex
 fn vsFar(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> GOut {
-  return bladeVertex(blades[ii], vi, 1u);
+  var o = bladeVertex(blades[ii], vi, 1u);
+  // Far blades are single triangles: keep their bases from reading as dark
+  // cones (the base darkening is mostly hidden in the coverage anyway).
+  o.t = 0.45 + 0.55 * o.t;
+  return o;
 }
 
 @fragment

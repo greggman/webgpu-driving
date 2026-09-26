@@ -221,7 +221,7 @@ fn interiorShade(mat: u32, lp: vec3f, c: Car) -> vec4f {
     let perf = step(0.85, vnoise(lp.xz * 120.0));
     return vec4f(vec3f(0.32, 0.19, 0.1) * (1.0 - 0.25 * perf), 0.55);
   }
-  if (mat == 13u) { return vec4f(vec3f(0.03), 0.45); }
+  if (mat == 13u) { return vec4f(vec3f(0.03), 0.75); }
   if (mat == 15u) { return vec4f(vec3f(0.25), 0.45); }
   if (mat == 17u) { return vec4f(vec3f(0.025), 0.95); }
   // Dashboard: soft-touch dark plastic with a fine grain.
@@ -397,8 +397,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Tire rubber, tread grooves on the tread face.
     let groove = step(0.8, fract(lp.x * 9.0 + 0.5));
     s.albedo = vec3f(0.012, 0.012, 0.014) * (1.0 - 0.4 * groove);
-    s.rough = 0.8;
-    s.spec = 0.35;
+    s.rough = 0.9;
+    s.spec = 0.15;
   } else {
     // Rim: machined alloy with 5 spokes.
     let a = atan2(lp.z, lp.y);
@@ -406,13 +406,19 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     let spoke = smoothstep(0.55, 0.75, cos(a * 5.0)) ;
     let hub = 1.0 - smoothstep(0.18, 0.22, r);
     let solid = max(spoke, hub);
-    s.albedo = mix(vec3f(0.04), vec3f(0.75), max(solid, step(0.6, r)));
+    s.albedo = mix(vec3f(0.03), vec3f(0.5), max(solid, step(0.6, r)));
     s.metal = mix(0.0, 1.0, max(solid, step(0.6, r)));
-    s.rough = 0.25;
+    s.rough = 0.32;
   }
   s.ao = ao;
   let sh = sunShadow(wp, s.n) * cloudShadow(wp);
   var col = clearcoatShade(s, wp, sh, coat);
+  if (coat > 0.0 && s.metal > 0.0) {
+    // Metallic base coat mirrors the environment (horizon/treeline band),
+    // tinted by the paint color.
+    let rr = reflect(-v, s.n);
+    col += carEnv(rr, s.rough * 0.6) * s.albedo * s.metal * 0.55 * s.ao;
+  }
   col += emissive;
   col = finishColor(col, wp);
   return gbuffer(col, wp, in.prevWorld, s.n, s.rough);
@@ -501,7 +507,7 @@ fn fsGlass(in: VOut) -> GlassOut {
     }
     fl *= snow;
     // Wet snow on glass is lit from the bright sky behind it.
-    let back = skyRadiance(normalize(-v + vec3f(0.0, 0.3, 0.0))) * 0.6 + shIrradiance(vec3f(0.0, 1.0, 0.0)) * 0.5;
+    let back = vec3f(luminance(skyRadiance(normalize(-v + vec3f(0.0, 0.3, 0.0))) * 0.6 + shIrradiance(vec3f(0.0, 1.0, 0.0)) * 0.5));
     col = col * (1.0 - fl) + back * fl;
     a = a + fl * (1.0 - a);
   }
