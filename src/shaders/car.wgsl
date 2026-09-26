@@ -599,8 +599,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       s.albedo = vec3f(band * letters * 0.02);
     }
     s.albedo = vec3f(0.016) * (1.0 - 0.6 * dark) + s.albedo;
-        s.rough = 0.85;
-    s.spec = 0.25;
+            s.rough = 0.93;
+    s.spec = 0.06;
     // Rubber sits partly in the arch shadow.
     s.ao = 0.6;
   } else if (mat == 20u) {

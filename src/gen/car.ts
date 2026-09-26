@@ -156,8 +156,8 @@ export function carSpec(kind: CarKind): CarSpec {
         wheelR: 0.365,
         track: 1.63,
         clearance: 0.15,
-        noseY: 0.66,
-        hoodY: 0.9,
+        noseY: 0.72,
+        hoodY: 0.95,
         beltF: 0.97,
         beltR: 1.02,
         deckY: 1.04,
@@ -240,8 +240,8 @@ export function carSpec(kind: CarKind): CarSpec {
         wheelR: 0.375,
         track: 1.65,
         clearance: 0.13,
-        noseY: 0.56,
-        hoodY: 0.8,
+        noseY: 0.62,
+        hoodY: 0.87,
         beltF: 0.9,
         beltR: 0.97,
         deckY: 0.96,
@@ -268,7 +268,7 @@ export function carSpec(kind: CarKind): CarSpec {
         wheelR: 0.365,
         track: 1.63,
         clearance: 0.15,
-        noseY: 0.66,
+        noseY: 0.72,
         hoodY: 0.95,
         beltF: 0.98,
         beltR: 1.04,
@@ -503,10 +503,16 @@ export function buildCarBody(sp: CarSpec): MeshData {
     if (z >= sp.wsBase) {
       // Hood: gently convex, rounding over into the nose.
       const t = clamp01((z - sp.wsBase) / (nose - sp.wsBase));
-      const hood =
+      let hood =
         sp.noseY +
         (Math.min(sp.hoodY, sp.beltF) - sp.noseY) * (1 - Math.pow(t, 2.4));
-      return hood - 0.05 * smooth(0.9, 1, t);
+      hood -= 0.05 * smooth(0.9, 1, t);
+      // The front fender must clear the tyre (arch + sheet metal).
+      const fz = (z - axles[0]) / (R + 0.5);
+      hood = Math.max(hood, 2 * R + 0.13 - 0.3 * fz * fz);
+      // No step at the cowl: blend into the beltline under the windscreen.
+      const cowl = 1 - smooth(0, 0.3, z - sp.wsBase);
+      return hood + (sp.beltF - 0.01 - hood) * cowl;
     }
     if (z >= sp.rearBase) return belt(z) - 0.005;
     // Deck, falling off into the tail.
@@ -538,7 +544,7 @@ export function buildCarBody(sp: CarSpec): MeshData {
       if (dz < archR)
         b = Math.max(b, R + Math.sqrt(archR * archR - dz * dz) * 0.97);
     }
-    return Math.min(b, top - 0.22);
+    return Math.min(b, top - 0.08);
   };
 
   // ---- Lower body loft ----
@@ -556,8 +562,8 @@ export function buildCarBody(sp: CarSpec): MeshData {
     const top = topLine(z);
     const bot = bottomLine(z, top);
     const yc = (top + bot) / 2,
-      hh = ((top - bot) / 2) * (0.75 + 0.25 * endFactor);
-    const w = halfWidth(z) * (0.9 + 0.1 * endFactor);
+      hh = ((top - bot) / 2) * (0.55 + 0.45 * endFactor);
+    const w = halfWidth(z) * (0.78 + 0.22 * endFactor);
     const hood = z > sp.wsBase;
     const ring: P3[] = [];
     // Right side (x < 0) from bottom centre up to top centre, then the left
@@ -595,7 +601,8 @@ export function buildCarBody(sp: CarSpec): MeshData {
   };
   const endFactorAt = (z: number) => {
     const e = Math.min(nose - z, z - tail);
-    return Math.sqrt(clamp01(e / (pickup ? 0.02 : 0.06)));
+    // Fascias wrap round into the sides instead of ending in a flat plate.
+    return Math.sqrt(clamp01(e / (pickup ? 0.08 : 0.28)));
   };
   const lower: P3[][] = zs.map(z => section(z, endFactorAt(z)));
   const RN = lower[0].length;
