@@ -62,7 +62,7 @@ for (const shot of shots) {
   let stats = null;
   try {
     await page.waitForFunction('window.__dev && window.__dev.settled', {
-      timeout: 60000,
+      timeout: 25000,
       polling: 100,
     });
     stats = await page.evaluate(() => window.__dev.stats?.() ?? null);

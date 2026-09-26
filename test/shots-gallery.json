@@ -1,0 +1,12 @@
+[
+  {"name": "g01-country-heli", "params": {"biome": "country", "cam": "helicopter", "s": "2200", "t": "3"}},
+  {"name": "g02-country-roadside", "params": {"biome": "country", "cam": "roadside", "s": "3000", "t": "4"}},
+  {"name": "g03-desert-drone", "params": {"biome": "desert", "cam": "drone", "s": "2500", "t": "5"}},
+  {"name": "g04-coast-heli", "params": {"biome": "coast", "cam": "helicopter", "s": "4000", "t": "2"}},
+  {"name": "g05-coast-dolly", "params": {"biome": "coast", "cam": "dolly", "s": "2600", "t": "2"}},
+  {"name": "g06-forest-chase", "params": {"biome": "forest", "cam": "chase", "s": "2000", "t": "2"}},
+  {"name": "g07-snow-interior", "params": {"biome": "snow", "cam": "interior", "s": "2000", "t": "2"}},
+  {"name": "g08-lahonda-front", "params": {"biome": "lahonda", "cam": "front", "s": "2400", "t": "2"}},
+  {"name": "g09-night-chase", "params": {"biome": "night", "cam": "chase", "s": "2000", "t": "2"}},
+  {"name": "g10-desert-wheel", "params": {"biome": "desert", "cam": "wheel", "s": "3300", "t": "2"}}
+]

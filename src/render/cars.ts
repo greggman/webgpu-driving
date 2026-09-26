@@ -10,10 +10,11 @@ import {
   CarSpec,
 } from '../gen/car';
 import {RENDER_PRELUDE} from './shaders';
+import {buildInterior, Interior} from '../gen/interior';
 import carSrc from '../shaders/car.wgsl';
 import {GBUFFER_TARGETS, DEPTH_FORMAT} from './targets';
 
-export const CAR_FLOATS = 52; // 2 mat4 + 5 vec4
+export const CAR_FLOATS = 64; // 2 mat4 + 8 vec4
 const MAX_CARS = 256;
 
 export interface CarDraw {
@@ -26,12 +27,17 @@ export interface CarDraw {
   brake: number;
   lights: number;
   dirt: number;
+  interior?: boolean;
+  speed?: number;
+  rpm?: number;
 }
 
 interface KindMesh {
   buf: GPUBuffer;
   count: number;
   spec: CarSpec;
+  interior: Interior;
+  interiorBuf: GPUBuffer;
 }
 
 export class CarRenderer {
@@ -41,6 +47,7 @@ export class CarRenderer {
   private data = new Float32Array(MAX_CARS * CAR_FLOATS);
   private ranges: Array<{kind: CarKind; first: number; count: number}> = [];
   private total = 0;
+  private interiorDraw: {kind: CarKind; index: number} | null = null;
   private bg!: GPUBindGroup;
   private bodyPipe!: GPURenderPipeline;
   private wheelPipe!: GPURenderPipeline;
@@ -58,7 +65,14 @@ export class CarRenderer {
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
       });
       device.queue.writeBuffer(buf, 0, m.vertices);
-      this.meshes.set(kind, {buf, count: m.count, spec});
+      const interior = buildInterior(spec);
+      const interiorBuf = device.createBuffer({
+        label: `car-interior-${kind}`,
+        size: interior.vertices.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+      });
+      device.queue.writeBuffer(interiorBuf, 0, interior.vertices);
+      this.meshes.set(kind, {buf, count: m.count, spec, interior, interiorBuf});
     }
     const w = buildWheel();
     const wbuf = device.createBuffer({
@@ -136,6 +150,7 @@ export class CarRenderer {
         label,
         layout: shadowPL,
         vertex: {module, entryPoint: entry, buffers},
+        fragment: {module, entryPoint: 'fsShadow', targets: []},
         primitive: {topology: 'triangle-list', cullMode: 'none'},
         depthStencil: {
           format: DEPTH_FORMAT,
@@ -156,6 +171,7 @@ export class CarRenderer {
       (a, b) => CAR_KINDS.indexOf(a.kind) - CAR_KINDS.indexOf(b.kind),
     );
     this.ranges = [];
+    this.interiorDraw = null;
     let i = 0;
     for (const c of sorted.slice(0, MAX_CARS)) {
       const spec = this.meshes.get(c.kind)!.spec;
@@ -174,6 +190,27 @@ export class CarRenderer {
         ],
         o + 44,
       );
+      this.data.set(
+        [
+          spec.wsBase,
+          (spec.roofFront + spec.roofBack) / 2,
+          spec.rearBase,
+          spec.belt,
+        ],
+        o + 48,
+      );
+      const km = this.meshes.get(c.kind)!;
+      const wheelAngle = -c.steer * 14; // steering ratio
+      this.data.set(
+        [c.interior ? 1 : 0, c.speed ?? 0, c.rpm ?? 0, wheelAngle],
+        o + 52,
+      );
+      this.data.set(
+        [...km.interior.wheelCenter, km.interior.wheelTilt],
+        o + 56,
+      );
+      this.data.set([0.37, spec.belt - 0.01, 0, 0], o + 60);
+      if (c.interior) this.interiorDraw = {kind: c.kind, index: i};
       const last = this.ranges[this.ranges.length - 1];
       if (last && last.kind === c.kind) last.count++;
       else this.ranges.push({kind: c.kind, first: i, count: 1});
@@ -206,7 +243,10 @@ export class CarRenderer {
     if (!this.total) return;
     pass.setBindGroup(1, this.bg);
     pass.setPipeline(body);
-    for (const r of this.ranges) {
+    const skipBody = new URLSearchParams(location.search)
+      .get('debug')
+      ?.includes('nobody');
+    for (const r of skipBody ? [] : this.ranges) {
       const m = this.meshes.get(r.kind)!;
       pass.setVertexBuffer(0, m.buf);
       pass.draw(m.count, r.count, 0, r.first);
@@ -214,5 +254,11 @@ export class CarRenderer {
     pass.setPipeline(wheel);
     pass.setVertexBuffer(0, this.wheel.buf);
     pass.draw(this.wheel.count, this.total * 4, 0, 0);
+    if (this.interiorDraw) {
+      const m = this.meshes.get(this.interiorDraw.kind)!;
+      pass.setPipeline(body);
+      pass.setVertexBuffer(0, m.interiorBuf);
+      pass.draw(m.interior.count, 1, 0, this.interiorDraw.index);
+    }
   }
 }

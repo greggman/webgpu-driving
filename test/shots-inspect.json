@@ -1,6 +1,6 @@
 [
-  {"name": "insp-car-rear", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "-7,2.5,1.6", "look": "0,0,0.7", "fov": "40"}},
-  {"name": "insp-car-side", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "1,6.5,1.2", "look": "0,0,0.7", "fov": "40"}},
-  {"name": "insp-car-front", "params": {"biome": "country", "cam": "custom", "s": "1500", "eye": "7,2.5,1.4", "look": "0,0,0.7", "fov": "40"}},
-  {"name": "insp-car-top", "params": {"biome": "desert", "cam": "custom", "s": "1500", "eye": "-5,-5,4", "look": "0,0,0.7", "fov": "40"}}
+  {"name": "insp-int-driver", "params": {"biome": "country", "cam": "interior", "s": "1500", "t": "1"}},
+  {"name": "insp-int-pass", "params": {"biome": "coast", "cam": "passenger", "s": "2500", "t": "1"}},
+  {"name": "insp-int-night", "params": {"biome": "night", "cam": "interior", "s": "1500", "t": "1"}},
+  {"name": "insp-int-snow", "params": {"biome": "snow", "cam": "interior", "s": "1500", "t": "1"}}
 ]

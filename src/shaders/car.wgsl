@@ -9,6 +9,9 @@ struct Car {
   p1: vec4f,      // steer, brake, lights on, dirt
   p2: vec4f,      // half length, half width, front cap y, rear cap y
   p3: vec4f,      // windshield base z, B-pillar z, rear glass base z, beltline y
+  p4: vec4f,      // interior view (1), speed km/h, rpm, steering wheel angle
+  p5: vec4f,      // steering wheel center xyz, tilt
+  p6: vec4f,      // driver x, dash top y, -, -
 };
 
 @group(1) @binding(0) var<storage, read> cars: array<Car>;
@@ -31,9 +34,31 @@ struct VOut {
   @location(6) lnormal: vec3f,
 };
 
+// Steering wheel vertices spin around the column axis.
+fn steerLocal(p: vec3f, mat: f32, c: Car) -> vec3f {
+  if (u32(mat + 0.5) != 13u) { return p; }
+  let axis = vec3f(0.0, sin(c.p5.w), -cos(c.p5.w));
+  let q = p - c.p5.xyz;
+  let a = c.p4.w;
+  let cs = cos(a);
+  let sn = sin(a);
+  let r = q * cs + cross(axis, q) * sn + axis * dot(axis, q) * (1.0 - cs);
+  return c.p5.xyz + r;
+}
+
+fn steerNormal(n: vec3f, mat: f32, c: Car) -> vec3f {
+  if (u32(mat + 0.5) != 13u) { return n; }
+  let axis = vec3f(0.0, sin(c.p5.w), -cos(c.p5.w));
+  let a = c.p4.w;
+  return n * cos(a) + cross(axis, n) * sin(a) + axis * dot(axis, n) * (1.0 - cos(a));
+}
+
 @vertex
-fn vsBody(v: VIn, @builtin(instance_index) ii: u32) -> VOut {
+fn vsBody(v0: VIn, @builtin(instance_index) ii: u32) -> VOut {
   let c = cars[ii];
+  var v = v0;
+  v.pos = steerLocal(v0.pos, v0.mat, c);
+  v.normal = steerNormal(v0.normal, v0.mat, c);
   var o: VOut;
   let w = c.model * vec4f(v.pos, 1.0);
   o.world = w.xyz;
@@ -92,15 +117,32 @@ fn vsWheel(v: VIn, @builtin(instance_index) ii: u32) -> VOut {
   return o;
 }
 
+struct CSOut {
+  @builtin(position) pos: vec4f,
+  @location(0) @interpolate(flat) mat: u32,
+};
+
 @vertex
-fn vsBodyShadow(v: VIn, @builtin(instance_index) ii: u32) -> @builtin(position) vec4f {
-  return shadowVP * (cars[ii].model * vec4f(v.pos, 1.0));
+fn vsBodyShadow(v: VIn, @builtin(instance_index) ii: u32) -> CSOut {
+  var o: CSOut;
+  o.pos = shadowVP * (cars[ii].model * vec4f(v.pos, 1.0));
+  o.mat = u32(v.mat + 0.5);
+  return o;
+}
+
+@fragment
+fn fsShadow(in: CSOut) {
+  // Glass lets sunlight into the cabin.
+  if (in.mat == 1u) { discard; }
 }
 
 @vertex
-fn vsWheelShadow(v: VIn, @builtin(instance_index) ii: u32) -> @builtin(position) vec4f {
+fn vsWheelShadow(v: VIn, @builtin(instance_index) ii: u32) -> CSOut {
   let ci = ii / 4u;
-  return shadowVP * (cars[ci].model * vec4f(wheelLocal(v.pos, ci, ii % 4u, 0.0), 1.0));
+  var o: CSOut;
+  o.pos = shadowVP * (cars[ci].model * vec4f(wheelLocal(v.pos, ci, ii % 4u, 0.0), 1.0));
+  o.mat = 7u;
+  return o;
 }
 
 // Car-commercial environment: sky above a sharp dark horizon.
@@ -131,14 +173,99 @@ fn clearcoatShade(base: Surface, wp: vec3f, sh: f32, coat: f32) -> vec3f {
   return col;
 }
 
+fn dial(uv: vec2f, value: f32, maxV: f32, ticks: f32) -> vec4f {
+  // uv in [-1,1]^2; returns (rgb emissive, coverage)
+  let r = length(uv);
+  let a = atan2(uv.x, uv.y); // 0 at top, clockwise positive
+  let start = -2.35;
+  let span = 4.7;
+  var col = vec3f(0.0);
+  var cov = 0.0;
+  // Ring.
+  let ring = smoothstep(0.03, 0.0, abs(r - 0.92));
+  // Ticks.
+  let t = (a - start) / span;
+  if (t >= 0.0 && t <= 1.0) {
+    let tk = abs(fract(t * ticks + 0.5) - 0.5);
+    let tick = smoothstep(0.05, 0.02, tk) * step(0.72, r) * step(r, 0.88);
+    col += vec3f(0.9) * tick;
+  }
+  // Needle.
+  let na = start + span * saturate(value / maxV);
+  let nd = vec2f(sin(na), cos(na));
+  let along = dot(uv, nd);
+  let perp = abs(uv.x * nd.y - uv.y * nd.x);
+  let needle = smoothstep(0.035, 0.015, perp) * step(-0.1, along) * step(along, 0.85);
+  col += vec3f(1.0, 0.15, 0.05) * needle * 2.0;
+  col += vec3f(0.5, 0.7, 1.0) * ring * 0.6;
+  cov = step(r, 1.0);
+  return vec4f(col, cov);
+}
+
+fn interiorShade(mat: u32, lp: vec3f, c: Car) -> vec4f {
+  // Returns (albedo rgb, roughness) or emissive handled by caller.
+  if (mat == 12u) {
+    // Tan leather with perforation pattern.
+    let perf = step(0.85, vnoise(lp.xz * 120.0));
+    return vec4f(vec3f(0.32, 0.19, 0.1) * (1.0 - 0.25 * perf), 0.55);
+  }
+  if (mat == 13u) { return vec4f(vec3f(0.03), 0.45); }
+  if (mat == 15u) { return vec4f(vec3f(0.25), 0.45); }
+  if (mat == 17u) { return vec4f(vec3f(0.025), 0.95); }
+  return vec4f(vec3f(0.035, 0.035, 0.04), 0.7);
+}
+
 @fragment
-fn fs(in: VOut) -> GBufferOut {
+fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   let c = cars[in.car];
   var n = normalize(in.normal);
   let wp = in.world;
   let lp = in.local;
   let v = normalize(F.cam.xyz - wp);
+  let interior = c.p4.x > 0.5;
+  if (interior && in.mat == 1u) { discard; }
   if (dot(n, v) < 0.0) { n = -n; }
+  // Cabin materials (interior mesh, or the inside of the body shell).
+  if (in.mat >= 10u || (interior && !ff && in.mat != 7u && in.mat != 8u)) {
+    var s: Surface;
+    let im = interiorShade(select(10u, in.mat, in.mat >= 10u), lp, c);
+    s.albedo = im.rgb;
+    s.rough = im.a;
+    s.metal = select(0.0, 1.0, in.mat == 15u);
+    s.n = n;
+    s.ao = 0.7;
+    s.spec = 0.5;
+    s.sss = 0.0;
+    var emissive = vec3f(0.0);
+    let dashLight = 0.25 + 1.5 * c.p1.z;
+    if (in.mat == 11u) {
+      // Gauge cluster: speedometer (left) and tachometer (right).
+      let gu = vec2f((c.p6.x - lp.x) / 0.19, (lp.y - (c.p6.y - 0.065)) / 0.065);
+      s.albedo = vec3f(0.01);
+      s.rough = 0.2;
+      let speedo = dial((gu - vec2f(-0.5, 0.0)) * vec2f(2.0 * 0.19 / 0.065 / 2.0, 1.0) * 1.05, c.p4.y, 240.0, 12.0);
+      let tach = dial((gu - vec2f(0.5, 0.0)) * vec2f(2.0 * 0.19 / 0.065 / 2.0, 1.0) * 1.05, c.p4.z, 8000.0, 8.0);
+      emissive = (speedo.rgb + tach.rgb) * dashLight;
+    } else if (in.mat == 14u) {
+      // Navigation screen: stylised map with the route.
+      let su = vec2f(lp.x / 0.14, (lp.y - (c.p6.y + 0.025)) / 0.075);
+      let road = smoothstep(0.08, 0.04, abs(su.x - 0.3 * sin(su.y * 2.0 + c.p1.x * 4.0)));
+      let grid = step(0.95, fract(su.x * 5.0)) + step(0.95, fract(su.y * 3.0));
+      let base = vec3f(0.02, 0.05, 0.08) + vec3f(0.03, 0.06, 0.05) * grid;
+      emissive = (base + vec3f(0.1, 0.5, 1.0) * road) * dashLight * 2.0;
+      s.albedo = vec3f(0.005);
+      s.rough = 0.1;
+    } else if (in.mat == 16u) {
+      // Rear-view mirror: dim reflection of the sky behind.
+      s.albedo = vec3f(0.12);
+      s.metal = 1.0;
+      s.rough = 0.15;
+    }
+    let sh = sunShadow(wp, n) * cloudShadow(wp);
+    var col = shadeSurface(s, wp, sh) + emissive;
+    col = finishColor(col, wp);
+    return gbuffer(col, wp, in.prevWorld, n, s.rough);
+  }
   var s: Surface;
   s.n = n;
   s.ao = 1.0;

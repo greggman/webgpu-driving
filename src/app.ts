@@ -87,6 +87,9 @@ export class App {
     this.road = new Road(this.biome, this.params.seed);
     const s0 = this.params.s ?? 800;
     this.traffic = new Traffic(this.biome, this.params.seed, s0);
+    const ps = carSpec(this.traffic.player.kind);
+    const roof = Math.max(...ps.top.map(p => p[1]));
+    const eyeZ = (ps.roofFront + ps.roofBack) / 2 - 0.15;
     this.director = new Director(
       this.road,
       this.params.seed,
@@ -94,6 +97,11 @@ export class App {
     );
     // Aerial shots must clear the canopy (vegetation is GPU-scattered, so we
     // use a conservative per-biome height).
+    this.director.driverEye = [
+      eyeZ,
+      0.37,
+      Math.min(ps.belt + 0.27, roof - 0.14),
+    ];
     const kinds = this.biome.scatter.treeKinds;
     this.director.canopy = kinds.includes('redwood')
       ? 55
@@ -216,12 +224,15 @@ export class App {
       });
     }
     const pp = playerPose!;
-    const camera = this.director.update(
+    const camera0 = this.director.update(
       this.params.freeze && this.params.shotTime === null ? 0 : dt,
       pp,
       player.s,
       carSpec(player.kind).length,
     );
+    const camera = camera0;
+    this.renderer.exposureBias = camera.interior ? 0.45 : 1;
+    for (const c of cars) if (c.player) c.draw.interior = camera.interior;
     const sky = computeSky(this.biome.sky, camera.eye[1]);
     this.renderer.render({
       camera,

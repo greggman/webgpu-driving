@@ -71,6 +71,8 @@ export class Director {
   private weights: Partial<Record<ShotKind, number>>;
   cutCount = 0;
   canopy = 12; // min aerial clearance above ground (m)
+  // Driver eye in car-local (forward, left, up), set from the car's proportions.
+  driverEye: [number, number, number] = [-0.35, 0.37, 1.1];
 
   constructor(
     private road: Road,
@@ -245,17 +247,19 @@ export class Director {
         break;
       }
       case 'interior': {
-        eye = rigid(-0.35, 0.37, 1.18);
-        const look = Math.sin(t * 0.2 + s.seed * 5) * 0.15;
-        target = rigid(10, 0.37 + look * 10, 0.9);
+        const de = this.driverEye;
+        eye = rigid(de[0], de[1], de[2]);
+        const look = Math.sin(t * 0.2 + s.seed * 5) * 0.12;
+        target = rigid(12, de[1] + look * 10, de[2] - 0.35);
         fov = 62 * DEG;
         interior = true;
         up = car.up;
         break;
       }
       case 'passenger': {
-        eye = rigid(-0.35, -0.37, 1.15);
-        target = rigid(3, -6, 0.9);
+        const de = this.driverEye;
+        eye = rigid(de[0], -de[1], de[2]);
+        target = rigid(3, -6, de[2] - 0.2);
         fov = 55 * DEG;
         interior = true;
         up = car.up;
