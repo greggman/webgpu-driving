@@ -58,9 +58,20 @@ export class CarRenderer {
   private glassPipe!: GPURenderPipeline;
   private blobPipe!: GPURenderPipeline;
   private glassFxPipe!: GPURenderPipeline;
+  private emptyLayout: GPUBindGroupLayout;
+  private emptyGroup: GPUBindGroup;
   readonly layout: GPUBindGroupLayout;
 
   constructor(private device: GPUDevice) {
+    this.emptyLayout = device.createBindGroupLayout({
+      label: 'car-empty-layout',
+      entries: [],
+    });
+    this.emptyGroup = device.createBindGroup({
+      label: 'car-empty-bg',
+      layout: this.emptyLayout,
+      entries: [],
+    });
     for (const kind of MESH_KINDS) {
       const spec = carSpec(kind);
       const m = kind === 'trailer' ? buildTrailer() : buildCarBody(spec);
@@ -116,6 +127,7 @@ export class CarRenderer {
   createPipelines(
     frameLayout: GPUBindGroupLayout,
     shadowLayout: GPUBindGroupLayout,
+    waterLayout: GPUBindGroupLayout,
   ) {
     const d = this.device;
     const module = shaderModule(d, RENDER_PRELUDE + '\n' + carSrc, 'car');
@@ -245,7 +257,15 @@ export class CarRenderer {
       d,
       {
         label: 'car-glass-fx',
-        layout,
+        layout: d.createPipelineLayout({
+          label: 'car-glass-fx-layout',
+          bindGroupLayouts: [
+            frameLayout,
+            this.layout,
+            this.emptyLayout,
+            waterLayout,
+          ],
+        }),
         vertex: {module, entryPoint: 'vsBody', buffers},
         fragment: {
           module,
@@ -368,11 +388,13 @@ export class CarRenderer {
   }
 
   // The player's glass into the glass-FX target (see fsGlassFx).
-  drawGlassFx(pass: GPURenderPassEncoder) {
+  drawGlassFx(pass: GPURenderPassEncoder, water: GPUBindGroup) {
     if (!this.interiorDraw || !this.glassFxPipe) return;
     const m = this.meshes.get(this.interiorDraw.kind)!;
     pass.setPipeline(this.glassFxPipe);
     pass.setBindGroup(1, this.bg);
+    pass.setBindGroup(2, this.emptyGroup);
+    pass.setBindGroup(3, water);
     pass.setVertexBuffer(0, m.buf);
     pass.draw(m.count, 1, 0, this.interiorDraw.index);
   }

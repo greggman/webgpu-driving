@@ -92,8 +92,12 @@ fn fs(in: FsOut) -> @location(0) vec4f {
     textureSampleLevel(hdrTex, samp, uv - cc * ca, 0.0).r,
     textureSampleLevel(hdrTex, samp, uv, 0.0).g,
     textureSampleLevel(hdrTex, samp, uv + cc * ca, 0.0).b);
-    hdr *= 1.0 - fx.z;
-  hdr += fx.w * textureSampleLevel(bloomTex, samp, clamp(uv - vec2f(0.0, 0.2), vec2f(0.0), vec2f(1.0)), 0.0).rgb * 1.5;
+      // Water on the glass: + darkens (rims, film), - adds a sky highlight.
+  let sky = textureSampleLevel(bloomTex, samp, clamp(uv - vec2f(0.0, 0.25), vec2f(0.0), vec2f(1.0)), 0.0).rgb;
+  hdr = hdr * (1.0 - max(fx.z, 0.0)) + sky * max(-fx.z, 0.0) * 2.0;
+  // Snow on the glass: lit by the light coming through it.
+  let lum = dot(textureSampleLevel(bloomTex, samp, uv, 0.0).rgb, vec3f(0.3, 0.59, 0.11));
+  hdr = mix(hdr, vec3f(0.93, 0.95, 1.0) * max(lum * 1.4, 0.02), saturate(fx.w));
   let bloom = textureSampleLevel(bloomTex, samp, uv, 0.0).rgb;
   hdr = mix(hdr, bloom, 0.05 * F.post.x);
   hdr += lensFlare(uv);

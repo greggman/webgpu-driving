@@ -28,6 +28,7 @@ import {Props} from './props';
 import {Water} from './water';
 import {Particles} from './particles';
 import {TireTracks} from './tracks';
+import {GlassWaterRenderer} from './glassWater';
 import volSrc from '../shaders/volumetric.wgsl';
 import clusterSrc from '../shaders/clusters.wgsl';
 import envSrc from '../shaders/envmap.wgsl';
@@ -159,6 +160,7 @@ export class Renderer {
   readonly particles: Particles;
   readonly tracks: TireTracks;
   private glassFxOn = false;
+  readonly glassWater: GlassWaterRenderer;
   private dustSlots = new Map<number, {index: number; fade: number}>();
   roadMesh: RoadMesh | null = null;
   private road: Road | null = null;
@@ -362,7 +364,12 @@ export class Renderer {
     );
     this.terrain.createPipelines(this.frameLayout, this.shadows.layout);
     RoadMesh.createPipelines(d, this.frameLayout, this.shadows.layout);
-    this.cars.createPipelines(this.frameLayout, this.shadows.layout);
+    this.glassWater = new GlassWaterRenderer(d);
+    this.cars.createPipelines(
+      this.frameLayout,
+      this.shadows.layout,
+      this.glassWater.layout,
+    );
     this.vegetation = new Vegetation(
       d,
       this.frame,
@@ -814,7 +821,22 @@ export class Renderer {
     if (DEBUG.has('lightning') && rate > 0) flash = 1;
     F.set('weather2', [rain, flash, Math.sin(strikeAz), Math.cos(strikeAz)]);
     const precip = rain > 0 || biome.weather.snow > 0;
-    this.glassFxOn = cam.interior && rain > 0;
+    const snowFall = biome.weather.snow;
+    // Water / snow on the player's glass (simulated whenever it rains or
+    // snows; drawn for the interior cameras).
+    const playerCar = scene.cars.find(c => c.player);
+    if (playerCar)
+      this.glassWater.update(
+        scene.frozen ? 0 : scene.dt,
+        scene.time,
+        scene.player.speed,
+        rain,
+        snowFall,
+        precip,
+        this.cars.spec(playerCar.draw.kind),
+        cam.interior,
+      );
+    this.glassFxOn = cam.interior && (rain > 0 || snowFall > 0);
     F.set('glass', [
       scene.player.speed,
       this.glassFxOn ? 1 : 0,
@@ -1158,6 +1180,7 @@ export class Renderer {
     main.end();
 
     // Rain drops on the player's glass (interior cameras).
+    if (this.glassFxOn) this.glassWater.encode(enc);
     if (this.glassFxOn) {
       const gp = enc.beginRenderPass({
         label: 'glass-fx',
@@ -1175,7 +1198,8 @@ export class Renderer {
         },
       });
       gp.setBindGroup(0, this.frameBG);
-      this.cars.drawGlassFx(gp);
+      const wg = this.glassWater.fxGroup;
+      if (wg) this.cars.drawGlassFx(gp, wg);
       gp.end();
     }
 

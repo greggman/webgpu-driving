@@ -689,39 +689,6 @@ fn sinceWiped(uv: vec2f, t: f32) -> f32 {
   return best;
 }
 
-// Snow flakes stuck to the glass (0..1 coverage). Windshield flakes build
-// up between wipes; side / rear windows are never wiped, and the airflow
-// drags their flakes slowly backward.
-fn glassSnow(g: GlassCoord, t: f32) -> f32 {
-  let snow = F.weather.z;
-  if (snow <= 0.0) { return 0.0; }
-  var uv = g.uv;
-  if (g.region == 1u) { uv.x += t * min(F.glass.x, 30.0) * 0.004; }
-  let cell = 0.035;
-  let gc = uv / cell;
-  let ci = floor(gc);
-  var since = 1e3;
-  if (g.region == 0u) { since = sinceWiped(g.uv, t); }
-  var fl = 0.0;
-  for (var y = -1; y <= 1; y++) {
-    for (var x = -1; x <= 1; x++) {
-      let cc = ci + vec2f(f32(x), f32(y));
-      let hh = pcg(bitcast<u32>(i32(cc.x)) + pcg(bitcast<u32>(i32(cc.y)) + g.region * 977u));
-      if (rand01(hh) > 0.5 * snow) { continue; }
-      let h2 = rand01(pcg(hh + 1u));
-      let h3 = rand01(pcg(hh + 2u));
-      let h4 = rand01(pcg(hh + 3u));
-      // Arrival time after the last wipe.
-      if (since < h2 * 3.0) { continue; }
-      let center = cc + vec2f(h3, h4);
-      let r = 0.1 + 0.3 * h2 * h3;
-      let d = length(gc - center);
-      fl = max(fl, smoothstep(r, r * 0.35, d) * (0.55 + 0.45 * h4));
-    }
-  }
-  return fl * snow;
-}
-
 @fragment
 fn fsGlass(in: VOut) -> GlassOut {
   let c = cars[in.car];
@@ -755,13 +722,8 @@ fn fsGlass(in: VOut) -> GlassOut {
   let t = F.cam.w;
   var col = skyRadiance(reflect(-v, nn)) * fres * 0.25;
   var a = fres * 0.15;
-  let fl = glassSnow(g, t);
-  if (fl > 0.0) {
-    // Wet snow on glass is lit from the bright sky behind it.
-    let back = vec3f(luminance(skyRadiance(normalize(-v + vec3f(0.0, 0.3, 0.0))) * 0.6 + shIrradiance(vec3f(0.0, 1.0, 0.0)) * 0.5));
-    col = col * (1.0 - fl) + back * fl;
-    a = a + fl * (1.0 - a);
-  }
+    // (Water and snow on the glass: fsGlassFx + the tonemap pass.)
+
   if (g.region == 0u && F.glass.z > 0.5) {
     // Wiper arms and blades (dark rubber / painted steel).
     let ang = wiperAngle(t);
@@ -783,10 +745,27 @@ fn fsGlass(in: VOut) -> GlassOut {
   return o;
 }
 
-// ---- Rain on the player's glass (interior cameras): each drop is a tiny
-// lens showing an inverted, magnified view. Writes a screen-space sampling
-// offset + rim darkening + highlight into the glass-FX target, which the
-// tonemap pass applies. ----
+// ---- Water and snow on the player's glass (interior cameras): samples
+// the simulated water atlas (src/render/glassWater.ts). Output: screen
+// sampling offset (refraction through drops), shading (+ darken at drop
+// rims / film, - highlight), snow cover; applied by the tonemap pass. ----
+struct WaterPanes {
+  pane: array<vec4f, 3>, // uMin, uMax, vMax, -
+  misc: vec4f,
+};
+@group(3) @binding(0) var waterTex: texture_2d<f32>;
+@group(3) @binding(1) var waterSamp: sampler;
+@group(3) @binding(2) var<uniform> WP: WaterPanes;
+
+const WATER_HMAX = 0.0025;
+const WATER_ATLAS = 2048.0;
+
+fn waterRect(p: u32) -> vec4f {
+  if (p == 0u) { return vec4f(0.0, 0.0, 1.0, 0.5); }
+  if (p == 1u) { return vec4f(0.0, 0.5, 1.0, 0.25); }
+  return vec4f(0.0, 0.75, 1.0, 0.25);
+}
+
 @fragment
 fn fsGlassFx(in: VOut) -> @location(0) vec4f {
   let c = cars[in.car];
@@ -794,55 +773,43 @@ fn fsGlassFx(in: VOut) -> @location(0) vec4f {
   // Derivatives first (uniform control flow): glass metres per pixel.
   let dx = dpdx(g.uv);
   let dy = dpdy(g.uv);
-  if (in.mat != 1u) { discard; }
-  let rain = F.weather2.x;
-  let t = F.cam.w;
-  let speed = min(F.glass.x, 35.0);
-  var uv = g.uv;
-  var stretch = 1.0;
-  var since = 1e3;
-  if (g.region == 0u) {
-    since = sinceWiped(g.uv, t);
-    // Airflow creeps drops up the windshield.
-    uv.y -= min(since, 4.0) * speed * 0.004;
-  } else if (g.region == 1u) {
-    // Side windows: drops run backward, stretched by the airflow.
-    uv.x += t * speed * 0.03;
-    stretch = 1.0 + speed * 0.06;
+  var pane = 0u;
+  if (g.region == 1u) { pane = select(2u, 1u, in.local.x > 0.0); }
+  let pn = WP.pane[pane];
+  let rc = waterRect(pane);
+  let span = vec2f(pn.y - pn.x, pn.z);
+  let t = vec2f((g.uv.x - pn.x) / span.x, 1.0 - g.uv.y / span.y);
+  let auv = rc.xy + t * rc.zw;
+  // Texel size in glass metres (for the height gradient).
+  let texel = 1.0 / WATER_ATLAS;
+  let mPerU = span.x / rc.z;
+  let mPerV = span.y / rc.w;
+  let w0 = textureSampleLevel(waterTex, waterSamp, auv, 0.0);
+  let wx0 = textureSampleLevel(waterTex, waterSamp, auv - vec2f(texel, 0.0), 0.0).r;
+  let wx1 = textureSampleLevel(waterTex, waterSamp, auv + vec2f(texel, 0.0), 0.0).r;
+  let wy0 = textureSampleLevel(waterTex, waterSamp, auv - vec2f(0.0, texel), 0.0).r;
+  let wy1 = textureSampleLevel(waterTex, waterSamp, auv + vec2f(0.0, texel), 0.0).r;
+  if (in.mat != 1u || g.region == 2u) { discard; }
+  // Height gradient (m/m) in glass coordinates (atlas v runs down the glass).
+  let grad = vec2f(
+    (wx1 - wx0) * WATER_HMAX / (2.0 * texel * mPerU),
+    -(wy1 - wy0) * WATER_HMAX / (2.0 * texel * mPerV));
+  // A drop is a lens: it shows an inverted, magnified view, i.e. sampling
+  // moves with the surface slope. Convert glass metres -> pixels -> uv.
+  let offG = grad * 0.02 + vec2f(sin(g.uv.y * 900.0), cos(g.uv.x * 700.0)) * w0.b * 0.0006;
+  let det = dx.x * dy.y - dx.y * dy.x;
+  var offUv = vec2f(0.0);
+  if (abs(det) > 1e-12) {
+    let offPx = vec2f(dy.y * offG.x - dy.x * offG.y, -dx.y * offG.x + dx.x * offG.y) / det;
+    offUv = clamp(offPx / F.misc.zw, vec2f(-0.05), vec2f(0.05));
   }
-      // The windshield is further from the eye: bigger beads so they read.
-  let cell = select(0.024, 0.034, g.region == 0u);
-  let gc = vec2f(uv.x / (cell * stretch), uv.y / cell);
-  let ci = floor(gc);
-  var best = vec4f(0.0);
-  for (var y = -1; y <= 1; y++) {
-    for (var x = -1; x <= 1; x++) {
-      let cc = ci + vec2f(f32(x), f32(y));
-      let hh = pcg(bitcast<u32>(i32(cc.x)) + pcg(bitcast<u32>(i32(cc.y)) + g.region * 131u + 7u));
-      if (rand01(hh) > 0.75 * rain) { continue; }
-      let h2 = rand01(pcg(hh + 1u));
-      let h3 = rand01(pcg(hh + 2u));
-      let h4 = rand01(pcg(hh + 3u));
-      if (since < h2 * h2 * 1.6 / max(rain, 0.2)) { continue; }
-      let center = (cc + vec2f(0.2 + 0.6 * h3, 0.2 + 0.6 * h4)) * vec2f(cell * stretch, cell);
-      let r = cell * (0.12 + 0.26 * h3 * h3);
-      var q = uv - center;
-      q.x /= stretch;
-      let d2 = dot(q, q) / (r * r);
-      if (d2 >= 1.0) { continue; }
-      let h = sqrt(1.0 - d2);
-      // Inverted, magnified image: sample mirrored through the centre.
-      let offG = -q * 2.2;
-      let det = dx.x * dy.y - dx.y * dy.x;
-      if (abs(det) < 1e-12) { continue; }
-      let offPx = vec2f(dy.y * offG.x - dy.x * offG.y, -dx.y * offG.x + dx.x * offG.y) / det;
-      let offUv = offPx / F.misc.zw;
-      let rim = smoothstep(0.35, 0.0, h);
-      let hi = pow(saturate(1.0 - length(q / r - vec2f(-0.35, 0.4)) * 2.5), 3.0);
-      best = vec4f(offUv, 0.12 + rim * 0.45, hi * 2.0);
-    }
-  }
-  return best;
+  let slope = length(grad);
+  // Rims darken (total internal reflection), a sky highlight on top, and a
+  // faint darkening of wet film.
+  let n = normalize(vec3f(-grad, 1.0));
+  let hi = pow(saturate(dot(n, normalize(vec3f(0.25, 0.55, 1.0)))), 60.0) * step(0.02, w0.r);
+  let shade = saturate(slope * 0.5) * 0.6 + w0.b * 0.1 - hi * 1.2;
+  return vec4f(offUv, shade, w0.g);
 }
 
 // ---- Contact shadow: a soft darkening under the car (sky occlusion the
