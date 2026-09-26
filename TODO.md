@@ -57,7 +57,7 @@
       Amazing lightning lighting up clouds. Wet roads. Drips on windshields that
       warp view.
 
-[ ] the close transition for trees from most detailed to next most details is sudden (500ms)
+[x] the close transition for trees from most detailed to next most details is sudden (500ms)
 
     That abruptness makes it stick out. Can we make it happen over a longer distance so it
     takes more time? I know that will be slower but we need to find something that's not

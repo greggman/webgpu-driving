@@ -189,9 +189,11 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
   let edge = SP.maxDist * (0.9 + 0.1 * jit);
   inst.scale *= smoothstep(edge, edge * 0.85, dist);
   if (inst.scale <= 0.01) { return; }
-  let b0 = clamp(l0 * 0.07, 3.0, 10.0);
-  let b1 = clamp(l1 * 0.07, 6.0, 20.0);
-  let morph = saturate((d3 - 0.55 * l0) / (0.45 * l0));
+  // Wide bands: the near switch takes ~1 s at road speed instead of a
+  // blink (both LODs draw inside the band).
+  let b0 = clamp(l0 * 0.3, 8.0, 30.0);
+  let b1 = clamp(l1 * 0.15, 12.0, 50.0);
+  let morph = saturate((d3 - 0.45 * l0) / (0.55 * l0 - b0 * 0.5));
   let meshIdx = mesh;
   // LOD0 (with morph), fading out across [l0 - b0/2, l0 + b0/2].
   if (d3 < l0 + b0 * 0.5) {
