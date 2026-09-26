@@ -370,8 +370,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   } else if (mat == 7u) {
     // Tire rubber, tread grooves on the tread face.
     let groove = step(0.8, fract(lp.x * 9.0 + 0.5));
-    s.albedo = vec3f(0.025 - 0.01 * groove);
-    s.rough = 0.85;
+    s.albedo = vec3f(0.022 - 0.008 * groove);
+    s.rough = 0.9;
+    s.spec = 0.3;
   } else {
     // Rim: machined alloy with 5 spokes.
     let a = atan2(lp.z, lp.y);

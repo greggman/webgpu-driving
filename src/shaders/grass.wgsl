@@ -135,7 +135,7 @@ fn spawn(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) li: 
     var b: Blade;
     b.pos = pos;
     b.height = height;
-    b.width = (0.035 + 0.03 * rand01(pcg(h0 + 19u))) * spacing / 0.125 * 0.5 / max(keep, 0.25);
+    b.width = (0.012 + 0.012 * rand01(pcg(h0 + 19u))) * sqrt(spacing / 0.07) / max(keep, 0.3);
     b.rot = rand01(pcg(h0 + 20u)) * 6.2831;
     b.bend = bend;
     b.kindTint = kind * 10.0 + tint;
@@ -214,7 +214,7 @@ fn fs(in: GOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   col = mix(col, pal(2), saturate(mid * 2.2 - 1.1) * 0.6);
   col *= 0.75 + 0.5 * tv;
   // Lighter, drier tips.
-  col = mix(col * 0.55, mix(col, pal(2), 0.25) * 1.15, in.t);
+  col = mix(col * 0.35, mix(col, pal(2), 0.2) * 1.1, smoothstep(0.0, 0.9, in.t));
   if (kind == 1.0 && in.t > 0.8) {
     // Flower head.
     let hue = tv;

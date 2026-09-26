@@ -128,12 +128,12 @@ fn fs(in: VOut) -> GBufferOut {
   // Detail normal (fades with distance).
   let dn = saturate(1.0 - dist / 120.0);
   if (dn > 0.0) {
-    let e = 0.15;
-    let a0 = fbm2(world2 * 1.3, 3);
-    let ax = fbm2((world2 + vec2f(e, 0.0)) * 1.3, 3);
-    let az = fbm2((world2 + vec2f(0.0, e)) * 1.3, 3);
-    let bump = vec3f(-(ax - a0) / e, 0.0, -(az - a0) / e) * 0.35 * dn;
-    n = normalize(n + bump);
+    // Analytic gradient-noise slopes (C2 smooth, no grid artifacts).
+    let g1 = noised(world2 * 0.9).yz * 0.9;
+    let g2 = noised(world2 * 2.7 + 13.1).yz * 2.7 * 0.35;
+    let g3 = noised(world2 * 8.1 + 7.7).yz * 8.1 * 0.1;
+    let slope2 = (g1 + g2 + g3) * 0.12 * dn;
+    n = normalize(n + vec3f(-slope2.x, 0.0, -slope2.y));
   }
 
   var grass = mix(pal(0), pal(1), saturate(macroN * 1.8 - 0.4));

@@ -53,14 +53,10 @@ struct Cell {
 };
 
 fn pickCell(viewObj: vec3f, quv: vec2f, px: vec2f) -> vec2f {
+  // Nearest baked view (deterministic; no dither noise).
   let g = hemiOctEncode(viewObj) * OCT_N - 0.5;
-  let base = floor(g);
-  let f = g - base;
-  // Stochastic bilinear choice between the 4 nearest views.
-  let h = ditherHash(px);
-  let h2 = fract(h * 7.31 + 0.13);
-  let c = base + vec2f(select(0.0, 1.0, h2 < f.x), select(0.0, 1.0, h < f.y));
-  let cc = clamp(c, vec2f(0.0), vec2f(OCT_N - 1.0));
+  let cc = clamp(floor(g + 0.5), vec2f(0.0), vec2f(OCT_N - 1.0));
+  _ = px;
   return (cc + quv) / OCT_N;
 }
 

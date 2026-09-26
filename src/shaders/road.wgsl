@@ -91,11 +91,8 @@ fn fs(in: VOut) -> GBufferOut {
     albedo = mix(albedo, pal(0) * 0.9, edge * 0.5);
     rough = 0.95;
     // Bumpy normal.
-    let e = 0.05;
-    let h0 = vnoise(world2 * 6.0);
-    let hx = vnoise((world2 + vec2f(e, 0.0)) * 6.0);
-    let hz = vnoise((world2 + vec2f(0.0, e)) * 6.0);
-    n = normalize(n + vec3f(h0 - hx, 0.0, h0 - hz) * 0.8 * saturate(1.0 - dist / 60.0));
+    let gs = noised(world2 * 5.0).yz * 5.0 * 0.03 + noised(world2 * 17.0 + 3.3).yz * 17.0 * 0.006;
+    n = normalize(n + vec3f(-gs.x, 0.0, -gs.y) * saturate(1.0 - dist / 60.0));
   } else {
     // Asphalt.
     let agg = fine;
@@ -123,8 +120,8 @@ fn fs(in: VOut) -> GBufferOut {
     albedo *= 1.0 - 0.5 * crack;
     // Tar snakes.
     let tar = (1.0 - smoothstep(0.003, 0.009, abs(fbm2(p2 * vec2f(0.5, 0.12) + 31.0, 3) - 0.5))) * saturate(1.0 - dist / 60.0);
-    albedo = mix(albedo, vec3f(0.02), tar * 0.8);
-    rough = mix(rough, 0.35, tar);
+    albedo = mix(albedo, vec3f(0.025), tar * 0.7);
+    rough = mix(rough, 0.55, tar);
 
     // ---- Markings ----
     var paint = 0.0;

@@ -514,7 +514,7 @@ export const BIOMES: Record<BiomeId, Biome> = {
       clouds: 0.15,
       fogDensity: 0.00004,
     },
-    weather: {...noWeather},
+    weather: {...noWeather, wetness: 0.7},
     ocean: false,
     headlights: true,
     shotWeights: {chase: 2, interior: 2, helicopter: 1},

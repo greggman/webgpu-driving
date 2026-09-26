@@ -483,7 +483,7 @@ const BUILDERS: Record<VegKind, Build> = {
       [8, 6, 7],
       [9, 8, 1],
     ];
-    const subdiv = lod === 0 ? 3 : 1;
+    const subdiv = lod === 0 ? 3 : 2;
     for (let s = 0; s < subdiv; ++s) {
       const mid = new Map<string, number>();
       const m = (a: number, b: number) => {

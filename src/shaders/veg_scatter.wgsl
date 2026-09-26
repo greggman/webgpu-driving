@@ -147,27 +147,19 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
   inst.rot = rand01(pcg(h0 + 5u)) * 6.2831853;
   inst.tint = rand01(pcg(h0 + 6u));
   inst.mesh = mesh;
-  // LOD selection with dithered cross-fade bands (8% of the distance).
-  let l0 = SP.lod0 * (0.6 + 0.4 * scale);
-  let l1 = SP.lod1 * (0.6 + 0.4 * scale);
-  let band0 = l0 * 0.08;
-  let band1 = l1 * 0.08;
+  // LOD selection. Each instance switches at its own hashed distance (+-15%)
+  // so transitions are spread out and never need screen-space dithering
+  // (which fights TAA's neighbourhood clamp and reads as a checkerboard).
+  let jit = 0.85 + 0.3 * rand01(pcg(h0 + 7u));
+  let l0 = SP.lod0 * (0.6 + 0.4 * scale) * jit;
+  let l1 = SP.lod1 * (0.6 + 0.4 * scale) * jit;
   let base = mesh * 3u;
-  if (d3 < l0 + band0) {
-    inst.fade = select(0.0, -saturate((d3 - l0) / band0), d3 > l0);
+  inst.fade = 0.0;
+  if (d3 < l0) {
     emit(base, inst);
-  }
-  if (d3 > l0 && d3 < l1 + band1) {
-    var fin = select(0.0, saturate((d3 - l0) / band0), d3 < l0 + band0);
-    if (d3 > l1) { fin = -saturate((d3 - l1) / band1); }
-    inst.fade = fin;
+  } else if (d3 < l1) {
     emit(base + 1u, inst);
-  }
-  if (d3 > l1 && SP.impostors != 0u) {
-    inst.fade = select(0.0, saturate((d3 - l1) / band1), d3 < l1 + band1);
-    // Fade out at the far limit.
-    let farFade = saturate((SP.maxDist - dist) / (SP.maxDist * 0.1));
-    if (farFade < 1.0) { inst.fade = -(1.0 - farFade); }
+  } else if (SP.impostors != 0u && dist < SP.maxDist * (0.9 + 0.1 * jit)) {
     emit(base + 2u, inst);
   }
 }

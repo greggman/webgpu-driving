@@ -849,7 +849,7 @@ export class Vegetation {
         if (!aabbInFrustum(planes, lx, h - 6, lz, lx + TILE, h + 6, lz + TILE))
           continue;
         if (n >= 4096) break;
-        const bladeN = dist < 20 ? 64 : dist < 50 ? 32 : 16;
+        const bladeN = dist < 12 ? 112 : dist < 26 ? 64 : dist < 55 ? 32 : 16;
         this.tileData.set([lx, lz, bladeN, 0], n * 4);
         n++;
       }
