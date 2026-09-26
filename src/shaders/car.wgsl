@@ -430,8 +430,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       } else {
                         // Wraparound L clusters (vertical outboard, horizontal on top) and a
         // thin centre bar joining them.
-        lamp = (ax > 0.84 && ax < 0.99 && dy > -0.07 && dy < 0.11) || (ax > 0.58 && ax <= 0.84 && dy > 0.04 && dy < 0.11) || (ax <= 0.58 && abs(dy - 0.08) < 0.008);
-        bezel = ax > 0.47 && dy > -0.085 && dy < 0.125;
+        lamp = (ax > 0.55 && ax < 0.99 && dy > 0.0 && dy < 0.11) || (ax > 0.84 && ax < 0.99 && dy > -0.07) || (ax <= 0.58 && abs(dy - 0.08) < 0.008);
+                // Thin gloss-black surround only.
+        bezel = (ax > 0.53 && dy > -0.012 && dy < 0.125) || (ax > 0.82 && dy > -0.085 && dy < 0.125);
       }
       if (lamp) { part = 2u; } else if (bezel) { part = 4u; }
     }

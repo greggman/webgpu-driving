@@ -66,8 +66,13 @@ export interface BodyCurves {
   doorLine?: Knots;
   // Raked fascias: above `bumperY` the upper nose / tail sits `depth`
   // metres behind the bumper face.
-  noseRake?: {bumperY: number; depth: number};
-  tailRake?: {bumperY: number; depth: number};
+  // cornerDepth (optional) also pulls the lower outboard corners back so
+  // the bumper wraps.
+  noseRake?: {bumperY: number; depth: number; cornerDepth?: number};
+  tailRake?: {bumperY: number; depth: number; cornerDepth?: number};
+  // Crease sharpness (0 soft .. 1 crisp) at the lower-door line, the
+  // shoulder and the beltline.
+  creases?: {door?: number; shoulder?: number; belt?: number};
   cabin: {
     windscreenBase: number; // z where the windscreen meets the cowl
     roofFront: number; // z of the windscreen header
@@ -139,46 +144,60 @@ const asCurve = (v: Knots | number) =>
 function spline2(
   pts: Array<[number, number]>,
   counts: number[],
+  sharp: number[] = [],
 ): {p: Array<[number, number]>; span: number[]} {
-  // Mirror the ends across x = 0 so the section meets the centre line
-  // horizontally (smooth across the symmetry plane).
+  // Hermite spline with Catmull-Rom tangents over a centripetal
+  // parameterisation (no cusps or loops). `sharp[i]` (0..1) shrinks the
+  // tangent at point i: 1 makes a crisp crease there. The ends are mirrored
+  // across x = 0 so the section meets the centre line horizontally.
+  const n = pts.length;
   const P = [
     [-pts[1][0], pts[1][1]] as [number, number],
     ...pts,
-    [-pts[pts.length - 2][0], pts[pts.length - 2][1]] as [number, number],
+    [-pts[n - 2][0], pts[n - 2][1]] as [number, number],
   ];
+  const t: number[] = [0];
+  for (let i = 1; i < P.length; ++i)
+    t.push(
+      t[i - 1] +
+        Math.max(
+          Math.sqrt(Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1])),
+          1e-4,
+        ),
+    );
+  // Tangent (d/dt) at each real point (index i+1 in P).
+  const m: Array<[number, number]> = [];
+  for (let i = 0; i < n; ++i) {
+    const a = P[i],
+      b = P[i + 2];
+    const dt = t[i + 2] - t[i];
+    const k = 1 - Math.min(Math.max(sharp[i] ?? 0, 0), 1);
+    m.push([((b[0] - a[0]) / dt) * k, ((b[1] - a[1]) / dt) * k]);
+  }
   const out: Array<[number, number]> = [];
   const span: number[] = [];
-  const dist = (a: number[], b: number[]) =>
-    Math.max(Math.sqrt(Math.hypot(b[0] - a[0], b[1] - a[1])), 1e-4);
-  for (let s = 0; s < pts.length - 1; ++s) {
-    const p0 = P[s],
-      p1 = P[s + 1],
-      p2 = P[s + 2],
-      p3 = P[s + 3];
-    const t0 = 0,
-      t1 = t0 + dist(p0, p1),
-      t2 = t1 + dist(p1, p2),
-      t3 = t2 + dist(p2, p3);
-    const n = counts[s];
-    for (let q = 0; q < n; ++q) {
-      const t = t1 + ((t2 - t1) * q) / n;
-      const lerp = (a: number[], b: number[], ta: number, tb: number) => {
-        const w = (t - ta) / Math.max(tb - ta, 1e-9);
-        return [a[0] + (b[0] - a[0]) * w, a[1] + (b[1] - a[1]) * w];
-      };
-      const a1 = lerp(p0, p1, t0, t1),
-        a2 = lerp(p1, p2, t1, t2),
-        a3 = lerp(p2, p3, t2, t3);
-      const b1 = lerp(a1, a2, t0, t2),
-        b2 = lerp(a2, a3, t1, t3);
-      const c = lerp(b1, b2, t1, t2);
-      out.push([c[0], c[1]]);
+  for (let s = 0; s < n - 1; ++s) {
+    const p0 = pts[s],
+      p1 = pts[s + 1];
+    const h = t[s + 2] - t[s + 1];
+    const cnt = counts[s];
+    for (let q = 0; q < cnt; ++q) {
+      const u = q / cnt;
+      const u2 = u * u,
+        u3 = u2 * u;
+      const h00 = 2 * u3 - 3 * u2 + 1,
+        h10 = u3 - 2 * u2 + u,
+        h01 = -2 * u3 + 3 * u2,
+        h11 = u3 - u2;
+      out.push([
+        h00 * p0[0] + h10 * h * m[s][0] + h01 * p1[0] + h11 * h * m[s + 1][0],
+        h00 * p0[1] + h10 * h * m[s][1] + h01 * p1[1] + h11 * h * m[s + 1][1],
+      ]);
       span.push(s);
     }
   }
-  out.push(pts[pts.length - 1]);
-  span.push(pts.length - 2);
+  out.push(pts[n - 1]);
+  span.push(n - 2);
   return {p: out, span};
 }
 
@@ -275,7 +294,15 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       [rx * 0.5, ry + (tp - ry) * 0.82],
       [0, tp],
     ];
-    return spline2(pts, SPAN_COUNTS);
+    const cr = c.creases ?? {};
+    return spline2(pts, SPAN_COUNTS, [
+      0,
+      0,
+      0,
+      cr.door ?? 0,
+      cr.shoulder ?? 0,
+      cr.belt ?? 0,
+    ]);
   };
 
   // Stations: fine everywhere, finer at the ends (where the plan curve
@@ -318,31 +345,39 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     spans = span;
     const ring: P3[] = [];
     // Raked fascias: the upper nose / tail leans back from the bumper.
-    const zr = (y: number) => {
+    const Wz = Math.max(width(z), 1e-3);
+    const zr = (x: number, y: number) => {
       let zz = z;
+      const corner = sm(0.75, 1.0, Math.abs(x) / Wz);
       if (c.noseRake) {
         const r = c.noseRake;
+        const e = sm(nose - 0.5, nose, z);
+        zz -= r.depth * sm(r.bumperY, r.bumperY + 0.25, y) * e;
         zz -=
-          r.depth *
-          sm(r.bumperY, r.bumperY + 0.25, y) *
-          sm(nose - 0.5, nose, z);
+          (r.cornerDepth ?? 0) *
+          corner *
+          (1 - sm(r.bumperY, r.bumperY + 0.1, y)) *
+          e;
       }
       if (c.tailRake) {
         const r = c.tailRake;
+        const e = sm(tail + 0.5, tail, z);
+        zz += r.depth * sm(r.bumperY, r.bumperY + 0.25, y) * e;
         zz +=
-          r.depth *
-          sm(r.bumperY, r.bumperY + 0.25, y) *
-          sm(tail + 0.5, tail, z);
+          (r.cornerDepth ?? 0) *
+          corner *
+          (1 - sm(r.bumperY, r.bumperY + 0.1, y)) *
+          e;
       }
       return zz;
     };
     for (let k = 0; k < p.length; ++k) {
       const y = trimArch(p[k][0], p[k][1], z);
-      ring.push([-p[k][0], y, zr(y)]);
+      ring.push([-p[k][0], y, zr(p[k][0], y)]);
     }
     for (let k = p.length - 2; k >= 0; --k) {
       const y = trimArch(p[k][0], p[k][1], z);
-      ring.push([p[k][0], y, zr(y)]);
+      ring.push([p[k][0], y, zr(p[k][0], y)]);
     }
     grid.push(ring);
   }
@@ -361,6 +396,27 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     const s = spans[Math.min(k, H - 1)];
     const first = k === spanStart[s];
     if (s <= 1) return MAT_UNDER;
+    // The skin left inboard of a trimmed arch is the wheel well's wall.
+    {
+      const q = [
+        grid[i][j],
+        grid[i + 1][j],
+        grid[i][j + 1],
+        grid[i + 1][j + 1],
+      ];
+      const cx = Math.abs(q[0][0] + q[1][0] + q[2][0] + q[3][0]) / 4,
+        cy = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4,
+        cz = (q[0][2] + q[1][2] + q[2][2] + q[3][2]) / 4;
+      for (const az of axles) {
+        const dz = cz - az;
+        if (
+          Math.abs(dz) < archR &&
+          cx < xIn + 0.02 &&
+          cy < R + Math.sqrt(archR * archR - dz * dz) - 0.005
+        )
+          return MAT_UNDER;
+      }
+    }
     // Fascias (the shader draws lamps / grille / plates there).
     const end =
       z > nose - 0.35 ? MAT_FRONT : z < tail + 0.35 ? MAT_REAR : MAT_PAINT;
@@ -400,7 +456,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     for (const sx of [-1, 1]) {
       const rad = archR + 0.005;
       const x0 = sx * 0.2,
-        x1 = sx * width(az) * c.rockerIn * 0.99;
+        x1 = sx * width(az) * 0.995; // out to the lip (no gap to see through)
       const lg: P3[][] = [];
       for (let a = 0; a <= 16; ++a) {
         const th = ((-25 + (a / 16) * 230) * Math.PI) / 180;
