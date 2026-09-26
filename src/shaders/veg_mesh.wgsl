@@ -187,7 +187,7 @@ fn fsBake(in: BakeOut, @builtin(front_facing) ff: bool) -> BakeTargets {
     if (la.x < 0.5) { discard; }
     shade = la.y;
   }
-  var m = vegMaterial(in.mat, in.uv, 0.5, in.local);
+  var m = vegMaterial(in.mat, in.uv, -1.0, in.local);
   m.albedo *= shade;
   var n = normalize(in.normal);
   if (!card && !ff) { n = -n; }

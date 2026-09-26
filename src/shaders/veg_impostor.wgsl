@@ -97,7 +97,11 @@ fn fs(in: IOut) -> GBufferOut {
   let n = normalize(rotY(nn.xyz * 2.0 - 1.0, inst.rot));
   let t = inst.tint - 0.5;
   var s: Surface;
-  s.albedo = a.rgb * (0.85 + 0.4 * t);
+    s.albedo = a.rgb * (0.85 + 0.4 * t);
+  // Broadleaf foliage (baked neutral) gets its autumn colour here.
+  if (meshes[instMesh(inst.mesh)].kind > 0.5 && nn.a > 0.05) {
+    s.albedo = autumnize(s.albedo, inst.tint);
+  }
   s.n = n;
   s.rough = 0.7;
   s.metal = 0.0;

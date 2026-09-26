@@ -765,7 +765,9 @@ export class Vegetation {
         io += l.indices.length;
       }
       this.meshes.push(g);
-      info.set([m.radius, m.center[1], m.height, 0], mi * 4);
+            // kind 1: broadleaf (autumn colours apply to its foliage).
+      const broadleaf = ['oak', 'birch', 'bush', 'hedge'].includes(m.kind);
+      info.set([m.radius, m.center[1], m.height, broadleaf ? 1 : 0], mi * 4);
       for (let l = 0; l < 2; ++l) {
         this.argsTemplate.set(
           [g.indexCount[l], 0, g.firstIndex[l], g.baseVertex[l], 0],

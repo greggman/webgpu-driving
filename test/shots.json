@@ -135,5 +135,21 @@
       "cam": "interior",
       "tod": "15"
     }
+  },
+  {
+    "name": "autumn-chase",
+    "params": {
+      "biome": "autumn",
+      "seed": "3",
+      "cam": "chase"
+    }
+  },
+  {
+    "name": "autumn-heli",
+    "params": {
+      "biome": "autumn",
+      "seed": "3",
+      "cam": "helicopter"
+    }
   }
 ]

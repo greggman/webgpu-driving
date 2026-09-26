@@ -8,8 +8,9 @@ export type BiomeId =
   | 'forest'
   | 'snow'
   | 'lahonda'
-  | 'night'
-  | 'arizona';
+    | 'night'
+  | 'arizona'
+  | 'autumn';
 
 export interface TerrainParams {
   hillAmp: number;
@@ -65,8 +66,9 @@ export interface Palette {
   rock: [number, number, number];
   sand: [number, number, number];
   snow: number; // 0..1 snow cover
-  foliage: [number, number, number];
+    foliage: [number, number, number];
   flower: [number, number, number];
+  autumn?: number; // 0..1 broadleaf autumn colours
 }
 
 export interface Scatter {
@@ -468,6 +470,58 @@ export const BIOMES: Record<BiomeId, Biome> = {
     headlights: false,
     shotWeights: {chase: 2, interior: 1.5, roadside: 2},
   },
+  autumn: {
+    id: 'autumn',
+    name: 'New England Autumn',
+    terrain: {
+      ...baseTerrain,
+      hillAmp: 75,
+      hillFreq: 1 / 850,
+      mountAmp: 350,
+      mountFreq: 1 / 5000,
+      mountStart: 1800,
+      mountEnd: 7000,
+      valleyDepth: 20,
+      valleyWidth: 220,
+    },
+    road: {
+      ...baseRoad,
+      poles: true,
+      fence: 'split-rail',
+      maxHeading: 0.7,
+      wiggle: 0.6,
+      cruise: 19,
+    },
+    palette: {
+      ...basePalette,
+      grassA: [0.24, 0.27, 0.08],
+      grassB: [0.42, 0.36, 0.13],
+      dry: [0.5, 0.36, 0.16],
+      foliage: [0.1, 0.2, 0.05],
+      autumn: 1,
+    },
+    scatter: {
+      ...baseScatter,
+      trees: 0.4,
+      treeKinds: ['oak', 'oak', 'birch', 'oak', 'pine'],
+      bushes: 0.45,
+      buildings: 0.12,
+      forestEdge: 10,
+    },
+    sky: {
+      ...baseSky,
+      timeOfDay: 15.6,
+      sunAzimuth: 20,
+      clouds: 0.38,
+      turbidity: 1.3,
+      grade: [1.05, 1.0, 0.92],
+      saturation: 1.12,
+    },
+    weather: {...noWeather, wind: 0.5},
+    ocean: false,
+    headlights: false,
+    shotWeights: {chase: 2, helicopter: 2.5, drone: 2, roadside: 1.5},
+  },
   snow: {
     id: 'snow',
     name: 'Pennsylvania Snowstorm',
@@ -603,8 +657,9 @@ export const BIOME_ORDER: BiomeId[] = [
   'forest',
   'snow',
     'lahonda',
-  'night',
+    'night',
   'arizona',
+  'autumn',
 ];
 
 // Packs terrain params into 8 vec4s, matching src/shaders/terrain.wgsl.

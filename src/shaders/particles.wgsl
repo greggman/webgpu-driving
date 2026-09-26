@@ -6,7 +6,7 @@
 //    cycle; its spawn point comes from a short history of car positions.
 
 struct PP {
-    kind: u32,        // 0 = snow, 1 = leaves, 2 = dust, 3 = rain
+      kind: u32,        // 0 = snow, 1 = leaves, 2 = dust, 3 = rain, 4 = road leaves
   count: u32,
   volume: f32,      // wrap volume size (m)
   size: f32,
@@ -69,7 +69,48 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
   var vel: vec3f;
   var size = P.size * (0.6 + 0.8 * r4);
   var alpha = 1.0;
-  if (P.kind == 2u) {
+    var flatRight = vec3f(0.0);
+  var flatUp = vec3f(0.0);
+  if (P.kind == 4u) {
+    // Fallen leaves lying on the road in patches (world-anchored along the
+    // road around the camera). The player's car flings them up and off to
+    // the shoulder as it passes; the ones behind it stay there.
+    let L = P.volume;
+    let zw = F.cam.z + F.misc.y;
+    let base = r1 * L * 13.0;
+    let zl = F.cam.z + (fract((base - zw) / L + 0.5) - 0.5) * L;
+    let leafZw = zl + F.misc.y;
+    let rs = roadSample(zl);
+    let lat = vec3f(cos(rs.z), 0.0, -sin(rs.z));
+    let fwdR = vec3f(sin(rs.z), 0.0, cos(rs.z));
+    let d = (r2 * 2.0 - 1.0) * F.road.w * 0.95;
+    center = vec3f(rs.x, rs.y + 0.012, zl) + lat * d;
+    let leafPatch = smoothstep(0.42, 0.55, vnoise(vec2f(leafZw * 0.012, 3.7)));
+    alpha = select(0.0, 0.95 + 0.049 * r4, r3 < leafPatch);
+    vel = vec3f(0.0);
+    let yaw = r4 * 6.2831853 + r2 * 20.0;
+    flatRight = lat * cos(yaw) + fwdR * sin(yaw);
+    flatUp = fwdR * cos(yaw) - lat * sin(yaw);
+    // Blown away once the player's car has passed.
+    let carFwd = vec3f(sin(F.car.w), 0.0, cos(F.car.w));
+    let rel = center - F.car.xyz;
+    let behind = -dot(rel, carFwd) - 1.5;
+    let side = dot(rel, lat);
+    if (behind > 0.0 && abs(side) < 2.6) {
+      let since = behind / max(F.glass.x, 1.0);
+      let u = saturate(since / 1.3);
+      let out = select(-1.0, 1.0, side > 0.0) * (1.8 + 3.0 * r3);
+      let lift = sin(u * 3.14159) * (0.5 + 1.3 * r4) * saturate(F.glass.x / 15.0);
+      center += lat * out * (1.0 - (1.0 - u) * (1.0 - u)) + vec3f(0.0, lift, 0.0) + fwdR * u * min(F.glass.x, 25.0) * 0.08;
+      // Tumble while airborne.
+      let a = since * (5.0 + r2 * 6.0);
+      let c = cos(a * (1.0 - u));
+      let s = sin(a * (1.0 - u));
+      let up3 = vec3f(0.0, 1.0, 0.0);
+      flatUp = flatUp * c + up3 * s;
+    }
+    size = P.size * (0.7 + 0.6 * r4);
+  } else if (P.kind == 2u) {
     // Dust: cycle through lifetimes, spawning from the car history.
     let life = P.life * (0.7 + 0.6 * r4);
     let age = fract(t / life + r1) * life;
@@ -131,7 +172,12 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
     up = up * c - r0 * s;
     stretch = 1.0;
   }
-    let maxStretch = select(12.0, 80.0, P.kind == 3u);
+      if (P.kind == 4u) {
+    right = flatRight;
+    up = flatUp;
+    stretch = 1.0;
+  }
+  let maxStretch = select(12.0, 80.0, P.kind == 3u);
   let world = center + right * corner.x * size + up * corner.y * size * min(stretch, maxStretch);
   o.pos = F.viewProj * vec4f(world, 1.0);
   o.light = lightAt(center, toCam);
@@ -150,7 +196,7 @@ fn fs(in: POut) -> TOut {
   let r = length(in.uv);
   var a: f32;
   var col = P.color.rgb;
-  if (in.kind == 1u) {
+    if (in.kind == 1u || in.kind == 4u) {
     // Leaf silhouette.
     let q = vec2f(in.uv.x * 1.6, in.uv.y);
     a = step(length(q), 1.0) * step(abs(in.uv.x), 0.95 - abs(in.uv.y) * 0.3);

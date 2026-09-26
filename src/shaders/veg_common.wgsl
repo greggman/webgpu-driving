@@ -82,7 +82,34 @@ struct VegMat {
   spec: f32,
 };
 
-fn vegMaterial(mat: u32, uv: vec2f, tint: f32, localPos: vec3f) -> VegMat {
+// Autumn (F.palette[6].w): broadleaf foliage turns red / orange / gold /
+// yellow per tree (a few stay green), keeping the baked shading.
+fn autumnColor(h: f32) -> vec3f {
+  let k = u32(h * 7.0);
+  switch k {
+    case 0u: { return vec3f(0.45, 0.05, 0.03); }
+    case 1u: { return vec3f(0.62, 0.15, 0.03); }
+    case 2u: { return vec3f(0.72, 0.3, 0.04); }
+    case 3u: { return vec3f(0.72, 0.46, 0.06); }
+    case 4u: { return vec3f(0.66, 0.56, 0.1); }
+    case 5u: { return vec3f(0.55, 0.1, 0.05); }
+    default: { return vec3f(0.22, 0.3, 0.07); }
+  }
+}
+
+fn autumnize(c: vec3f, tint: f32) -> vec3f {
+  let a = F.palette[6].w;
+  if (a <= 0.0 || tint < 0.0) { return c; }
+  let lum = dot(c, vec3f(0.3, 0.59, 0.11));
+  let base = max(dot(pal(6), vec3f(0.3, 0.59, 0.11)), 0.01);
+  let col = autumnColor(fract(tint * 7.31)) * (lum / base) * 0.85;
+  return mix(c, col, a);
+}
+
+// tint < 0: neutral (impostor bake; the autumn recolour is applied when the
+// impostor is drawn).
+fn vegMaterial(mat: u32, uv: vec2f, tintIn: f32, localPos: vec3f) -> VegMat {
+  let tint = select(tintIn, 0.5, tintIn < 0.0);
   var m: VegMat;
   m.rough = 0.8;
   m.sss = 0.0;
@@ -91,7 +118,8 @@ fn vegMaterial(mat: u32, uv: vec2f, tint: f32, localPos: vec3f) -> VegMat {
   let t = tint - 0.5;
   if (mat == 1u || mat == 2u) {
     var c = foliage * (0.85 + 0.5 * t);
-    c = mix(c, c * vec3f(1.25, 1.15, 0.6), saturate(t * 1.5));   // yellowish variation
+        c = mix(c, c * vec3f(1.25, 1.15, 0.6), saturate(t * 1.5));   // yellowish variation
+    if (mat == 1u) { c = autumnize(c, tintIn); }
     m.albedo = c;
     m.rough = 0.82;
     m.spec = 0.35;

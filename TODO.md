@@ -46,7 +46,7 @@
 
     Given the speed of the car the snow should be passing the camera at a higher speed.
 
-[ ] More Biomes
+[x] More Biomes
 
     * New England Autumn trees on hillsides, gold, red, yellow, etc...
 
