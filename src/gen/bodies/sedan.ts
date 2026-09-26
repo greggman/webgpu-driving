@@ -167,5 +167,6 @@ export const SEDAN_BODY: BodyCurves = {
   },
   chromeSill: true,
   chromeDLO: true,
+  doorBow: 0.01,
   hoodDome: 0.015,
 };

@@ -77,6 +77,7 @@ export interface BodyCurves {
   // x as a fraction of width, raised `height` m, crease sharpness 0..1.
   hoodLines?: {x: number; height: number; crease: number};
   hoodDome?: number; // raise of the hood centre line (m), faded at cowl / nose
+  doorBow?: number; // outward bow of the panel between door line and shoulder (m)
   chromeDLO?: boolean; // thin chrome trim along the top of the side glass
   cabin: {
     windscreenBase: number; // z where the windscreen meets the cowl
@@ -317,7 +318,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       [0, tp + dome],
     ];
     const cr = c.creases ?? {};
-    return spline2(pts, SPAN_COUNTS, [
+    const sp2 = spline2(pts, SPAN_COUNTS, [
       0,
       0,
       0,
@@ -327,6 +328,19 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       0,
       hoodCrease,
     ]);
+    // Door panel bow: a gentle outward belly between door line and
+    // shoulder (a highlight gradient instead of a flat band).
+    if (c.doorBow) {
+      const n = SPAN_COUNTS[3];
+      let q = 0;
+      for (let k = 0; k < sp2.p.length; ++k)
+        if (sp2.span[k] === 3) {
+          sp2.p[k][0] +=
+            c.doorBow * Math.sin((Math.PI * q) / n) * (W > 0.3 ? 1 : W / 0.3);
+          q++;
+        }
+    }
+    return sp2;
   };
 
   // Stations: fine everywhere, finer at the ends (where the plan curve

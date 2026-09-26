@@ -449,7 +449,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       if (lamp) { part = 2u; } else if (bezel) { part = 4u; }
     }
     // Rear diffuser with exhaust tips.
-                if (lp.z < -halfL + 0.4 && lp.y < ty - 0.5) {
+                    // Rear diffuser (sedan: a lower, narrower centre section).
+    let diffuser = select(lp.y < ty - 0.5, lp.y < 0.28 && ax < 0.75, style == 0u);
+    if (lp.z < -halfL + 0.4 && diffuser) {
       part = 4u;
       if (style != 2u && style != 5u && ln.z < -0.2) {
                 // Rectangular black exhaust finishers.
@@ -594,7 +596,11 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       if (style == 0u || style == 3u) { seam = min(seam, abs(lp.z - (c.p3.z - 0.05))); }
     }
             // Bumper parting lines front and rear.
-    if (lp.z < -halfL + 0.6 || lp.z > halfL - 0.6) { seam = min(seam, abs(lp.y - 0.55)); }
+        if (lp.z < -halfL + 0.6 || lp.z > halfL - 0.6) { seam = min(seam, abs(lp.y - 0.55)); }
+    // The rear bumper cover's upper edge runs forward to the rear arch.
+    if (lp.z < c.p7.x - c.p0.x * 0.5 && lp.z > -halfL + 0.5) {
+      seam = min(seam, abs(lp.y - 0.55) + step(0.1, abs(lp.y - 0.55)));
+    }
     
     if (ln.z < -0.3) {
       // Trunk / tailgate opening on the rear face.
