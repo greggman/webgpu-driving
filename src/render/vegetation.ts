@@ -114,6 +114,11 @@ export class Vegetation {
   private road: Road | null = null;
   private biome: Biome | null = null;
   enabled = true;
+  // Previous frame's Hi-Z pyramid (set by the renderer).
+  hzbView!: GPUTextureView;
+  hzbValid = false;
+  private hzbVersion = -1;
+  hzbCurrentVersion = 0;
 
   constructor(
     private device: GPUDevice,
@@ -233,6 +238,11 @@ export class Vegetation {
           binding: 3,
           visibility: GPUShaderStage.COMPUTE,
           buffer: {type: 'read-only-storage'},
+        },
+        {
+          binding: 5,
+          visibility: GPUShaderStage.COMPUTE,
+          texture: {sampleType: 'unfilterable-float'},
         },
         {
           binding: 4,
@@ -763,6 +773,7 @@ export class Vegetation {
           {binding: 2, resource: {buffer: this.argsBuf}},
           {binding: 3, resource: {buffer: this.meshInfoBuf}},
           {binding: 4, resource: {buffer: this.capsBuf}},
+          {binding: 5, resource: this.hzbView},
         ],
       });
       return layer;
@@ -905,6 +916,7 @@ export class Vegetation {
       });
       u[96] = l.seed;
       u[97] = l.impostors ? 1 : 0;
+      u[98] = this.hzbValid && !location.search.includes('nohzb') ? 1 : 0;
       d.queue.writeBuffer(l.params, 0, buf, 0, 400);
       (l as Layer & {dim: number}).dim = dim;
     }
@@ -965,8 +977,29 @@ export class Vegetation {
     );
   }
 
+  // Rebuild scatter bind groups when the Hi-Z texture is recreated.
+  private refreshLayerBGs() {
+    if (this.hzbVersion === this.hzbCurrentVersion) return;
+    this.hzbVersion = this.hzbCurrentVersion;
+    for (const l of this.layers) {
+      l.bg = this.device.createBindGroup({
+        label: `veg-scatter-bg-${l.seed}`,
+        layout: this.scatterLayout,
+        entries: [
+          {binding: 0, resource: {buffer: l.params}},
+          {binding: 1, resource: {buffer: this.instBuf}},
+          {binding: 2, resource: {buffer: this.argsBuf}},
+          {binding: 3, resource: {buffer: this.meshInfoBuf}},
+          {binding: 4, resource: {buffer: this.capsBuf}},
+          {binding: 5, resource: this.hzbView},
+        ],
+      });
+    }
+  }
+
   encodeCompute(enc: GPUCommandEncoder, frameBG: GPUBindGroup) {
     if (!this.enabled) return;
+    this.refreshLayerBGs();
     const pass = enc.beginComputePass({
       label: 'vegetation-scatter',
       timestampWrites: ts('scatter+grass'),

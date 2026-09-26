@@ -35,6 +35,34 @@ struct ScatterParams {
 @group(1) @binding(2) var<storage, read_write> args: array<atomic<u32>>;
 @group(1) @binding(3) var<storage, read> meshes: array<MeshInfo>;
 @group(1) @binding(4) var<uniform> caps: array<vec4u, 48>; // per draw: base, capacity
+@group(1) @binding(5) var hzb: texture_2d<f32>;
+
+// Hi-Z occlusion test against the previous frame's depth pyramid: the
+// sphere is occluded if even its nearest point is behind the farthest
+// occluder depth over its screen footprint.
+fn occluded(center: vec3f, radius: f32) -> bool {
+  if (SP.pad0 == 0u) { return false; }
+  let c = F.prevViewProj * vec4f(center, 1.0);
+  if (c.w <= radius + 0.5) { return false; }
+  let ndc = c.xy / c.w;
+  let dims = vec2f(textureDimensions(hzb, 0));
+  // Projected radius in HZB texels (conservative).
+  let rNdc = radius / c.w * 2.2 / max(F.camFwd.w, 0.05);
+  let rPx = rNdc * 0.5 * dims.y;
+  let uv = vec2f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+  if (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0))) { return false; }
+  let levels = f32(textureNumLevels(hzb));
+  let lvl = clamp(ceil(log2(max(rPx * 2.0, 1.0))), 0.0, levels - 1.0);
+  let ld = vec2f(textureDimensions(hzb, i32(lvl)));
+  let p0 = vec2i(clamp((uv * dims - rPx) / dims * ld, vec2f(0.0), ld - 1.0));
+  let p1 = vec2i(clamp((uv * dims + rPx) / dims * ld, vec2f(0.0), ld - 1.0));
+  let l = i32(lvl);
+  let d = min(min(textureLoad(hzb, p0, l).x, textureLoad(hzb, vec2i(p1.x, p0.y), l).x),
+              min(textureLoad(hzb, vec2i(p0.x, p1.y), l).x, textureLoad(hzb, p1, l).x));
+  // Nearest depth of the sphere (reverse-Z: larger = closer).
+  let nearest = 0.15 / max(c.w - radius, 0.15);
+  return nearest < d;
+}
 
 fn fieldEdge(p: vec2f) -> vec2f {
   // Distance to the nearest Voronoi field boundary + field id (matches terrain).
@@ -140,6 +168,8 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
   let d3 = distance(center, F.cam.xyz);
   // Near objects are kept even off-screen so they still cast shadows.
   if (d3 > 70.0 + radius && !sphereVisible(center, radius)) { return; }
+  // Occlusion culling (beyond the shadow-casting near range).
+  if (d3 > 120.0 + radius && occluded(center, radius)) { return; }
 
   var inst: Inst;
   inst.pos = pos;

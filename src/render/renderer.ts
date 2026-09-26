@@ -29,6 +29,7 @@ import {Water} from './water';
 import {Particles} from './particles';
 import volSrc from '../shaders/volumetric.wgsl';
 import clusterSrc from '../shaders/clusters.wgsl';
+import hzbSrc from '../shaders/hzb.wgsl';
 import {FRAME_PRELUDE} from './shaders';
 import {shaderModule} from '../gpu/gpu';
 
@@ -111,6 +112,12 @@ export class Renderer {
   private clusterBuf: GPUBuffer;
   private clusterPipe: GPUComputePipeline;
   private clusterBG!: GPUBindGroup;
+  private hzb: GPUTexture | null = null;
+  private hzbFromDepth: GPUComputePipeline;
+  private hzbDown: GPUComputePipeline;
+  private hzbBGs: GPUBindGroup[] = [];
+  private hzbTargetsVersion = -1;
+  private lastShot = '';
   originX = 0;
   originZ = 0;
   frameIndex = 0;
@@ -161,6 +168,17 @@ export class Renderer {
         entryPoint: 'build',
       },
     });
+    const hzbMod = shaderModule(d, hzbSrc, 'hzb');
+    this.hzbFromDepth = d.createComputePipeline({
+      label: 'hzb-from-depth',
+      layout: 'auto',
+      compute: {module: hzbMod, entryPoint: 'fromDepth'},
+    });
+    this.hzbDown = d.createComputePipeline({
+      label: 'hzb-downsample',
+      layout: 'auto',
+      compute: {module: hzbMod, entryPoint: 'downsample'},
+    });
     this.volPipe = d.createComputePipeline({
       label: 'volumetric-fog',
       layout: 'auto',
@@ -210,6 +228,7 @@ export class Renderer {
       this.frameLayout,
       this.shadows.layout,
     );
+    this.ensureHzb(1, 1);
     this.props = new Props(d, this.frameLayout, this.shadows.layout);
     this.water = new Water(d, this.frameLayout);
     this.particles = new Particles(d, this.frameLayout);
@@ -303,6 +322,91 @@ export class Renderer {
     });
   }
 
+  // (Re)creates the Hi-Z pyramid at half the render resolution.
+  private ensureHzb(w: number, h: number) {
+    const d = this.gpu.device;
+    const hw = Math.max(1, w >> 1),
+      hh = Math.max(1, h >> 1);
+    if (this.hzb && this.hzb.width === hw && this.hzb.height === hh) return;
+    this.hzb?.destroy();
+    const mips = Math.floor(Math.log2(Math.max(hw, hh))) + 1;
+    this.hzb = d.createTexture({
+      label: 'hi-z-pyramid',
+      size: [hw, hh],
+      mipLevelCount: mips,
+      format: 'r32float',
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    const mipView = (m: number) =>
+      this.hzb!.createView({
+        label: `hi-z-mip-${m}`,
+        baseMipLevel: m,
+        mipLevelCount: 1,
+      });
+    this.hzbBGs = [];
+    for (let m = 0; m < mips; ++m) {
+      if (m === 0) {
+        this.hzbBGs.push(
+          d.createBindGroup({
+            label: 'hi-z-from-depth-bg',
+            layout: this.hzbFromDepth.getBindGroupLayout(0),
+            entries: [
+              {
+                binding: 0,
+                resource:
+                  this.targets.depth?.createView() ?? this.dummyDepthView(),
+              },
+              {binding: 1, resource: mipView(0)},
+            ],
+          }),
+        );
+      } else {
+        this.hzbBGs.push(
+          d.createBindGroup({
+            label: `hi-z-down-bg-${m}`,
+            layout: this.hzbDown.getBindGroupLayout(0),
+            entries: [
+              {binding: 1, resource: mipView(m)},
+              {binding: 2, resource: mipView(m - 1)},
+            ],
+          }),
+        );
+      }
+    }
+    this.hzbTargetsVersion = this.targets.version;
+    this.vegetation.hzbView = this.hzb.createView({label: 'hi-z-all-mips'});
+    this.vegetation.hzbCurrentVersion++;
+  }
+
+  private dummyDepthView(): GPUTextureView {
+    return this.gpu.device
+      .createTexture({
+        label: 'dummy-depth',
+        size: [1, 1],
+        format: 'depth32float',
+        usage:
+          GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+      })
+      .createView();
+  }
+
+  private encodeHzb(enc: GPUCommandEncoder) {
+    const pass = enc.beginComputePass({
+      label: 'hi-z-build',
+      timestampWrites: ts('hi-z'),
+    });
+    let w = this.hzb!.width,
+      h = this.hzb!.height;
+    for (let m = 0; m < this.hzbBGs.length; ++m) {
+      pass.setPipeline(m === 0 ? this.hzbFromDepth : this.hzbDown);
+      pass.setBindGroup(0, this.hzbBGs[m]);
+      pass.dispatchWorkgroups(Math.ceil(w / 8), Math.ceil(h / 8));
+      w = Math.max(1, w >> 1);
+      h = Math.max(1, h >> 1);
+    }
+    pass.end();
+  }
+
   setWorld(road: Road, biome: Biome) {
     this.road = road;
     this.biome = biome;
@@ -388,7 +492,12 @@ export class Renderer {
       canvas.width = w;
       canvas.height = h;
     }
-    this.targets.resize(w, h);
+    const resized = this.targets.resize(w, h);
+    if (resized || this.hzbTargetsVersion !== this.targets.version) {
+      this.hzb?.destroy();
+      this.hzb = null;
+      this.ensureHzb(w, h);
+    }
 
     const cam = scene.camera;
     this.rebase(cam.eye[0], cam.eye[2]);
@@ -580,6 +689,14 @@ export class Renderer {
       carDraws.push({...c.draw, model, prevModel});
     }
     this.cars.setCars(carDraws);
+    // The previous frame's Hi-Z is usable unless the camera cut or the
+    // origin moved.
+    this.vegetation.hzbValid =
+      this.frameIndex > 2 &&
+      cam.shot === this.lastShot &&
+      !!scene.prevCamera &&
+      this.post.resetHistory === false;
+    this.lastShot = cam.shot;
     this.vegetation.update(scene, eye, planes, ox, oz);
     {
       const pe = scene.prevCamera ? scene.prevCamera.eye : cam.eye;
@@ -701,6 +818,7 @@ export class Renderer {
     this.cars.drawGlass(main);
     main.end();
 
+    this.encodeHzb(enc);
     this.post.encode(
       enc,
       gpu.context.getCurrentTexture().createView({label: 'swapchain'}),
