@@ -145,16 +145,28 @@ fn vsWheelShadow(v: VIn, @builtin(instance_index) ii: u32) -> CSOut {
   return o;
 }
 
-// Car-commercial environment: sky above a sharp dark horizon.
+// Car-commercial reflection environment: sky gradient above a dark,
+// slightly broken treeline/hill band at the horizon, then lit ground (grass
+// at the sides, darker road below).
 fn carEnv(r: vec3f, rough: f32) -> vec3f {
+  let amb = shIrradiance(vec3f(0.0, 1.0, 0.0));
+  let sunLit = F.sunColor.rgb * max(F.sun.y, 0.0) / PI;
   if (r.y >= 0.0) {
-    let rr = normalize(vec3f(r.x, max(r.y, 0.03), r.z));
-    let sky = skyRadiance(rr);
-    return mix(sky, shIrradiance(vec3f(0.0, 1.0, 0.0)), saturate(rough * 1.5));
+    let rr = normalize(vec3f(r.x, max(r.y, 0.02), r.z));
+    var sky = skyRadiance(rr);
+    // Treeline / hills silhouette in the lowest few degrees.
+    let az = atan2(r.x, r.z);
+    let ridge = 0.03 + 0.05 * (0.5 + 0.5 * sin(az * 7.0 + 1.3) * sin(az * 3.0));
+    let band = smoothstep(ridge, ridge * 0.6, r.y);
+    sky = mix(sky, pal(6) * (amb + sunLit) * 0.6, band);
+    return mix(sky, amb, saturate(rough * 1.5));
   }
-  let horizon = skyRadiance(normalize(vec3f(r.x, 0.03, r.z)));
-  let ground = shIrradiance(vec3f(0.0, 1.0, 0.0)) * 0.15;
-  return mix(horizon * 0.35, ground, saturate(-r.y * 6.0 + rough));
+  let grass = pal(0) * (amb + sunLit);
+  let road = vec3f(0.08) * (amb + sunLit);
+  let side = saturate(abs(r.x) * 2.0);
+  let ground = mix(road, grass, side * 0.7);
+  let horizon = pal(6) * (amb + sunLit) * 0.6;
+  return mix(horizon, ground, saturate(-r.y * 5.0 + rough));
 }
 
 fn clearcoatShade(base: Surface, wp: vec3f, sh: f32, coat: f32) -> vec3f {
@@ -310,7 +322,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     for (var w = 0; w < 2; w++) {
       let az = select(-0.5, 0.5, w == 0) * c.p0.x;
       let dd = length(vec2f(lp.z - az, lp.y - wr));
-      if (dd < wr + 0.075 && ax > 0.8) { isBlack = true; }
+      // Only the arch undersides (downward-facing), not the fender skin.
+      if (dd < wr + 0.09 && ax > 0.7 && ln.y < -0.2) { isBlack = true; }
     }
   }
   if (isHead) {
@@ -370,9 +383,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   } else if (mat == 7u) {
     // Tire rubber, tread grooves on the tread face.
     let groove = step(0.8, fract(lp.x * 9.0 + 0.5));
-    s.albedo = vec3f(0.022 - 0.008 * groove);
-    s.rough = 0.9;
-    s.spec = 0.3;
+    s.albedo = vec3f(0.012, 0.012, 0.014) * (1.0 - 0.4 * groove);
+    s.rough = 0.8;
+    s.spec = 0.35;
   } else {
     // Rim: machined alloy with 5 spokes.
     let a = atan2(lp.z, lp.y);

@@ -13,8 +13,10 @@ fn linearDepth(d: f32) -> f32 {
 fn coc(depth: f32) -> f32 {
   let z = linearDepth(depth);
   let f = dp.x;
-  // Thin-lens-like CoC in pixels.
-  let c = dp.y * abs(z - f) / max(z, 0.1) * (f / (f + 1.0)) * 60.0;
+  // CoC ~ |1 - F/z| (thin lens, focal length << distance), with an in-focus
+  // zone of +-25% around the subject so the whole car stays sharp.
+  let e = abs(1.0 - f / max(z, 0.05));
+  let c = dp.y * 40.0 * max(e - 0.25, 0.0) / 0.75;
   return min(c, dp.z);
 }
 

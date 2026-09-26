@@ -479,13 +479,14 @@ export function buildCarBody(spec: CarSpec): MeshData {
       MAT_PAINT,
     );
   }
-  // Side mirrors on short stalks.
+  // Side mirrors: housing on an arm mounted at the A-pillar base.
   for (const sx of [-1, 1]) {
-    const x = sx * (hw + 0.1),
-      y = spec.belt + 0.1,
-      z = spec.wsBase - 0.15;
-    box(push, [x, y, z], [0.09, 0.06, 0.05], MAT_PAINT);
-    box(push, [sx * (hw - 0.02), y - 0.02, z], [0.05, 0.02, 0.02], MAT_TRIM);
+    const z = spec.wsBase - 0.18;
+    const wz = widthAt(z) * 0.95;
+    const y = spec.belt + 0.1;
+    box(push, [sx * (wz + 0.13), y, z - 0.02], [0.085, 0.055, 0.045], MAT_PAINT);
+    box(push, [sx * (wz + 0.13), y, z - 0.068], [0.075, 0.045, 0.004], MAT_CHROME);
+    box(push, [sx * (wz + 0.03), y - 0.035, z], [0.06, 0.015, 0.025], MAT_TRIM);
   }
   // License plates.
   box(push, [0, 0.42, -L / 2 + 0.03], [0.26, 0.065, 0.01], MAT_CHROME);

@@ -17,7 +17,7 @@ const dir = path.resolve(opt('--dir', 'screenshots'));
 const out = path.resolve(opt('--out', path.join(dir, 'contact.png')));
 const filter = args[0];
 const files = (await fs.readdir(dir))
-  .filter(f => f.endsWith('.png') && !f.startsWith('contact') && (!filter || filter.split(',').some(x => f.includes(x))))
+  .filter(f => f.endsWith('.png') && !f.startsWith('contact') && (!filter || filter.split(',').some(x => (x.startsWith('^') ? f.startsWith(x.slice(1)) : f.includes(x)))))
   .sort();
 const W = 640, H = 360;
 const cells = await Promise.all(files.map(async f => {
