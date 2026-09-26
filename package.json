@@ -13,7 +13,8 @@
     "lint": "gts lint",
     "fix": "gts fix",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && npm run lint && npm run build && npm run unit && npm run shoot"
+    "wgsl": "node test/wgsl-reserved.js",
+    "test": "npm run wgsl && npm run typecheck && npm run lint && npm run build && npm run unit && npm run shoot"
   },
   "license": "MIT",
   "devDependencies": {

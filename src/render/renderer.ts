@@ -536,15 +536,14 @@ export class Renderer {
       },
     });
     main.setBindGroup(0, this.frameBG);
+    main.setBindGroup(2, this.emptyBG);
     this.cars.draw(main);
     this.roadMesh!.draw(main);
     this.props.draw(main);
-    this.vegetation.draw(main);
+    this.vegetation.draw(main, this.emptyBG);
     if (!DEBUG.has('noterrain')) this.terrain.draw(main);
-    this.vegetation.drawWater(main);
     main.setPipeline(this.atmosphere.skyDrawPipe);
     main.draw(3);
-    this.vegetation.drawParticles(main);
     main.end();
 
     this.post.encode(

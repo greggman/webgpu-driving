@@ -1,4 +1,121 @@
 [
-  {"name": "country-chase", "params": {"biome": "country", "cam": "chase", "s": "1200"}},
-  {"name": "country-heli", "params": {"biome": "country", "cam": "helicopter", "s": "1200", "t": "2"}}
+ {
+  "name": "country-chase",
+  "params": {
+   "biome": "country",
+   "cam": "chase",
+   "s": "1500"
+  }
+ },
+ {
+  "name": "country-heli",
+  "params": {
+   "biome": "country",
+   "cam": "helicopter",
+   "s": "1500",
+   "t": "3"
+  }
+ },
+ {
+  "name": "desert-chase",
+  "params": {
+   "biome": "desert",
+   "cam": "chase",
+   "s": "1500"
+  }
+ },
+ {
+  "name": "desert-heli",
+  "params": {
+   "biome": "desert",
+   "cam": "helicopter",
+   "s": "1500",
+   "t": "3"
+  }
+ },
+ {
+  "name": "coast-chase",
+  "params": {
+   "biome": "coast",
+   "cam": "chase",
+   "s": "1500"
+  }
+ },
+ {
+  "name": "coast-heli",
+  "params": {
+   "biome": "coast",
+   "cam": "helicopter",
+   "s": "1500",
+   "t": "3"
+  }
+ },
+ {
+  "name": "forest-chase",
+  "params": {
+   "biome": "forest",
+   "cam": "chase",
+   "s": "1500"
+  }
+ },
+ {
+  "name": "forest-heli",
+  "params": {
+   "biome": "forest",
+   "cam": "helicopter",
+   "s": "1500",
+   "t": "3"
+  }
+ },
+ {
+  "name": "snow-chase",
+  "params": {
+   "biome": "snow",
+   "cam": "chase",
+   "s": "1500"
+  }
+ },
+ {
+  "name": "snow-heli",
+  "params": {
+   "biome": "snow",
+   "cam": "helicopter",
+   "s": "1500",
+   "t": "3"
+  }
+ },
+ {
+  "name": "lahonda-chase",
+  "params": {
+   "biome": "lahonda",
+   "cam": "chase",
+   "s": "1500"
+  }
+ },
+ {
+  "name": "lahonda-heli",
+  "params": {
+   "biome": "lahonda",
+   "cam": "helicopter",
+   "s": "1500",
+   "t": "3"
+  }
+ },
+ {
+  "name": "night-chase",
+  "params": {
+   "biome": "night",
+   "cam": "chase",
+   "s": "1500"
+  }
+ },
+ {
+  "name": "night-heli",
+  "params": {
+   "biome": "night",
+   "cam": "helicopter",
+   "s": "1500",
+   "t": "3"
+  }
+ }
 ]
