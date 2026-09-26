@@ -60,7 +60,9 @@ export interface Opening {
   kind: 'headlamp' | 'taillamp' | 'grille' | 'intake';
   end: 'front' | 'rear';
   outline: Array<[number, number]>;
-  mirror?: boolean;
+  // true: a copy at -x; 'merge': the outline (x >= 0, from the centre line
+  // round and back to it) joined with its mirror image into ONE opening.
+  mirror?: boolean | 'merge';
   depth?: number; // housing depth (m); default 0.04
   // Headlamp projector lenses: (x, y, radius), mirrored with the opening.
   projectors?: Array<[number, number, number]>;
@@ -853,30 +855,49 @@ function prepareOpenings(
 ): PreparedOpening[] {
   const out: PreparedOpening[] = [];
   for (const op of list) {
-    const sides = op.mirror ? [1, -1] : [1];
+    const sides = op.mirror === true ? [1, -1] : [1];
     for (const sx of sides) {
       const front = op.end === 'front';
       const endZ = front ? nose : tail;
       const dir = front ? 1 : -1; // outward along z
-      const outline = closedSpline(
-        op.outline.map(([x, y]) => [x * sx, y] as [number, number]),
-        72,
-      );
+      const src =
+        op.mirror === 'merge'
+          ? [
+              ...op.outline,
+              ...op.outline
+                .slice()
+                .reverse()
+                .filter(([x]) => Math.abs(x) > 1e-4)
+                .map(([x, y]) => [-x, y] as [number, number]),
+            ]
+          : op.outline.map(([x, y]) => [x * sx, y] as [number, number]);
+      const outline = closedSpline(src, op.mirror === 'merge' ? 120 : 72);
       // Skin surface z seen from the end at (x, y): the station where the
       // section just stops covering |x| (bisection), then the rake.
       const surfZ = (x: number, y: number): number => {
         let a = endZ - dir * 0.9,
           b = endZ;
-        if (skinX(a, y) < Math.abs(x)) return endZ - dir * 0.9;
+        // Beyond the body's silhouette: clamp onto it (no spikes).
+        const ax = Math.min(Math.abs(x), skinX(a, y) * 0.999);
         for (let it = 0; it < 26; ++it) {
           const m = (a + b) / 2;
-          if (skinX(m, y) >= Math.abs(x)) a = m;
+          if (skinX(m, y) >= ax) a = m;
           else b = m;
         }
         return rakeZ(a, x, y);
       };
       const depth = op.depth ?? 0.04;
-      const cover = offsetPoly(outline, 0.004);
+      // The skin is removed a little beyond the outline; a body-colour
+      // collar on the skin covers that (grid-shaped) cut edge.
+      const cover = offsetPoly(outline, 0.02);
+      const surfN = (x: number, y: number): number[] => {
+        const e = 0.004;
+        const fx = (surfZ(x + e, y) - surfZ(x - e, y)) / (2 * e);
+        const fy = (surfZ(x, y + e) - surfZ(x, y - e)) / (2 * e);
+        const n = [-fx * dir, -fy * dir, dir];
+        const l = Math.hypot(n[0], n[1], n[2]);
+        return n.map(v => v / l);
+      };
       let reach = 0;
       for (const [x, y] of outline)
         reach = Math.max(reach, Math.abs(endZ - surfZ(x, y)));
@@ -921,9 +942,17 @@ function prepareOpenings(
           };
           // Rim: a thin dark gap on the skin, then the housing wall down
           // to the back.
-          const rimOut = offsetPoly(outline, 0.008);
+          const rimOut = offsetPoly(outline, 0.006);
+          const collar = offsetPoly(outline, 0.035);
+          const collarMat = front ? MAT_FRONT : MAT_REAR;
           const N = outline.length;
           for (let i = 0; i < N; ++i) {
+            // Body-colour collar with the skin's own normals.
+            const i3 = (i + 1) % N;
+            const cq = [collar[i], collar[i3], rimOut[i3], rimOut[i]];
+            const pts = cq.map(([u, v]) => P(u, v, -0.0006));
+            const ns = cq.map(([u, v]) => surfN(u, v));
+            for (const k of [0, 1, 2, 0, 2, 3]) push(pts[k], ns[k], collarMat);
             const i2 = (i + 1) % N;
             const [ax, ay] = outline[i],
               [bx, by] = outline[i2];
