@@ -378,8 +378,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Main grille: shape per kind, chrome / gloss surround.
     if (lp.z > halfL - 0.35 && ln.z > 0.25) {
                                     // Trapezoid narrowing toward the bottom (Accord / Camry).
-      var y0 = -0.25; var y1 = 0.0; var wt = 0.5; var wb = 0.38;
-      cell = 0u;
+            var y0 = -0.36; var y1 = 0.0; var wt = 0.5; var wb = 0.4;
+      cell = 1u;
       if (style == 1u) { y0 = -0.07; y1 = 0.0; wt = 0.4; wb = 0.36; }
       if (style == 2u) { y0 = -0.26; y1 = 0.05; wt = 0.46; wb = 0.46; cell = 1u; }
       if (style == 3u) { y0 = -0.3; y1 = -0.1; wt = 0.5; wb = 0.62; cell = 1u; }
@@ -438,6 +438,11 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
                         // Wraparound L clusters (vertical outboard, horizontal on top) and a
         // thin centre bar joining them.
         lamp = (ax > 0.55 && ax < 0.99 && dy > 0.0 && dy < 0.11) || (ax > 0.84 && ax < 0.99 && dy > -0.07) || (ax <= 0.58 && abs(dy - 0.08) < 0.008);
+        if (ln.z > -0.1) {
+          // On the rear quarter the lamp tapers to a point as it wraps.
+          let fwd = lp.z + halfL;
+          lamp = fwd < 0.22 && dy < 0.11 && dy > -0.02 + fwd * 0.5;
+        }
                 // Thin gloss-black surround only.
         bezel = (ax > 0.53 && dy > -0.012 && dy < 0.125) || (ax > 0.82 && dy > -0.085 && dy < 0.125);
       }
@@ -476,8 +481,16 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     let bowl = 1.0 - smoothstep(0.03, 0.06, abs(dy - 0.01));
         s.albedo = mix(s.albedo, vec3f(0.8), bowl * 0.7);
     s.albedo = mix(s.albedo, vec3f(0.02), smoothstep(0.03, 0.05, dy));
-        s.albedo = mix(s.albedo, vec3f(0.25), ring);
+            s.albedo = mix(s.albedo, vec3f(0.25), ring);
     s.rough = mix(s.rough, 0.06, ring);
+    if (style == 0u) {
+      // Sedan: dark housing, glassy projector lenses with a chrome ring.
+      s.albedo = mix(vec3f(0.05), vec3f(0.75), ring);
+      s.metal = 0.9;
+      s.rough = mix(0.12, 0.05, ring);
+      s.albedo = mix(s.albedo, vec3f(0.015), lens);
+      s.rough = mix(s.rough, 0.02, lens);
+    }
     let hu = (ax - select(0.5, 0.46, style == 0u)) / select(0.42, 0.46, style == 0u);
     var drl = (1.0 - smoothstep(0.004, 0.008, abs(dy + 0.035))) * step(0.03, hu) * step(hu, 1.05);
     if (style == 2u || style == 5u) {
@@ -585,8 +598,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     
     if (ln.z < -0.3) {
       // Trunk / tailgate opening on the rear face.
-                  // Body-colour bumper crease.
-      seam = min(seam, abs(lp.y - (ty - 0.42)) * 0.5);
+                  
       // The trunk lid shuts just above the lamps.
       if (ax < 0.8) { seam = min(seam, abs(lp.y - (ty + 0.13))); }
       if (lp.y > ty + 0.13) { seam = min(seam, abs(ax - 0.8) * halfW); }

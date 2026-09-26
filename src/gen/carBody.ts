@@ -460,6 +460,8 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       if (last) return c.chromeDLO ? MAT_CHROME : MAT_TRIM; // frame / drip rail
       const ql = cab.quarterLight;
       if (ql && z > ql[0] && z < ql[1]) return MAT_GLASS;
+      // Divider between the rear door glass and the quarter light.
+      if (ql && z <= cab.sideRear && z >= ql[1]) return MAT_TRIM;
       if (z > cab.sideFront || z < cab.sideRear) return MAT_PAINT; // A / C pillars
       for (const pz of cab.pillars)
         if (near(z, pz, cab.pillarWidth / 2)) return MAT_TRIM;
@@ -582,13 +584,14 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   // ---- Details ----
   // Mirrors: rounded housings on stalks from the door sail.
   for (const sx of [-1, 1]) {
-    const z = cab.windscreenBase - 0.16;
+    // On the door sail, just behind the A-pillar base.
+    const z = cab.windscreenBase - 0.28;
     const wz = g.beltX(z);
-    const y = g.belt(z) + 0.1;
-    const mw = 0.2,
-      mh = 0.13,
-      md = 0.09;
-    const x0 = sx * (wz + 0.1);
+    const y = g.belt(z) + 0.07;
+    const mw = 0.17,
+      mh = 0.1,
+      md = 0.08;
+    const x0 = sx * (wz + 0.085);
     const mg: P3[][] = [];
     for (let a = 0; a <= 10; ++a) {
       const t = a / 10;
