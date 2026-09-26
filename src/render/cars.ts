@@ -55,6 +55,7 @@ export class CarRenderer {
   private bodyShadowPipe!: GPURenderPipeline;
   private wheelShadowPipe!: GPURenderPipeline;
   private glassPipe!: GPURenderPipeline;
+  private blobPipe!: GPURenderPipeline;
   readonly layout: GPUBindGroupLayout;
 
   constructor(private device: GPUDevice) {
@@ -178,43 +179,64 @@ export class CarRenderer {
         },
         assign,
       );
-    deferRenderPipeline(
-      d,
-      {
-        label: 'car-windshield',
-        layout,
-        vertex: {module, entryPoint: 'vsBody', buffers},
-        fragment: {
-          module,
-          entryPoint: 'fsGlass',
-          targets: [
-            {
-              format: GBUFFER_TARGETS[0].format,
-              blend: {
-                color: {
-                  srcFactor: 'one',
-                  dstFactor: 'one-minus-src-alpha',
-                  operation: 'add',
-                },
-                alpha: {
-                  srcFactor: 'one',
-                  dstFactor: 'one-minus-src-alpha',
-                  operation: 'add',
+    const blended = (
+      label: string,
+      vsEntry: string,
+      fsEntry: string,
+      vbufs: GPUVertexBufferLayout[],
+      assign: (p: GPURenderPipeline) => void,
+    ) =>
+      deferRenderPipeline(
+        d,
+        {
+          label,
+          layout,
+          vertex: {module, entryPoint: vsEntry, buffers: vbufs},
+          fragment: {
+            module,
+            entryPoint: fsEntry,
+            targets: [
+              {
+                format: GBUFFER_TARGETS[0].format,
+                blend: {
+                  color: {
+                    srcFactor: 'one',
+                    dstFactor: 'one-minus-src-alpha',
+                    operation: 'add',
+                  },
+                  alpha: {
+                    srcFactor: 'one',
+                    dstFactor: 'one-minus-src-alpha',
+                    operation: 'add',
+                  },
                 },
               },
-            },
-            {format: GBUFFER_TARGETS[1].format, writeMask: 0},
-            {format: GBUFFER_TARGETS[2].format, writeMask: 0},
-          ],
+              {format: GBUFFER_TARGETS[1].format, writeMask: 0},
+              {format: GBUFFER_TARGETS[2].format, writeMask: 0},
+            ],
+          },
+          primitive: {topology: 'triangle-list', cullMode: 'none'},
+          depthStencil: {
+            format: DEPTH_FORMAT,
+            depthWriteEnabled: false,
+            depthCompare: 'greater',
+          },
         },
-        primitive: {topology: 'triangle-list', cullMode: 'none'},
-        depthStencil: {
-          format: DEPTH_FORMAT,
-          depthWriteEnabled: false,
-          depthCompare: 'greater',
-        },
-      },
+        assign,
+      );
+    blended(
+      'car-glass',
+      'vsBody',
+      'fsGlass',
+      buffers,
       p => (this.glassPipe = p),
+    );
+    blended(
+      'car-contact-shadow',
+      'vsBlob',
+      'fsBlob',
+      [],
+      p => (this.blobPipe = p),
     );
     main('car-body', 'vsBody', p => (this.bodyPipe = p));
     main('car-wheel', 'vsWheel', p => (this.wheelPipe = p));
@@ -302,8 +324,11 @@ export class CarRenderer {
   // for the interior camera), blended over the cabins.
   drawGlass(pass: GPURenderPassEncoder) {
     if (!this.total) return;
-    pass.setPipeline(this.glassPipe);
     pass.setBindGroup(1, this.bg);
+    // Soft contact shadows (ambient occlusion) under each car.
+    pass.setPipeline(this.blobPipe);
+    pass.draw(6, this.total);
+    pass.setPipeline(this.glassPipe);
     for (const r of this.ranges) {
       const m = this.meshes.get(r.kind)!;
       pass.setVertexBuffer(0, m.buf);

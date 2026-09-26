@@ -545,9 +545,11 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       let letters = step(0.5, fract(ang * 40.0 / 6.2831853)) * step(0.7, fract(ang * 3.0));
       s.albedo = vec3f(band * letters * 0.02);
     }
-    s.albedo = vec3f(0.028) * (1.0 - 0.6 * dark) + s.albedo;
-    s.rough = 0.85;
+    s.albedo = vec3f(0.016) * (1.0 - 0.6 * dark) + s.albedo;
+        s.rough = 0.85;
     s.spec = 0.25;
+    // Rubber sits partly in the arch shadow.
+    s.ao = 0.6;
   } else if (mat == 20u) {
     // Licence plate: white retro-reflective sheet, dark border and characters.
     let py = lp.y - (select(ty, hy, lp.z > 0.0) - 0.3);
@@ -706,5 +708,42 @@ fn fsGlass(in: VOut) -> GlassOut {
   col = col * (1.0 - wiper) + vec3f(0.01) * wiper;
   a = a + wiper * (1.0 - a);
   o.color = vec4f(col, a);
+  return o;
+}
+
+// ---- Contact shadow: a soft darkening under the car (sky occlusion the
+// shadow maps don't capture), blended over the lit road. ----
+struct BlobOut {
+  @builtin(position) pos: vec4f,
+  @location(0) uv: vec2f,
+  @location(1) @interpolate(flat) car: u32,
+};
+
+@vertex
+fn vsBlob(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> BlobOut {
+  let c = cars[ii];
+  let corners = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0));
+  let q = corners[vi];
+  let lp = vec3f(q.x * (c.p2.y + 0.25), 0.03, q.y * (c.p2.x + 0.3));
+  var o: BlobOut;
+  o.pos = F.viewProj * (c.model * vec4f(lp, 1.0));
+  o.uv = q;
+  o.car = ii;
+  return o;
+}
+
+@fragment
+fn fsBlob(in: BlobOut) -> GlassOut {
+  let c = cars[in.car];
+  // Rounded-rectangle distance in metres, falling off over ~0.3 m.
+  let half = vec2f(c.p2.y + 0.25, c.p2.x + 0.3);
+  let p = abs(in.uv) * half;
+  let inner = vec2f(c.p2.y - 0.1, c.p2.x - 0.15);
+  let d = length(max(p - inner, vec2f(0.0)));
+  let a = 0.6 * (1.0 - smoothstep(0.0, 0.33, d));
+  var o: GlassOut;
+  o.color = vec4f(0.0, 0.0, 0.0, a);
+  o.velocity = vec2f(0.0);
+  o.normal = vec4f(0.0);
   return o;
 }
