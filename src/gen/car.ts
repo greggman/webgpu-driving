@@ -439,9 +439,13 @@ export function emitGrid(
   mat: (i: number, j: number) => number,
   outward: (p: P3) => P3,
   closedRing: boolean,
+  // One orientation for the whole grid (decided at [0][0]) instead of per
+  // vertex: for folded surfaces (e.g. a rolled lip) where "outward" flips.
+  globalSign = false,
 ) {
   const NS = grid.length,
     NR = grid[0].length;
+  let sign = 0;
   const normals: P3[][] = [];
   for (let i = 0; i < NS; ++i) {
     const row: P3[] = [];
@@ -461,9 +465,17 @@ export function emitGrid(
       ];
       const l = Math.hypot(n[0], n[1], n[2]) || 1;
       n = [n[0] / l, n[1] / l, n[2] / l];
-      const o = outward(grid[i][j]);
-      if (n[0] * o[0] + n[1] * o[1] + n[2] * o[2] < 0)
-        n = [-n[0], -n[1], -n[2]];
+      if (globalSign) {
+        if (sign === 0) {
+          const o = outward(grid[i][j]);
+          sign = n[0] * o[0] + n[1] * o[1] + n[2] * o[2] < 0 ? -1 : 1;
+        }
+        n = [n[0] * sign, n[1] * sign, n[2] * sign];
+      } else {
+        const o = outward(grid[i][j]);
+        if (n[0] * o[0] + n[1] * o[1] + n[2] * o[2] < 0)
+          n = [-n[0], -n[1], -n[2]];
+      }
       row.push(n);
     }
     normals.push(row);

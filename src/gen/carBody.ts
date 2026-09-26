@@ -347,20 +347,11 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     .filter(z => z >= tail && z <= nose)
     .sort((a, b) => b - a);
 
-  // Wheel arches: pull the outer skin up onto the arch circle (this trims
-  // the opening; inboard the skin stays, forming the well's inner wall).
+  // Wheel arches: skin faces inside the arch opening are dropped (see
+  // mat()) and a flared, rolled arch lip (below) covers the cut edge.
+  // Inboard of xIn the skin stays, forming the well's inner wall.
   const xIn = sp.track / 2 - 0.2;
-  const trimArch = (x: number, y: number, z: number): number => {
-    for (const az of axles) {
-      const dz = z - az;
-      if (Math.abs(dz) >= archR) continue;
-      const yA = R + Math.sqrt(archR * archR - dz * dz);
-      if (y >= yA) continue;
-      const w = Math.min(1, Math.max(0, (Math.abs(x) - xIn) / 0.015));
-      y += (yA - y) * w;
-    }
-    return y;
-  };
+  const trimArch = (_x: number, y: number, _z: number): number => y;
 
   const grid: P3[][] = [];
   let spans: number[] = [];
@@ -419,6 +410,21 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     const k = j < H ? j : RN - 2 - j;
     const s = spans[Math.min(k, H - 1)];
     const first = k === spanStart[s];
+    // Arch openings: drop the outer skin inside the arch (the lip covers
+    // the edge).
+    {
+      const q = [
+        grid[i][j],
+        grid[i + 1][j],
+        grid[i][j + 1],
+        grid[i + 1][j + 1],
+      ];
+      const cx = Math.abs(q[0][0] + q[1][0] + q[2][0] + q[3][0]) / 4,
+        cy = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4,
+        cz = (q[0][2] + q[1][2] + q[2][2] + q[3][2]) / 4;
+      for (const az of axles)
+        if (cx > xIn && Math.hypot(cz - az, cy - R) < archR + 0.075) return -1;
+    }
     if (s <= 1) return MAT_UNDER;
     // The skin left inboard of a trimmed arch is the wheel well's wall.
     {
@@ -485,12 +491,12 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   // Wheel-well liners (dark half tubes) closing the trimmed arches.
   for (const az of axles) {
     for (const sx of [-1, 1]) {
-      const rad = archR + 0.005;
-      const x0 = sx * 0.2,
+      const rad = archR + 0.015; // outside the lip's roll, inside its channel
+      const x0 = sx * xIn,
         x1 = sx * width(az) * 0.995; // out to the lip (no gap to see through)
       const lg: P3[][] = [];
-      for (let a = 0; a <= 16; ++a) {
-        const th = ((-25 + (a / 16) * 230) * Math.PI) / 180;
+      for (let a = 0; a <= 64; ++a) {
+        const th = ((-25 + (a / 64) * 230) * Math.PI) / 180;
         lg.push([
           [x0, R + Math.sin(th) * rad, az + Math.cos(th) * rad],
           [x1, R + Math.sin(th) * rad, az + Math.cos(th) * rad],
@@ -509,6 +515,67 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         push(lg[a][0], cn, MAT_UNDER);
         push(lg[a + 1][0], cn, MAT_UNDER);
       }
+    }
+  }
+
+  // Arch lips: a flange following the arch circle, flared out from the
+  // skin and rolled under into the well (it covers the trimmed edge).
+  const skinX = (z: number, y: number): number => {
+    const {p} = sectionHalf(z);
+    let best = 0;
+    for (let k = 0; k + 1 < p.length; ++k) {
+      const a = p[k],
+        b = p[k + 1];
+      if ((a[1] - y) * (b[1] - y) <= 0 && a[1] !== b[1]) {
+        const t = (y - a[1]) / (b[1] - a[1]);
+        best = Math.max(best, a[0] + (b[0] - a[0]) * t);
+      }
+    }
+    return best;
+  };
+  // Profile (radius, x offset from the skin): on the skin, flare out, roll
+  // under, then back up inside past the skin cut (a closed channel, so the
+  // cut edge is never visible).
+  const LIP: Array<[number, number]> = [
+    [archR + 0.095, 0.0],
+    [archR + 0.055, 0.014],
+    [archR + 0.02, 0.012],
+    [archR, -0.012],
+    [archR - 0.004, -0.06],
+    [archR + 0.11, -0.06],
+  ];
+  for (const az of axles) {
+    // The lip ends at the local body bottom on each side of the arch.
+    const angAt = (zz: number) =>
+      Math.asin(
+        Math.min(
+          1,
+          Math.max(-1, (Math.max(rocker(zz), g.bottom(zz)) + 0.01 - R) / archR),
+        ),
+      );
+    const th0 = angAt(az + archR),
+      th1 = Math.PI - angAt(az - archR);
+    for (const sx of [-1, 1]) {
+      const lg: P3[][] = [];
+      const N = 36;
+      for (let a = 0; a <= N; ++a) {
+        const th = th0 + ((th1 - th0) * a) / N;
+        const row: P3[] = [];
+        for (const [r, dx] of LIP) {
+          const z = az + Math.cos(th) * r,
+            y = R + Math.sin(th) * r;
+          row.push([sx * Math.max(skinX(z, y) + dx, xIn), y, z]);
+        }
+        lg.push(row);
+      }
+      emitGrid(
+        push,
+        lg,
+        (_i, j) => (j >= 3 ? MAT_UNDER : MAT_PAINT),
+        () => [sx, 0, 0],
+        false,
+        true,
+      );
     }
   }
 
