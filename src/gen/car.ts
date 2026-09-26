@@ -146,7 +146,7 @@ export function carSpec(kind: CarKind): CarSpec {
       return spec({
         kind,
         axleShift: 0.1,
-        boxy: 5,
+        boxy: 6,
         cladding: false,
         quarter: true,
         flare: 0.025,
@@ -160,12 +160,12 @@ export function carSpec(kind: CarKind): CarSpec {
         hoodY: 0.95,
         beltF: 0.97,
         beltR: 1.02,
-        deckY: 1.06,
+        deckY: 1.03,
         tailY: 1.0,
         roofY: 1.44,
         roofW: 0.78,
-        wsBase: 1.02,
-        roofFront: 0.08,
+        wsBase: 1.18,
+        roofFront: 0.2,
         roofBack: -0.64,
         rearBase: -1.52,
         sideRear: -1.2,
@@ -622,8 +622,8 @@ export function buildCarBody(sp: CarSpec): MeshData {
         // Hood: centre lowered between two creases running to the lamps.
         const xr = x / w;
         const f = smooth(sp.wsBase, sp.wsBase + 0.15, z);
-        y -= 0.012 * f * Math.max(0, 1 - Math.pow(xr / 0.6, 2));
-        y += 0.004 * f * Math.exp(-Math.pow((xr - 0.6) / 0.07, 2));
+        y -= 0.03 * f * Math.max(0, 1 - Math.pow(xr / 0.65, 2));
+        y += 0.012 * f * Math.exp(-Math.pow((xr - 0.68) / 0.06, 2));
       }
       half.push([x, y]);
     }

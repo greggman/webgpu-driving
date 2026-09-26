@@ -403,11 +403,11 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
         recess = smoothstep(0.0, 0.04, min(gy - li0, (lw - gx) * halfW));
       }
     }
-    if (lp.z > halfL - 0.4 && gy < -0.44) { part = 4u; }
+        if (lp.z > halfL - 0.4 && gy < -0.44 && ln.z > 0.35) { part = 4u; }
     // Fog lamp pods in the bumper corners.
     if (style != 3u && lp.z > halfL - 0.45 && ln.z > 0.2) {
             // Vertical black corner blades (fog lamps sit inside, lit at night).
-      if (abs(ax - 0.84) * halfW < 0.07 && gy > -0.44 && gy < -0.26) {
+            if (abs(ax - 0.84) * halfW < 0.07 && gy > -0.44 && gy < -0.26 && ln.z > 0.35) {
         part = select(4u, 6u, lightsOn > 0.5 && abs(gy + 0.35) < 0.02);
       }
     }
@@ -433,7 +433,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       if (lamp) { part = 2u; } else if (bezel) { part = 4u; }
     }
     // Rear diffuser with exhaust tips.
-        if (lp.z < -halfL + 0.4 && lp.y < ty - 0.4) {
+                if (lp.z < -halfL + 0.4 && lp.y < ty - 0.5) {
       part = 4u;
       if (style != 2u && style != 5u && ln.z < -0.2) {
                 // Rectangular black exhaust finishers.
@@ -448,9 +448,10 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // LED daytime-running-light signature along the lower / outer edge.
     let px = ax * halfW;
     let dy = gy;
-    s.albedo = vec3f(0.03);
+        // Bright reflector housing behind a clear cover, framed by a black brow.
+    s.albedo = vec3f(0.45);
     s.metal = 1.0;
-    s.rough = 0.15;
+    s.rough = 0.2;
     coat = 1.0;
     var lens = 0.0;
     var ring = 0.0;
@@ -462,7 +463,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     }
     // Reflector bowls behind the lenses.
     let bowl = 1.0 - smoothstep(0.03, 0.06, abs(dy - 0.01));
-    s.albedo = mix(s.albedo, vec3f(0.35), bowl * 0.5);
+        s.albedo = mix(s.albedo, vec3f(0.8), bowl * 0.7);
+    s.albedo = mix(s.albedo, vec3f(0.02), smoothstep(0.03, 0.05, dy));
         s.albedo = mix(s.albedo, vec3f(0.25), ring);
     s.rough = mix(s.rough, 0.06, ring);
     let hu = (ax - select(0.5, 0.46, style == 0u)) / select(0.42, 0.46, style == 0u);
@@ -508,12 +510,13 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       let f = abs(fract(q) - 0.5);
       wall = smoothstep(0.36, 0.42, max(f.x, f.y));
     } else {
-      let freq = select(30.0, 9.0, style == 5u);
+            let freq = select(select(30.0, 18.0, style == 0u), 9.0, style == 5u);
       wall = smoothstep(select(0.3, 0.22, style == 5u), select(0.4, 0.3, style == 5u), abs(fract(lp.y * freq) - 0.5));
     }
-    let bright = select(0.06, 0.5, cell == 0u || cell == 2u);
+        var bright = select(0.06, 0.5, cell == 0u || cell == 2u);
+    if (style == 0u) { bright = 0.1; } // gloss black on the sedan
     s.albedo = mix(vec3f(0.003), vec3f(bright), wall);
-    s.metal = select(0.0, 1.0, cell != 1u) * wall;
+        s.metal = select(select(0.0, 1.0, cell != 1u) * wall, 0.0, style == 0u);
     s.rough = mix(0.8, 0.2, wall);
     s.ao = mix(0.4, 1.0, recess);
   } else if (part == 5u) {
@@ -571,7 +574,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     
     if (ln.z < -0.3) {
       // Trunk / tailgate opening on the rear face.
-            // The trunk lid shuts just above the lamps.
+                  // Body-colour bumper crease.
+      seam = min(seam, abs(lp.y - (ty - 0.42)) * 0.5);
+      // The trunk lid shuts just above the lamps.
       if (ax < 0.8) { seam = min(seam, abs(lp.y - (ty + 0.13))); }
       if (lp.y > ty + 0.13) { seam = min(seam, abs(ax - 0.8) * halfW); }
       // Recessed plate pocket.
