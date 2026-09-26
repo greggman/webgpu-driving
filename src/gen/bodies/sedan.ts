@@ -168,6 +168,8 @@ export const SEDAN_BODY: BodyCurves = {
     pillars: [-0.12],
     pillarWidth: 0.13,
     quarterLight: [-1.34, -1.14],
+    aPillarWidth: 0.09,
+    frit: [0.05, 0.03],
   },
   chromeSill: true,
   chromeDLO: true,

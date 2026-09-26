@@ -118,7 +118,12 @@ export interface BodyCurves {
     sideRear: number; // z where the side glass ends (C pillar)
     pillars: number[]; // z of the B (and other) pillars
     pillarWidth: number;
-    quarterLight?: [number, number]; // z range of a small window behind the C pillar
+        quarterLight?: [number, number]; // z range of a small window behind the C pillar
+    // Painted A / C pillar band across the top of the windscreen and
+    // backlight edges (m, measured inboard from the rail).
+    aPillarWidth?: number;
+    // Black ceramic frit band: [header / trailing edge, pillar sides] (m).
+    frit?: [number, number];
   };
   chromeSill?: boolean; // thin chrome window seal
 }
@@ -180,7 +185,8 @@ const asCurve = (v: Knots | number) =>
 function spline2(
   pts: Array<[number, number]>,
   counts: number[],
-  sharp: number[] = [],
+    sharp: number[] = [],
+  uAt: Array<number[] | undefined> = [],
 ): {p: Array<[number, number]>; span: number[]} {
   // Hermite spline with Catmull-Rom tangents over a centripetal
   // parameterisation (no cusps or loops). `sharp[i]` (0..1) shrinks the
@@ -218,7 +224,8 @@ function spline2(
     const h = t[s + 2] - t[s + 1];
     const cnt = counts[s];
     for (let q = 0; q < cnt; ++q) {
-      const u = q / cnt;
+            // Sample parameters: uniform unless the span has its own list.
+      const u = uAt[s]?.[q] ?? q / cnt;
       const u2 = u * u,
         u3 = u2 * u;
       const h00 = 2 * u3 - 3 * u2 + 1,
@@ -294,8 +301,10 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     beltIn = asCurve(c.beltIn),
     railIn = asCurve(c.railIn);
   const cab = c.cabin;
-  const inCabin = (z: number) =>
+    const inCabin = (z: number) =>
     z > cab.rearGlassBase && z < cab.windscreenBase;
+    const pillarW = cab.aPillarWidth ?? 0.06;
+  const fritW = cab.frit ?? [0, 0];
 
   // Section half (x >= 0) through the character lines at z.
   const sectionHalf = (z: number) => {
@@ -347,7 +356,16 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       hoodPt,
       [0, tp + dome],
     ];
-    const cr = c.creases ?? {};
+        const cr = c.creases ?? {};
+    // The rail -> roof span puts rows at the pillar band and frit edges.
+    const railLen = Math.max(Math.hypot(rx - hoodPt[0], ry - hoodPt[1]), 0.05);
+    const a = Math.min(pillarW / railLen, 0.4),
+      b = Math.min(a + fritW[1] / railLen, 0.55);
+    const n6 = SPAN_COUNTS[6];
+        const u6 = fritW[1] > 0 ? [0, a, b] : [0, a];
+    const e = u6[u6.length - 1],
+      rest = n6 - u6.length + 1;
+    for (let q = 1; q < rest; ++q) u6.push(e + ((1 - e) * q) / rest);
     const sp2 = spline2(pts, SPAN_COUNTS, [
       0,
       0,
@@ -356,8 +374,9 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       cr.shoulder ?? 0,
       cr.belt ?? 0,
       0,
-      hoodCrease,
-    ]);
+            hoodCrease,
+    ],
+    [, , , , , , u6]);
     // Door panel bow: a gentle outward belly between door line and
     // shoulder (a highlight gradient instead of a flat band).
     if (c.doorBow) {
@@ -386,7 +405,10 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   for (const az of axles)
     for (let q = 0; q <= 40; ++q)
       zs.push(az + (archR + 0.06) * ((q / 40) * 2 - 1));
-  zs.push(nose, tail);
+    zs.push(nose, tail);
+  // Rows at the windscreen header / backlight frit edges.
+  zs.push(cab.roofFront, cab.roofBack);
+  if (fritW[0] > 0) zs.push(cab.roofFront + fritW[0], cab.roofBack - fritW[0]);
   const Z = [...new Set(zs.map(z => Math.round(z * 1e4) / 1e4))]
     .filter(z => z >= tail && z <= nose)
     .sort((a, b) => b - a);
@@ -547,7 +569,15 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     const ws = z > cab.roofFront && z < cab.windscreenBase;
     const back = z < cab.roofBack && z > cab.rearGlassBase;
     if (ws || back) {
-      if (s === 6 && first) return MAT_PAINT; // A / C pillar edge
+            if (s === 6 && first) return MAT_PAINT; // A / C pillar band
+      // Black frit along the pillars and across the header / trailing edge.
+      if (fritW[1] > 0 && s === 6 && k === spanStart[6] + 1) return MAT_TRIM;
+      if (
+        fritW[0] > 0 &&
+        ((ws && z < cab.roofFront + fritW[0]) ||
+          (back && z > cab.roofBack - fritW[0]))
+      )
+        return MAT_TRIM;
       if (
         near(z, cab.windscreenBase, 0.035) ||
         near(z, cab.rearGlassBase, 0.035)
