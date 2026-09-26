@@ -93,7 +93,8 @@ fn vegMaterial(mat: u32, uv: vec2f, tint: f32, localPos: vec3f) -> VegMat {
     var c = foliage * (0.85 + 0.5 * t);
     c = mix(c, c * vec3f(1.25, 1.15, 0.6), saturate(t * 1.5));   // yellowish variation
     m.albedo = c;
-    m.rough = 0.65;
+    m.rough = 0.82;
+    m.spec = 0.35;
     m.sss = 0.6;
     if (mat == 2u) {
       m.albedo = c * vec3f(0.62, 0.78, 0.72);

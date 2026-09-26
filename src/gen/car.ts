@@ -298,7 +298,8 @@ export function buildCarBody(spec: CarSpec): MeshData {
     const bed =
       spec.bedFront !== undefined && z < spec.bedFront && z > -L / 2 + 0.15;
     if (bed) top = spec.belt - 0.02;
-    const bottom0 = Math.min(bottomAt(z), top - 0.12);
+    // Keep a real fender above the arch (the tyre tucks under it).
+    const bottom0 = Math.min(bottomAt(z), top - 0.2);
     const midY = (bottom0 + Math.min(top, spec.belt)) / 2;
     // Pillow the ends toward the mid-height of the lower body.
     const yb = midY + (bottom0 - midY) * pf;

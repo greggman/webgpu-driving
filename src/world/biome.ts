@@ -182,7 +182,7 @@ const baseSky: Sky = {
   timeOfDay: 17.2,
   sunAzimuth: 35,
   turbidity: 1,
-  clouds: 0.35,
+  clouds: 0.48,
   cloudScale: 1,
   fogDensity: 0.00002,
   fogHeight: 300,
