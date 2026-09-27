@@ -1,0 +1,6 @@
+[
+  {"name": "storm-chase", "params": {"biome": "arizona", "cam": "chase", "s": "1500", "debug": "lightning"}},
+  {"name": "storm-driver", "params": {"biome": "arizona", "cam": "interior", "s": "1500", "debug": "lightning"}},
+  {"name": "storm-car", "params": {"biome": "arizona", "showroom": "1", "car": "sedan", "paint": "red", "view": "front34", "s": "1500"}},
+  {"name": "storm-car-close", "params": {"biome": "arizona", "showroom": "1", "car": "sedan", "paint": "red", "view": "corner", "s": "1500"}}
+]

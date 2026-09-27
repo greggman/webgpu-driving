@@ -243,7 +243,9 @@ fn fs(in: VOut) -> GBufferOut {
     let l = F.sun.xyz;
     let h = normalize(v + l);
         let glint = D_GGX(saturate(dot(nCoat, h)), 0.01) * V_SmithGGX(max(nv, 1e-3), saturate(dot(nCoat, l)), 0.01) * fres;
-    let refl = envRadiance(r, 0.03) * fres + F.sunColor.rgb * min(glint, 400.0) * sh * saturate(dot(nCoat, l)) + localLights(w, wp, v);
+        // (+ the lightning bolt mirrored in the water, smeared by ripples)
+    let refl = envRadiance(r, 0.03) * fres + F.sunColor.rgb * min(glint, 400.0) * sh * saturate(dot(nCoat, l)) + localLights(w, wp, v)
+      + lightningBolt(r, 10.0) * fres;
     col = col * (1.0 - fres * coat) + refl * coat;
     // Mark the coat for screen-space reflections (roughness < 0.09).
     gbRough = mix(0.09, 0.02, coat);

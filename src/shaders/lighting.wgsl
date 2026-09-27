@@ -298,3 +298,21 @@ fn gbuffer(col: vec3f, worldPos: vec3f, prevWorldPos: vec3f, n: vec3f, rough: f3
   o.normal = vec4f(n * 0.5 + 0.5, rough);
   return o;
 }
+
+// Lightning bolt from the cloud base down to the horizon, seen along dir.
+// `widen` > 1 blurs it sideways (its reflection in rippled water: a
+// broad bright streak).
+fn lightningBolt(dir: vec3f, widen: f32) -> vec3f {
+  let flash = F.weather2.y;
+  if (flash <= 0.02 || dir.y <= -0.01 || dir.y >= 0.32) { return vec3f(0.0); }
+  let az = atan2(dir.x, dir.z);
+  let az0 = atan2(F.weather2.z, F.weather2.w);
+  let seed = floor(F.cam.w / 3.0);
+  let e = dir.y;
+  let wiggle = (vnoise(vec2f(e * 14.0, seed)) - 0.5) * 0.05 + (vnoise(vec2f(e * 60.0, seed + 7.0)) - 0.5) * 0.012;
+  var da = az - (az0 + wiggle);
+  da = da - 6.2831853 * round(da / 6.2831853);
+  let core = (1.0 - smoothstep(0.0006 * widen, 0.0018 * widen, abs(da))) / widen;
+  let glow = exp(-abs(da) * 120.0 / widen) * 0.25;
+  return LIGHTNING_COLOR * flash * (core * 400.0 + glow * 40.0) * smoothstep(0.32, 0.26, e);
+}
