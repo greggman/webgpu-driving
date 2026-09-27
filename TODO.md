@@ -23,3 +23,12 @@
 [ ] The hud message about 1-7 for biomes is out of date. 
 
 [ ] The helicopter camera slowly gets ahead of the vehicle and then it stays that way and the vehicle is off the screen. Can we fix that?
+
+[ ] In the arizona rain, the lighting is not reflected in the road
+
+    if it's easy to do we should do that.
+
+[ ] In the arizona rain, the cars don't look wet, nor does it look like they are being rained on.
+
+    Can we add some effect to the surface of the cars/windows so from outside they look like they
+    are being rained on. That scene in general is not too heavy I think.

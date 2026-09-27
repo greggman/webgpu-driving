@@ -2,7 +2,7 @@
 // from the left with environment, scene, camera, graphics and interface
 // options. Graphics/interface choices persist in localStorage.
 import type {App} from '../app';
-import {BIOMES, BIOME_ORDER, BiomeId} from '../world/biome';
+import {BIOMES, BIOME_ORDER, BiomeId, envKeys} from '../world/biome';
 import {SHOT_KINDS, ShotKind} from '../camera/director';
 import {CAR_KINDS, CarKind} from '../gen/car';
 import {
@@ -15,7 +15,10 @@ const STORAGE_KEY = 'webgpu-driving-settings';
 
 interface Stored {
   graphics?: Partial<GraphicsSettings>;
-  hud?: boolean;
+  // Only an explicit choice turns the HUD on. (The key changed: an older
+  // build stored the HUD's state whenever settings were saved, which kept
+  // it on after it became off by default.)
+  showHud?: boolean;
 }
 
 export const SHOT_NAMES: Record<ShotKind, string> = {
@@ -139,7 +142,7 @@ export class SettingsPanel {
     const app = this.app;
     const stored: Stored = {
       graphics: app.renderer.graphics,
-      hud: !app.hudHidden,
+      showHud: !app.hudHidden,
     };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
@@ -343,7 +346,7 @@ export class SettingsPanel {
       el(
         'p',
         {class: 'hint'},
-        'Keys: ←/→ lanes · ↑/↓ speed · C next shot · R new world · 1–7 environments · H hide UI · Esc close',
+        `Keys: ←/→ lanes · ↑/↓ speed · C next shot · V next car · B next environment · R new world · ${envKeys()} environments · H hide UI · Esc close`,
       ),
     );
 

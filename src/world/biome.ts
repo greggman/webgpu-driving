@@ -491,7 +491,7 @@ export const BIOMES: Record<BiomeId, Biome> = {
     palette: {
       ...basePalette,
       // Olive coastal scrub and golden dry grass.
-            // Late-summer dry grass: muted straw gold with olive in the dips.
+      // Late-summer dry grass: muted straw gold with olive in the dips.
       grassA: [0.2, 0.2, 0.08],
       grassB: [0.4, 0.31, 0.14],
       dry: [0.47, 0.36, 0.18],
@@ -799,4 +799,10 @@ export function packTerrain(t: TerrainParams, seed: number): Float32Array {
     0,
     0,
   ]);
+}
+
+// Keys for the environments: "1-9, 0" for ten, "1-N" for fewer.
+export function envKeys(): string {
+  const n = BIOME_ORDER.length;
+  return n >= 10 ? '1-9, 0' : `1-${n}`;
 }

@@ -2,7 +2,7 @@
 // parameters for deterministic screenshots, input, HUD and dev hooks.
 import {Gpu} from './gpu/gpu';
 import {Renderer, WorldCar} from './render/renderer';
-import {BIOMES, BIOME_ORDER, Biome, BiomeId} from './world/biome';
+import {BIOMES, BIOME_ORDER, Biome, BiomeId, envKeys} from './world/biome';
 import {Road} from './world/road';
 import {Traffic, Vehicle} from './sim/traffic';
 import {vehiclePose, Pose} from './sim/pose';
@@ -168,7 +168,7 @@ export class App {
         : DEFAULT_GRAPHICS;
     this.renderer.graphics = {...base, ...stored.graphics};
     // The HUD (speed, camera, fps) is off unless turned on in settings.
-    if (stored.hud !== true) this.hudEl.classList.add('hidden');
+    if (stored.showHud !== true) this.hudEl.classList.add('hidden');
     this.settings = new SettingsPanel(this);
   }
 
@@ -410,6 +410,13 @@ export class App {
     await this.yieldToPaint();
     this.mark('generate start');
     this.biome = structuredClone(BIOMES[id]);
+    // Coast meadows: wildflowers only some of the time (a third of the
+    // worlds are just grass).
+    if (
+      id === 'coast' &&
+      Math.imul(this.params.seed | 0, 0x9e3779b1) >>> 0 < 0x55555555
+    )
+      this.biome.scatter.flowers = 0;
     this.onWorldChanged(id);
     if (this.params.tod !== null) this.biome.sky.timeOfDay = this.params.tod;
     this.road = new Road(this.biome, this.params.seed);
@@ -581,8 +588,9 @@ export class App {
           void this.regenerate();
           break;
         default: {
-          const n = Number(e.key);
-          if (n >= 1 && n <= BIOME_ORDER.length) {
+          // 1-9 then 0 across the top row: environments 1-10.
+          const n = e.key === '0' ? 10 : Number(e.key);
+          if (/^[0-9]$/.test(e.key) && n >= 1 && n <= BIOME_ORDER.length) {
             this.switchTo(BIOME_ORDER[n - 1]);
           }
         }
@@ -857,7 +865,7 @@ export class App {
     const st = this.renderer.stats;
     this.hudEl.textContent =
       `${this.biome.name}  ·  ${kmh} km/h  ·  ${cam.shot} cam  ·  ${this.fps.toFixed(0)} fps\n` +
-      `←/→ lanes  ↑/↓ speed  C camera  R new world  P autopilot (${t.autopilot ? 'on' : 'off'})  1-7 environments  H hide\n` +
+      `←/→ lanes  ↑/↓ speed  C camera  R new world  P autopilot (${t.autopilot ? 'on' : 'off'})  ${envKeys()} environments  H hide\n` +
       `terrain nodes ${st.terrainNodes}  road chunks ${st.roadChunks}  cars ${st.cars}`;
   }
 
