@@ -202,6 +202,7 @@ export class Renderer {
   private volumeOn = false;
   graphics: GraphicsSettings = {...DEFAULT_GRAPHICS};
   stats = {terrainNodes: 0, roadChunks: 0, cars: 0};
+  private camVelSmooth = [0, 0, 0];
   readonly profiler: Profiler;
 
   constructor(private gpu: Gpu) {
@@ -1036,7 +1037,18 @@ export class Renderer {
     {
       const pe = scene.prevCamera ? scene.prevCamera.eye : cam.eye;
       const dt = Math.max(scene.dt, 1e-3);
-      const camVel = [0, 1, 2].map(k => (cam.eye[k] - pe[k]) / dt);
+      // Camera velocity for the weather particles, smoothed over ~0.25 s:
+      // the raw frame difference carries frame-time jitter and the cockpit
+      // bounce, and for flakes almost straight ahead the streak direction
+      // comes from a tiny sideways component, so the noise made the snow
+      // swish around instead of streaming into the camera. Cuts reset it.
+      const raw = [0, 1, 2].map(k => (cam.eye[k] - pe[k]) / dt);
+      const cut = !scene.prevCamera || Math.hypot(raw[0], raw[1], raw[2]) > 120;
+      const a = 1 - Math.exp(-dt / 0.25);
+      this.camVelSmooth = cut
+        ? [0, 0, 0]
+        : this.camVelSmooth.map((v, k) => v + (raw[k] - v) * a);
+      const camVel = this.camVelSmooth;
       const road = this.road!;
       // Dust: slot 0 is the player; the nearest moving cars get stable
       // slots that fade in / out (no popping when the set changes).

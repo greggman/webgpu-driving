@@ -41,3 +41,18 @@
     If that still has too much jank, then we should make sure everything that's needed
     for the current biome is generated before starting.
 
+[ ] In the desert, the wheels need to bounce separate from the body to look real
+
+    Wheel bounces up, a moment later that corner of the car pitches up.
+
+[ ] In the ocean coastline biome, we need edge of ocean, edge of cliff road areas.
+
+    Current, AFAICT, the road is always 100s of meters away from the ocean.
+
+    1. We want the road to sometimes be right next to the beach, at sand level
+    2. We want the road to sometimes be on a the edge plateau with the ocean below
+    3. We want the road to sometimes be below a cliff "Big Sur road" style.
+
+    The inspiration is Pacific Coast Highway (Highway 1) between San Francisco
+    and San Luis Obispo
+

@@ -31,7 +31,8 @@ const shots = JSON.parse(await fs.readFile(shotFile, 'utf8'))
   .filter(s => !filter || s.name.includes(filter));
 await fs.mkdir(outDir, {recursive: true});
 
-const port = 8123;
+// SHOOT_PORT lets two shoot runs work side by side.
+const port = Number(process.env.SHOOT_PORT) || 8123;
 const server = await startServer(port);
 const browser = await puppeteer.launch({headless: true, args: []});
 const report = [];
