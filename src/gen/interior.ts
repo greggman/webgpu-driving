@@ -261,7 +261,7 @@ export function buildInterior(spec: CarSpec): Interior {
       push,
       cowl,
       () => MI_DASH,
-      p => [0, 1, -0.4],
+      () => [0, 1, -0.4],
       false,
     );
   }
