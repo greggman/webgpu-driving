@@ -162,12 +162,8 @@ export const SUV_BODY: BodyCurves = {
   roofRails: {height: 0.045, width: 0.035, inset: 0.07},
   cladding: {top: 0.52, arch: 0.09},
   skidPlates: {
-    front: {top: 0.5, halfWidth: 0.5},
-    rear: {top: 0.52, halfWidth: 0.55},
-  },
-  skidPlates: {
-    front: {top: 0.36, halfWidth: 0.5},
-    rear: {top: 0.42, halfWidth: 0.5},
+    front: {top: 0.64, halfWidth: 0.5},
+    rear: {top: 0.66, halfWidth: 0.55},
   },
   chromeSill: false,
   chromeDLO: true,

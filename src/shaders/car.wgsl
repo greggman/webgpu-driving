@@ -706,9 +706,12 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       let stop = fract(skid);
       let e = min(stop - lp.y, shw - abs(lp.x));
       if (e > 0.0) {
-        s.albedo = select(vec3f(0.02), vec3f(0.62, 0.63, 0.64), e > 0.012);
-        s.metal = select(0.0, 1.0, e > 0.012);
-        s.rough = select(0.4, 0.38, e > 0.012);
+                // Silver-painted plastic: mostly diffuse (a full metal down here
+        // only mirrored the dark road and read black).
+        s.albedo = select(vec3f(0.02), vec3f(0.5, 0.51, 0.53), e > 0.012);
+        s.metal = select(0.0, 0.25, e > 0.012);
+        s.rough = select(0.4, 0.42, e > 0.012);
+        s.ao = max(s.ao, 0.8);
         coat = 0.0;
       }
     }
