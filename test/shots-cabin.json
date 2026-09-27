@@ -34,5 +34,17 @@
       "s": "1500",
       "tod": "13"
     }
+  },
+  {
+    "name": "cabin-door",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "car": "sedan",
+      "paint": "red",
+      "view": "door",
+      "s": "1500",
+      "tod": "13"
+    }
   }
 ]

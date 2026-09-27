@@ -300,7 +300,7 @@ export function buildInterior(spec: CarSpec): Interior {
   );
   // Center console.
   box([0, 0.5, -0.1], [0.12, 0.18, 0.55], MI_DASH);
-  box([0, 0.69, -0.45], [0.1, 0.02, 0.2], MI_ALU);
+
   // Seats (tan leather).
   const oy = belt - 1.0; // taller cars sit higher
   // Front seats follow the driver's eye (under the roof's middle).
@@ -411,6 +411,135 @@ export function buildInterior(spec: CarSpec): Interior {
     );
     pad([0, 0.72 + oy, rz], -0.25, hw * 0.8, 0.24, 0.04, 0.05, 0.04, 0.85);
   }
+  // Console top: leather armrest lid at the back, a gear selector and two
+  // cupholders ahead of it.
+  pad([0, 0.695, -0.42], -Math.PI / 2, 0.11, 0.2, 0.025, 0.012, 0.01);
+  box([0, 0.7, 0.12], [0.012, 0.03, 0.012], MI_ALU);
+  pad([0, 0.745, 0.12], -Math.PI / 2, 0.028, 0.04, 0.02, 0.012, 0);
+  for (const cz of [0.3, 0.38]) {
+    const n = [0, 1, 0];
+    for (let k = 0; k < 16; ++k) {
+      const a0 = (k / 16) * Math.PI * 2,
+        a1 = ((k + 1) / 16) * Math.PI * 2;
+      const P = (a: number, r: number) => [
+        Math.cos(a) * r,
+        0.682,
+        cz + Math.sin(a) * r,
+      ];
+      for (const p of [[0, 0.682, cz], P(a1, 0.036), P(a0, 0.036)])
+        push(p, n, MI_CARPET);
+      for (const p of [
+        P(a0, 0.036),
+        P(a1, 0.036),
+        P(a1, 0.044),
+        P(a0, 0.036),
+        P(a1, 0.044),
+        P(a0, 0.044),
+      ])
+        push(p, n, MI_ALU);
+    }
+  }
+  // Door cards: armrest, pull handle, window switches, speaker grille and
+  // a trim strip on each door; seatbelts on the B pillars; floor mats.
+  {
+    const bp = (spec.roofFront + spec.roofBack) / 2;
+    const xIn = spec.width / 2 - 0.07; // inner face of the door card
+    const ay = belt - 0.26; // armrest top
+    const dz = driverZ(spec);
+    const doors: Array<[number, number, number, boolean]> = [
+      // [armrest centre z, door front z, door back z, front door]
+      [dz + 0.18, ws - 0.42, bp + 0.06, true],
+    ];
+    if (spec.kind !== 'coupe' && spec.kind !== 'pickup')
+      doors.push([spec.rearBase + 0.6, bp - 0.06, spec.rearBase + 0.25, false]);
+    for (const sgn of [1, -1])
+      for (const [az, zf, zb, front] of doors) {
+        // Leather armrest pad lying along the door.
+        pad(
+          [sgn * (xIn - 0.045), ay, az],
+          -Math.PI / 2,
+          0.045,
+          0.19,
+          0.018,
+          0.03,
+          0,
+          0.55,
+          MI_SEAT,
+        );
+        // Pull handle recessed above the armrest's front.
+        box(
+          [sgn * (xIn - 0.012), ay + 0.075, az + 0.12],
+          [0.012, 0.012, 0.06],
+          MI_ALU,
+        );
+        if (front)
+          box(
+            [sgn * (xIn - 0.05), ay + 0.022, az + 0.14],
+            [0.028, 0.006, 0.045],
+            MI_DASH,
+          );
+        // Trim strip along the upper door card.
+        quad(
+          [sgn * (xIn + 0.004), belt - 0.075, zb],
+          [sgn * (xIn + 0.004), belt - 0.075, zf],
+          [sgn * (xIn + 0.004), belt - 0.09, zf],
+          [sgn * (xIn + 0.004), belt - 0.09, zb],
+          MI_ALU,
+        );
+        // Speaker grille (dark disc in a bright ring) low on the door.
+        const scz = front ? zf - 0.18 : (zf + zb) / 2,
+          scy = 0.47;
+        const ring = (r: number, k: number): P3 => {
+          const a = (k / 20) * Math.PI * 2;
+          return [
+            sgn * (xIn - 0.004),
+            scy + Math.sin(a) * r,
+            scz + Math.cos(a) * r,
+          ];
+        };
+        for (let k = 0; k < 20; ++k) {
+          const n = [-sgn, 0, 0];
+          for (const p of [
+            [sgn * (xIn - 0.005), scy, scz],
+            ring(0.07, k),
+            ring(0.07, k + 1),
+          ])
+            push(p, n, MI_DASH);
+          for (const p of [
+            ring(0.08, k),
+            ring(0.08, k + 1),
+            ring(0.07, k + 1),
+            ring(0.08, k),
+            ring(0.07, k + 1),
+            ring(0.07, k),
+          ])
+            push(p, n, MI_ALU);
+        }
+      }
+    // Seatbelts hanging down the B pillars, with the D-ring at the top.
+    for (const sgn of [1, -1]) {
+      const x = sgn * (xIn - 0.01);
+      const y0 = spec.roofY - 0.2,
+        y1 = belt - 0.32;
+      quad(
+        [x, y0, bp + 0.025],
+        [x, y0, bp - 0.02],
+        [x - sgn * 0.02, y1, bp - 0.02],
+        [x - sgn * 0.02, y1, bp + 0.025],
+        MI_DASH,
+      );
+      box([x - sgn * 0.004, y0 + 0.015, bp], [0.006, 0.02, 0.035], MI_ALU);
+    }
+    // Front floor mats.
+    for (const sgn of [1, -1])
+      quad(
+        [sgn * 0.12, 0.306, ws - 0.55],
+        [sgn * 0.62, 0.306, ws - 0.55],
+        [sgn * 0.62, 0.306, dz + 0.3],
+        [sgn * 0.12, 0.306, dz + 0.3],
+        MI_DASH,
+      );
+  }
   // Floor.
   quad(
     [-hw, 0.3, 0.9],
@@ -451,14 +580,28 @@ export function buildInterior(spec: CarSpec): Interior {
       MI_DASH,
       yaw,
     );
+    // The glass follows the housing's own (rounded, tapering) outline,
+    // inset so a rim of the housing frames it, just proud of its face.
     const G = place([0, my, mz], Math.PI + pitch, yaw);
-    quad(
-      G([-0.112, -0.028, 0.0135]),
-      G([0.112, -0.028, 0.0135]),
-      G([0.112, 0.028, 0.0135]),
-      G([-0.112, 0.028, 0.0135]),
-      MI_MIRROR,
-    );
+    const gRow = (t: number) => {
+      const endK = Math.sqrt(Math.max(0, 1 - Math.pow(Math.abs(t * 2 - 1), 6)));
+      const w = 0.86 * 0.125 * (1 - 0.1 * t) * endK;
+      const y = (-0.038 + 0.076 * t) * 0.97;
+      const z = 0.012 * Math.max(endK, 0.3) * 0.97 + 0.0008;
+      return {w, y, z};
+    };
+    const GN = 14;
+    for (let i = 0; i < GN; ++i) {
+      const a = gRow(0.06 + (0.88 * i) / GN),
+        b = gRow(0.06 + (0.88 * (i + 1)) / GN);
+      quad(
+        G([-a.w, a.y, a.z]),
+        G([a.w, a.y, a.z]),
+        G([b.w, b.y, b.z]),
+        G([-b.w, b.y, b.z]),
+        MI_MIRROR,
+      );
+    }
     // Short stem up and forward to the glass.
     const top = [0, Math.min(spec.roofY - 0.05, glassY(mz + 0.03)), mz + 0.03];
     const bot = [0, my + 0.02, mz + 0.012];
@@ -493,12 +636,12 @@ export function buildInterior(spec: CarSpec): Interior {
     }
     for (const sx of [dx, -dx])
       pad(
-        [sx * 0.9, spec.roofY - 0.035, spec.roofFront - 0.14],
+        [sx * 0.9, spec.roofY - 0.028, spec.roofFront - 0.13],
         Math.PI / 2,
-        0.15,
-        0.085,
-        0.01,
-        0.012,
+        0.14,
+        0.068,
+        0.007,
+        0.008,
         0,
         0.55,
         MI_FABRIC,
@@ -610,6 +753,32 @@ export function buildInterior(spec: CarSpec): Interior {
         const c = at(ca * 0.12, sa * 0.12, 0.006);
         return [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
       },
+      false,
+    );
+  }
+  // Steering column shroud from the wheel back into the dash.
+  {
+    const c0 = [0, 1, 2].map(k => wc[k] - axis[k] * 0.03);
+    const c1 = [0, 1, 2].map(k => wc[k] - axis[k] * 0.32);
+    const ring = (c: number[], r: number, a: number): P3 =>
+      [0, 1, 2].map(
+        k => c[k] + (u[k] * Math.cos(a) + w[k] * Math.sin(a)) * r,
+      ) as P3;
+    const rows: P3[][] = [];
+    for (const [c, r] of [
+      [c0, 0.032],
+      [c1, 0.05],
+    ] as Array<[number[], number]>) {
+      const row: P3[] = [];
+      for (let k = 0; k <= 12; ++k)
+        row.push(ring(c, r, (k / 12) * Math.PI * 2));
+      rows.push(row);
+    }
+    emitGrid(
+      push,
+      rows,
+      () => MI_DASH,
+      p => [p[0] - wc[0], p[1] - wc[1], 0] as P3,
       false,
     );
   }

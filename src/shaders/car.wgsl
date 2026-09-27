@@ -229,6 +229,43 @@ fn mirrorView(rw: vec3f, lp: vec3f, c: Car) -> vec3f {
   return mix(fogColor(rw), col, fogTransmittance(F.cam.xyz + rw * t));
 }
 
+// The rear-view mirror also sees the car's own cabin: the rear bench top,
+// then the rear window framed by headliner, C-pillars and parcel shelf.
+fn rearViewMirror(rw: vec3f, lp: vec3f, c: Car) -> vec3f {
+  let m = c.model;
+  let rl = vec3f(dot(m[0].xyz, rw), dot(m[1].xyz, rw), dot(m[2].xyz, rw));
+  let belt = c.p3.w;
+  let inside = shIrradiance(vec3f(0.0, 1.0, 0.0)) * 0.35;
+  if (rl.z > -0.05) { return vec3f(0.18, 0.17, 0.15) * inside; }
+  // Rear bench top.
+  let zb = c.p3.z + 0.3;
+  let tb = (zb - lp.z) / rl.z;
+  let yb = lp.y + rl.y * tb;
+  let xb = lp.x + rl.x * tb;
+  if (yb < belt - 0.05 && abs(xb) < c.p2.y * 0.75) {
+    return vec3f(0.32, 0.19, 0.1) * inside;
+  }
+  // Rear window opening (mid-backlight plane).
+  let zw = c.p3.z + 0.45;
+  let tw = (zw - lp.z) / rl.z;
+  let x = lp.x + rl.x * tw;
+  let y = lp.y + rl.y * tw;
+  let hx = c.p2.y * 0.58;
+  let top = lp.y + 0.02;
+  let bot = belt + 0.07;
+  // Rounded-rectangle opening.
+  let q = vec2f(abs(x) - (hx - 0.08), abs(y - (top + bot) * 0.5) - ((top - bot) * 0.5 - 0.08));
+  let d = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - 0.08;
+  if (d > 0.0) {
+    if (y < bot) { return vec3f(0.03) * inside; } // parcel shelf
+    if (y > top - 0.02) { return vec3f(0.22, 0.21, 0.19) * inside; } // headliner
+    return vec3f(0.12, 0.115, 0.1) * inside; // C-pillar trim
+  }
+  // Through the tinted rear glass, with a thin dark frit at its edge.
+  let frit = 1.0 - smoothstep(-0.03, -0.015, d);
+  return mirrorView(rw, lp, c) * mix(0.7, 0.05, 1.0 - frit);
+}
+
 fn carEnv(r: vec3f, rough: f32) -> vec3f {
   return envRadiance(r, rough);
 }
@@ -347,11 +384,15 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
         // Fabric headliner: fine weave noise, darker toward the glass
         // edges where the roof curves down (occlusion).
         s.albedo = vec3f(0.22, 0.21, 0.19) * (0.93 + 0.07 * vnoise(lp.xz * 150.0)) * (0.92 + 0.08 * vnoise(lp.xz * 9.0));
-        s.albedo *= mix(0.55, 1.0, smoothstep(0.5, 0.95, lnI.y));
+                s.albedo *= mix(0.55, 1.0, smoothstep(0.5, 0.95, lnI.y));
+        // Pillar bases darken where they meet the dash / door.
+        s.albedo *= mix(0.45, 1.0, smoothstep(c.p6.y, c.p6.y + 0.3, lp.y));
         s.rough = 0.95;
       } else {
-        let stitch = step(0.96, fract(lp.y * 9.0));
-        s.albedo = vec3f(0.07, 0.065, 0.06) + vec3f(0.08, 0.05, 0.03) * stitch;
+                // Soft-touch door card: fine grain, one stitched seam line.
+        let seamY = abs(lp.y - (c.p3.w - 0.14));
+        let stitch = step(seamY, 0.0012) * step(0.5, fract(lp.z * 90.0));
+        s.albedo = vec3f(0.07, 0.065, 0.06) * (0.92 + 0.08 * vnoise(lp.yz * 180.0)) + vec3f(0.12, 0.09, 0.06) * stitch;
         s.rough = 0.8;
       }
     }
@@ -385,7 +426,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       s.metal = 0.0;
       s.rough = 1.0;
       s.spec = 0.0;
-      emissive = mirrorView(reflect(-v, n), lp, c) * 0.8;
+            emissive = rearViewMirror(reflect(-v, n), lp, c) * 0.8;
     }
     let sh = sunShadow(wp, n) * cloudShadow(wp);
     var col = shadeSurface(s, wp, sh) + emissive;
