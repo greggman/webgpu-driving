@@ -134,7 +134,25 @@ fn fs(in: WVOut) -> GBufferOut {
   let jac = min(s0.w, s1.w * 0.5 + 0.5);
   let fn1 = vnoise(wp2 * 0.4 + vec2f(F.cam.w * 0.15, 0.0)) * 0.6 + vnoise(wp2 * 1.7) * 0.4;
   let caps = smoothstep(0.55, 0.15, jac + fn1 * 0.25) * saturate(1.0 - dist / 1500.0);
-  let shore = saturate(1.0 - depth / 1.3) * smoothstep(0.3, 0.7, fn1 + 0.25 * sin(depth * 4.0 - F.cam.w * 1.5));
+    let shore0 = saturate(1.0 - depth / 1.3) * smoothstep(0.3, 0.7, fn1 + 0.25 * sin(depth * 4.0 - F.cam.w * 1.5));
+  // Surf against cliffs and rocks (deep water right up to them): foam
+  // where land is within a few metres, pulsing with the swell.
+  var nearLand = 0.0;
+  if (dist < 2500.0) {
+    for (var k = 0; k < 6; k++) {
+      let a = f32(k) * 1.0472 + F.cam.w * 0.05;
+      for (var r = 0; r < 2; r++) {
+        let rad = select(2.5, 6.0, r == 1);
+        let q = wp.xz + vec2f(cos(a), sin(a)) * rad;
+        if (clipSample(q, lvl).x > 0.2) {
+          nearLand = max(nearLand, select(1.0, 0.55, r == 1));
+        }
+      }
+    }
+  }
+  let swell = 0.55 + 0.45 * sin(F.cam.w * 0.9 + dot(wp2, vec2f(0.05, 0.03)));
+  let surf = nearLand * smoothstep(0.2, 0.6, fn1 + 0.35 * swell);
+  let shore = max(shore0, surf);
   let foam = saturate(caps * 0.8 + shore);
   let foamCol = vec3f(0.85) * (amb + sunC * saturate(dot(nn, l)) / PI * 1.2);
   col = mix(col, foamCol, foam);

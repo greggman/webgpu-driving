@@ -154,7 +154,20 @@ fn fs(in: VOut) -> GBufferOut {
 
   var grass = mix(pal(0), pal(1), saturate(macroN * 1.8 - 0.4));
   grass = mix(grass, pal(2), saturate(mid * 2.2 - 1.1) * 0.6);
-  grass *= 0.8 + 0.4 * fine;
+    grass *= 0.8 + 0.4 * fine;
+  // Chaparral: dark scrub patches over the grass, thicker in gullies and
+  // on slopes, with ragged edges (Big Sur hills).
+  let scrubAmt = F.palette[11].y;
+  if (scrubAmt > 0.0) {
+        // Ragged edges: the patch field plus bush-scale noise.
+    let clump = vnoise(world2 * 0.45) * 0.6 + vnoise(world2 * 1.6) * 0.4;
+    let sp = fbm2(world2 * 0.012 + 21.0, 4) + (mid - 0.5) * 0.35 + slope * 0.4 + (clump - 0.5) * 0.22;
+    let sc = smoothstep(1.0 - scrubAmt, 1.03 - scrubAmt, sp) * smoothstep(halfW + 3.0, halfW + 8.0, roadD);
+    // Dark, matte olive-grey (sage, chamise), mottled by the bushes.
+    let olive = mix(pal(6), vec3f(dot(pal(6), vec3f(0.33))) * vec3f(1.0, 1.05, 0.8), 0.35);
+    let scrubCol = olive * 0.8 * (0.45 + 0.9 * clump) * (0.85 + 0.3 * fine);
+    grass = mix(grass, scrubCol, sc);
+  }
   var albedo = grass;
   var rough = 0.85;
 
@@ -179,15 +192,42 @@ fn fs(in: VOut) -> GBufferOut {
     }
   }
 
-  // Rock on steep slopes and road cuts.
-  let rockCol = pal(4) * (0.7 + 0.5 * mid) * (0.85 + 0.3 * fine);
-  let strata = 0.9 + 0.1 * sin(wp.y * 1.7 + mid * 6.0);
+    // Rock on steep slopes, sea cliffs and road cuts: textured triplanar in
+  // the two vertical planes (map-xz noise is constant down a vertical face
+  // and smeared into streaks; the old ruled strata read as stripes).
   let rockMask = smoothstep(0.32, 0.5, slope + (mid - 0.5) * 0.2);
-  albedo = mix(albedo, rockCol * strata, rockMask);
-  rough = mix(rough, 0.75, rockMask);
+  if (rockMask > 0.0) {
+    let wx = abs(n.x) / (abs(n.x) + abs(n.z) + 1e-4);
+    let pX = vec2f(world2.y, wp.y); // face looking along x
+    let pZ = vec2f(world2.x, wp.y); // face looking along z
+    let rN = mix(fbm2(pZ * 0.07, 4), fbm2(pX * 0.07 + 9.1, 4), wx);
+    let rF = mix(vnoise(pZ * 1.1) * 0.5 + vnoise(pZ * 3.7) * 0.5, vnoise(pX * 1.1) * 0.5 + vnoise(pX * 3.7) * 0.5, wx);
+    let blotch = mix(fbm2(pZ * 0.018 + 3.1, 3), fbm2(pX * 0.018 + 5.3, 3), wx);
+    let streak = mix(vnoise(vec2f(pZ.x * 0.5, wp.y * 0.035)), vnoise(vec2f(pX.x * 0.5, wp.y * 0.035)), wx);
+    var rockCol = pal(4) * (0.5 + 0.8 * rN) * (0.82 + 0.36 * rF);
+    // Iron-stained and pale weathered patches.
+    rockCol = mix(rockCol, rockCol * vec3f(1.2, 0.95, 0.72), smoothstep(0.55, 0.75, blotch));
+    rockCol = mix(rockCol, rockCol * 1.25, smoothstep(0.62, 0.8, 1.0 - blotch) * 0.6);
+    // Weathering streaks running down the face.
+    rockCol *= 0.82 + 0.3 * streak;
+    // Dark wet rock at the waterline (sea cliffs, stacks).
+    let wetRock = smoothstep(3.0, 0.3, wp.y) * step(0.5, abs(F.terrain[3].x));
+    rockCol *= 1.0 - 0.55 * wetRock;
+    // Relief: bumps and ledges in the face plane.
+    let rf = saturate(1.0 - dist / 300.0) * rockMask;
+    if (rf > 0.0) {
+      let gZ = noised(pZ * 0.35).yz * 0.35 + noised(pZ * 1.3 + 4.1).yz * 1.3 * 0.4;
+      let gX = noised(pX * 0.35 + 2.0).yz * 0.35 + noised(pX * 1.3 + 6.1).yz * 1.3 * 0.4;
+      let k = 1.6 * rf;
+      n = normalize(n - (vec3f(gZ.x, gZ.y * 0.6, 0.0) * (1.0 - wx) + vec3f(0.0, gX.y * 0.6, gX.x) * wx) * k);
+    }
+    albedo = mix(albedo, rockCol, rockMask);
+    rough = mix(rough, mix(0.8, 0.35, wetRock), rockMask);
+  }
 
   // Sand near the sea / desert washes.
-  let sandMask = smoothstep(4.0, 1.0, wp.y) * F.palette[9].w;
+    // (Not on steep rock: sea cliffs stay rock down to the water.)
+  let sandMask = smoothstep(4.0, 1.0, wp.y) * F.palette[9].w * (1.0 - rockMask);
   albedo = mix(albedo, pal(5) * (0.9 + 0.2 * fine), saturate(sandMask));
   // Wet sand where waves wash up (darker, glossy).
   let wet = smoothstep(1.4, 0.3, wp.y) * F.palette[9].w * step(0.5, abs(F.terrain[3].x));

@@ -896,7 +896,7 @@ export class Renderer {
       S.buildings,
       S.trees,
       S.flowers, // palette[11].x: wildflowers / flowering plants (grass)
-      0,
+      P.scrub ?? 0, // palette[11].y: chaparral patches (terrain)
       0,
       0,
     ]);

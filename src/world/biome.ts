@@ -72,6 +72,7 @@ export interface Palette {
   foliage: [number, number, number];
   flower: [number, number, number];
   autumn?: number; // 0..1 broadleaf autumn colours
+  scrub?: number; // 0..1 cover of dark chaparral patches on the terrain
 }
 
 export interface Scatter {
@@ -497,6 +498,7 @@ export const BIOMES: Record<BiomeId, Biome> = {
       rock: [0.34, 0.3, 0.25],
       sand: [0.62, 0.56, 0.45],
       flower: [0.95, 0.8, 0.25],
+      scrub: 0.55,
     },
     scatter: {
       ...baseScatter,
