@@ -1,0 +1,98 @@
+[
+  {
+    "name": "hatch-side",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "hatch",
+      "paint": "red",
+      "view": "bp-side"
+    }
+  },
+  {
+    "name": "hatch-front",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "hatch",
+      "paint": "red",
+      "view": "bp-front"
+    }
+  },
+  {
+    "name": "hatch-rear",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "hatch",
+      "paint": "red",
+      "view": "bp-rear"
+    }
+  },
+  {
+    "name": "hatch-top",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "hatch",
+      "paint": "red",
+      "view": "bp-top"
+    }
+  },
+  {
+    "name": "hatch-front34",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "hatch",
+      "paint": "red",
+      "view": "front34"
+    }
+  },
+  {
+    "name": "hatch-rear34",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "hatch",
+      "paint": "red",
+      "view": "rear34"
+    }
+  },
+  {
+    "name": "hatch-wheel",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "hatch",
+      "paint": "red",
+      "view": "wheel"
+    }
+  },
+  {
+    "name": "hatch-corner",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "hatch",
+      "paint": "red",
+      "view": "corner"
+    }
+  }
+]

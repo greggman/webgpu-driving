@@ -19,6 +19,7 @@
 
 import {BodyCurves, buildCurveBody} from './carBody';
 import {SEDAN_BODY} from './bodies/sedan';
+import {HATCH_BODY} from './bodies/hatch';
 
 export type CarKind =
   | 'sedan'
@@ -190,30 +191,31 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'hatch':
       return spec({
         kind,
-        axleShift: 0.06,
+        body: HATCH_BODY,
+        axleShift: -0.05,
         boxy: 5,
         cladding: false,
         quarter: false,
         flare: 0.03,
-        length: 4.08,
-        width: 1.8,
-        wheelbase: 2.62,
-        wheelR: 0.35,
-        track: 1.58,
-        clearance: 0.15,
-        noseY: 0.66,
+        length: 4.28,
+        width: 1.79,
+        wheelbase: 2.64,
+        wheelR: 0.335,
+        track: 1.57,
+        clearance: 0.14,
+        noseY: 0.84,
         hoodY: 0.97,
-        beltF: 1.0,
+        beltF: 0.97,
         beltR: 1.06,
         deckY: 1.06,
-        tailY: 1.0,
-        roofY: 1.47,
+        tailY: 1.1,
+        roofY: 1.46,
         roofW: 0.74,
-        wsBase: 0.88,
-        roofFront: 0.05,
-        roofBack: -1.38,
-        rearBase: -1.86,
-        sideRear: -1.45,
+        wsBase: 1.08,
+        roofFront: 0.2,
+        roofBack: -1.56,
+        rearBase: -2.04,
+        sideRear: -1.2,
       });
     case 'suv':
       return spec({
