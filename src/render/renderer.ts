@@ -912,7 +912,14 @@ export class Renderer {
       biome.sky.saturation * (1 - 0.35 * sk.night),
     ]);
     const g = this.graphics;
-    F.set('post', [g.bloom ? 1 : 0, 0, 0, 0]);
+    // post.y: terrain-shading debug bits (?debug=norock / nodetail) for
+    // finding what's expensive on a given GPU.
+    F.set('post', [
+      g.bloom ? 1 : 0,
+      (DEBUG.has('norock') ? 1 : 0) + (DEBUG.has('nodetail') ? 2 : 0),
+      0,
+      0,
+    ]);
     F.set('grade2', [
       biome.sky.contrast,
       g.filmGrain ? 0.35 : 0,

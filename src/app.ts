@@ -734,7 +734,16 @@ export class App {
     );
   }
 
+  // Main-thread time of the last frames (smoothed), for the HUD.
+  cpuMs = 0;
+
   frame(now: number) {
+    const t0 = performance.now();
+    this.frameInner(now);
+    this.cpuMs = this.cpuMs * 0.9 + (performance.now() - t0) * 0.1;
+  }
+
+  private frameInner(now: number) {
     if (this.busy || !this.traffic) return;
     if (this.showingProgress) {
       // Terrain clipmaps, road chunks and TAA/exposure warm up over the
@@ -873,7 +882,7 @@ export class App {
     const kmh = Math.round(t.player.speed * 3.6);
     const st = this.renderer.stats;
     this.hudEl.textContent =
-      `${this.biome.name}  ·  ${kmh} km/h  ·  ${cam.shot} cam  ·  ${this.fps.toFixed(0)} fps\n` +
+      `${this.biome.name}  ·  ${kmh} km/h  ·  ${cam.shot} cam  ·  ${this.fps.toFixed(0)} fps  ·  gpu ${(this.renderer.profiler.ms.span ?? 0).toFixed(1)} ms  ·  cpu ${this.cpuMs.toFixed(1)} ms\n` +
       `←/→ lanes  ↑/↓ speed  C camera  V car  B environment  R new world  P autopilot (${t.autopilot ? 'on' : 'off'})  ${envKeys()} environments  H HUD\n` +
       `terrain nodes ${st.terrainNodes}  road chunks ${st.roadChunks}  cars ${st.cars}`;
   }

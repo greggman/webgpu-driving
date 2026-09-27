@@ -142,7 +142,8 @@ fn fs(in: VOut) -> GBufferOut {
   let slope = 1.0 - n.y;
 
   // Detail normal (fades with distance).
-  let dn = saturate(1.0 - dist / 120.0);
+    let dbg = u32(F.post.y);
+  let dn = select(saturate(1.0 - dist / 120.0), 0.0, (dbg & 2u) != 0u);
   if (dn > 0.0) {
     // Analytic gradient-noise slopes (C2 smooth, no grid artifacts).
     let g1 = noised(world2 * 0.9).yz * 0.9;
@@ -158,7 +159,7 @@ fn fs(in: VOut) -> GBufferOut {
   // Chaparral: dark scrub patches over the grass, thicker in gullies and
   // on slopes, with ragged edges (Big Sur hills).
   let scrubAmt = F.palette[11].y;
-  if (scrubAmt > 0.0) {
+    if (scrubAmt > 0.0 && (dbg & 2u) == 0u) {
         // Ragged edges: the patch field plus bush-scale noise.
     let clump = vnoise(world2 * 0.45) * 0.6 + vnoise(world2 * 1.6) * 0.4;
     let sp = fbm2(world2 * 0.012 + 21.0, 4) + (mid - 0.5) * 0.35 + slope * 0.4 + (clump - 0.5) * 0.22;
@@ -196,7 +197,7 @@ fn fs(in: VOut) -> GBufferOut {
   // the two vertical planes (map-xz noise is constant down a vertical face
   // and smeared into streaks; the old ruled strata read as stripes).
   let rockMask = smoothstep(0.32, 0.5, slope + (mid - 0.5) * 0.2);
-  if (rockMask > 0.0) {
+    if (rockMask > 0.0 && (dbg & 1u) == 0u) {
     let wx = abs(n.x) / (abs(n.x) + abs(n.z) + 1e-4);
     let pX = vec2f(world2.y, wp.y); // face looking along x
     let pZ = vec2f(world2.x, wp.y); // face looking along z
