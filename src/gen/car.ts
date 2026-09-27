@@ -21,6 +21,7 @@ import {BodyCurves, buildCurveBody} from './carBody';
 import {SEDAN_BODY} from './bodies/sedan';
 import {HATCH_BODY} from './bodies/hatch';
 import {COUPE_BODY} from './bodies/coupe';
+import {WAGON_BODY} from './bodies/wagon';
 
 export type CarKind =
   | 'sedan'
@@ -282,30 +283,31 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'wagon':
       return spec({
         kind,
-        axleShift: 0.1,
+        body: WAGON_BODY,
+        axleShift: 0.12,
         boxy: 5.5,
         cladding: false,
         quarter: true,
         flare: 0.025,
-        length: 4.9,
-        width: 1.86,
-        wheelbase: 2.88,
-        wheelR: 0.365,
+        length: 4.95,
+        width: 1.88,
+        wheelbase: 2.93,
+        wheelR: 0.37,
         track: 1.63,
         clearance: 0.15,
         noseY: 0.72,
         hoodY: 0.95,
-        beltF: 0.98,
-        beltR: 1.04,
-        deckY: 1.04,
-        tailY: 1.0,
-        roofY: 1.46,
+        beltF: 0.99,
+        beltR: 1.06,
+        deckY: 1.045,
+        tailY: 1.07,
+        roofY: 1.485,
         roofW: 0.74,
-        wsBase: 1.0,
-        roofFront: 0.1,
-        roofBack: -2.05,
-        rearBase: -2.3,
-        sideRear: -1.95,
+        wsBase: 1.1,
+        roofFront: 0.3,
+        roofBack: -2.06,
+        rearBase: -2.36,
+        sideRear: -1.3,
       });
     case 'pickup':
       return spec({
