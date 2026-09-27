@@ -14,7 +14,8 @@ struct Car {
   p6: vec4f,      // driver x, dash top y, style (kind index), -
         p7: vec4f,      // axle z shift, ground clearance, wheel width scale, third axle z (0 = none)
       p8: vec4f,      // tailgate shut line: half width, bottom y (0 = trunk lid); chin trim top y, start z (0 = none)
-    p9: vec4f,      // cladding: lower band top y, arch band outer radius (0 = none); skid plates front, rear (half width cm + top m)
+      p9: vec4f,      // cladding: lower band top y, arch band outer radius (0 = none); skid plates front, rear (half width cm + top m)
+  p10: vec4f,     // wheel suspension offsets (m, body up): FR, FL, RR, RL
 };
 
 @group(1) @binding(0) var<storage, read> cars: array<Car>;
@@ -149,7 +150,9 @@ fn wheelLocal(p: vec3f, ci: u32, wi: u32, mat: f32) -> vec3f {
   }
     var z = select(-0.5, 0.5, front) * c.p0.x + c.p7.x;
   if (axle == 2u) { z = c.p7.w; }
-  let off = vec3f(side * (c.p0.y * 0.5), R, z);
+    // Unsprung: each wheel follows the road ahead of the sprung body.
+  let wd = c.p10[min(axle, 1u) * 2u + (wi & 1u)];
+  let off = vec3f(side * (c.p0.y * 0.5), R + wd, z);
   return q + off;
 }
 

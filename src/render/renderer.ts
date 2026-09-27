@@ -999,7 +999,12 @@ export class Renderer {
       );
       const pp = c.prevPose ?? c.pose;
       const prevModel = fromBasis(pp.left, pp.up, pp.fwd, bodyPos(pp));
-      carDraws.push({...c.draw, model, prevModel});
+      carDraws.push({
+        ...c.draw,
+        model,
+        prevModel,
+        wheelDrop: c.pose.wheelDrop,
+      });
     }
     this.cars.setCars(carDraws);
     if (cam.interior) {

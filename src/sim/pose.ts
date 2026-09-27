@@ -20,6 +20,10 @@ export interface Pose {
   bumpRoll: number;
   baseFwd: [number, number, number];
   baseLeft: [number, number, number];
+  // Each wheel's offset along the body's up from where the (lagging)
+  // sprung body puts it: wheels follow the road at once, the body a
+  // moment later. Order: front right, front left, rear right, rear left.
+  wheelDrop: [number, number, number, number];
 }
 
 // Height of a rough (dirt) road surface under a wheel at arc length s and
@@ -40,7 +44,7 @@ export function roadBump(road: Road, s: number, d: number): number {
     const side = hash01(cell, 78) < 0.5 ? -1 : 1;
     const dd = d - side * 1.6;
     const r2 = ((s - c) / 0.9) ** 2 + (dd / 0.9) ** 2;
-    h -= 0.05 * Math.exp(-r2 * 2);
+    h -= 0.08 * Math.exp(-r2 * 2);
   }
   return h;
 }
@@ -125,6 +129,7 @@ export function vehiclePose(
   // Suspension over road bumps: the four wheel heights drive heave, pitch
   // and roll springs (~1.3 Hz body bounce, lightly damped).
   const bs = (v.bump ??= [0, 0, 0, 0, 0, 0]);
+  const wheelDrop: [number, number, number, number] = [0, 0, 0, 0];
   if (road.biome.road.dirt && dt > 0) {
     const sf = s + (v.dir * wheelbase) / 2,
       sr = s - (v.dir * wheelbase) / 2;
@@ -148,6 +153,25 @@ export function vehiclePose(
         bs[k + 3] += (kk * (targets[k] - bs[k]) - dd * bs[k + 3]) * h;
         bs[k] += bs[k + 3] * h;
       }
+    // Unsprung wheels: road height minus the sprung body at that wheel
+    // (within the suspension travel).
+    const body = (front: number, dside: number) =>
+      bs[0] + bs[1] * front * (wheelbase / 2) + bs[2] * v.dir * dside * hw;
+    const drop = (h0: number, front: number, dside: number) =>
+      Math.max(-0.07, Math.min(0.07, h0 - body(front, dside)));
+    // Which road side (d + hw or d - hw) is the car's left?
+    const p0 = road.pointAt(s, v.d).pos,
+      p1 = road.pointAt(s, v.d + 1).pos;
+    const leftIsPlus =
+      (p1[0] - p0[0]) * left[0] + (p1[2] - p0[2]) * left[2] > 0;
+    const fL = leftIsPlus ? drop(fl, 1, 1) : drop(fr, 1, -1),
+      fR = leftIsPlus ? drop(fr, 1, -1) : drop(fl, 1, 1),
+      rL = leftIsPlus ? drop(rl, -1, 1) : drop(rr, -1, -1),
+      rR = leftIsPlus ? drop(rr, -1, -1) : drop(rl, -1, 1);
+    wheelDrop[0] = fR;
+    wheelDrop[1] = fL;
+    wheelDrop[2] = rR;
+    wheelDrop[3] = rL;
   }
   fwd = rot(fwd, left, v.pitch - bs[1]);
   up = rot(up, left, v.pitch - bs[1]);
@@ -171,5 +195,6 @@ export function vehiclePose(
     bumpRoll: bs[2],
     baseFwd,
     baseLeft,
+    wheelDrop,
   };
 }

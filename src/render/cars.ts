@@ -18,7 +18,7 @@ import {chinTrimParams, claddingParams} from '../gen/carBody';
 import carSrc from '../shaders/car.wgsl';
 import {GBUFFER_TARGETS, DEPTH_FORMAT, GLASS_FX_FORMAT} from './targets';
 
-export const CAR_FLOATS = 76; // 2 mat4 + 11 vec4
+export const CAR_FLOATS = 80; // 2 mat4 + 12 vec4
 export const NAV_POINTS = 32;
 const NAV_FLOATS = NAV_POINTS * 2 + 4;
 const MAX_CARS = 256;
@@ -36,6 +36,8 @@ export interface CarDraw {
   interior?: boolean;
   speed?: number;
   rpm?: number;
+  // Per-wheel suspension offsets (m, body up): FR, FL, RR, RL.
+  wheelDrop?: [number, number, number, number];
 }
 
 interface KindMesh {
@@ -515,6 +517,7 @@ export class CarRenderer {
         o + 68,
       );
       this.data.set(claddingParams(spec), o + 72);
+      this.data.set(c.wheelDrop ?? [0, 0, 0, 0], o + 76);
       if (c.interior) this.interiorDraw = {kind: c.kind, index: i};
       const last = this.ranges[this.ranges.length - 1];
       if (last && last.kind === c.kind) last.count++;
