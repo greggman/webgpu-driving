@@ -559,11 +559,18 @@ export function buildInterior(spec: CarSpec): Interior {
     // Just under the header, near the top of the windscreen.
     const mz = spec.roofFront + 0.09,
       my = Math.min(spec.roofY - 0.105, glassY(mz) - 0.05);
-    // Aimed at the driver's eye so it shows the road straight behind.
+    // Aimed at the driver's eye, looking back and a little down so the
+    // rear window fills it (the mirror sits at roof height).
     const eye = [dx, Math.min(belt + 0.27, spec.roofY - 0.14), driverZ(spec)];
     const e = [eye[0], eye[1] - my, eye[2] - mz];
     const el = Math.hypot(e[0], e[1], e[2]);
-    const nv = [e[0] / el, e[1] / el, e[2] / el - 1];
+    const back = [0, -0.08, -1];
+    const bl = Math.hypot(back[0], back[1], back[2]);
+    const nv = [
+      e[0] / el + back[0] / bl,
+      e[1] / el + back[1] / bl,
+      e[2] / el + back[2] / bl,
+    ];
     const nl = Math.hypot(nv[0], nv[1], nv[2]);
     const [nx, ny, nz] = nv.map(x => x / nl);
     const pitch = Math.asin(ny),

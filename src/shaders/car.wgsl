@@ -235,7 +235,7 @@ fn rearViewMirror(rw: vec3f, lp: vec3f, c: Car) -> vec3f {
   let m = c.model;
   let rl = vec3f(dot(m[0].xyz, rw), dot(m[1].xyz, rw), dot(m[2].xyz, rw));
   let belt = c.p3.w;
-  let inside = shIrradiance(vec3f(0.0, 1.0, 0.0)) * 0.35;
+    let inside = vec3f(dot(shIrradiance(vec3f(0.0, 1.0, 0.0)), vec3f(0.3, 0.55, 0.15))) * 0.35;
   if (rl.z > -0.05) { return vec3f(0.18, 0.17, 0.15) * inside; }
   // Rear bench top.
   let zb = c.p3.z + 0.3;
@@ -251,7 +251,7 @@ fn rearViewMirror(rw: vec3f, lp: vec3f, c: Car) -> vec3f {
   let x = lp.x + rl.x * tw;
   let y = lp.y + rl.y * tw;
   let hx = c.p2.y * 0.58;
-  let top = lp.y + 0.02;
+    let top = lp.y + 0.09; // the roof, just above the mirror
   let bot = belt + 0.07;
   // Rounded-rectangle opening.
   let q = vec2f(abs(x) - (hx - 0.08), abs(y - (top + bot) * 0.5) - ((top - bot) * 0.5 - 0.08));

@@ -52,6 +52,8 @@ const SHOWROOM_VIEWS: Record<string, [number[], number[], number]> = {
   cabin: [[-1.05, 0.0, 1.2], [0.8, 0.0, 0.75], 75],
   // From the passenger seat, looking across at the driver's door.
   door: [[-0.3, -0.35, 1.15], [0.1, 1.0, 0.72], 75],
+  // Close-up of the rear-view mirror from the driver's eye.
+  mirror: [[-0.07, 0.37, 1.24], [0.51, 0.0, 1.33], 18],
   top34: [[4.2, -4.2, 3.6], [0, 0, 0.45], 36],
   front: [[7.5, 0.0, 1.0], [0, 0, 0.7], 30],
   // Near-orthographic "blueprint" views (long lens from far away).
@@ -362,7 +364,7 @@ export class App {
       // Scale the framing to the vehicle; a semi rig is framed around its
       // middle (the pose is the tractor's).
       const sp = carSpec(p.kind);
-      const k = ['wheel', 'corner', 'cabin', 'door'].includes(view)
+      const k = ['wheel', 'corner', 'cabin', 'door', 'mirror'].includes(view)
         ? 1
         : Math.max(1, p.length / 4.8);
       const ky =

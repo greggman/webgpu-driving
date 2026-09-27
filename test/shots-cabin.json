@@ -46,5 +46,17 @@
       "s": "1500",
       "tod": "13"
     }
+  },
+  {
+    "name": "cabin-mirror",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "car": "sedan",
+      "paint": "red",
+      "view": "mirror",
+      "s": "1500",
+      "tod": "13"
+    }
   }
 ]
