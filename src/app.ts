@@ -166,7 +166,8 @@ export class App {
         ? LOW_POWER_GRAPHICS
         : DEFAULT_GRAPHICS;
     this.renderer.graphics = {...base, ...stored.graphics};
-    if (stored.hud === false) this.hudEl.classList.add('hidden');
+    // The HUD (speed, camera, fps) is off unless turned on in settings.
+    if (stored.hud !== true) this.hudEl.classList.add('hidden');
     this.settings = new SettingsPanel(this);
   }
 

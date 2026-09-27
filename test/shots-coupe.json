@@ -1,0 +1,98 @@
+[
+  {
+    "name": "coupe-side",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "coupe",
+      "paint": "red",
+      "view": "bp-side"
+    }
+  },
+  {
+    "name": "coupe-front",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "coupe",
+      "paint": "red",
+      "view": "bp-front"
+    }
+  },
+  {
+    "name": "coupe-rear",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "coupe",
+      "paint": "red",
+      "view": "bp-rear"
+    }
+  },
+  {
+    "name": "coupe-top",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "coupe",
+      "paint": "red",
+      "view": "bp-top"
+    }
+  },
+  {
+    "name": "coupe-front34",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "coupe",
+      "paint": "red",
+      "view": "front34"
+    }
+  },
+  {
+    "name": "coupe-rear34",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "coupe",
+      "paint": "red",
+      "view": "rear34"
+    }
+  },
+  {
+    "name": "coupe-wheel",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "coupe",
+      "paint": "red",
+      "view": "wheel"
+    }
+  },
+  {
+    "name": "coupe-corner",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "coupe",
+      "paint": "red",
+      "view": "corner"
+    }
+  }
+]
