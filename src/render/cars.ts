@@ -411,7 +411,7 @@ export class CarRenderer {
         ],
         o + 68,
       );
-      this.data.set([...claddingParams(spec), 0, 0], o + 72);
+      this.data.set(claddingParams(spec), o + 72);
       if (c.interior) this.interiorDraw = {kind: c.kind, index: i};
       const last = this.ranges[this.ranges.length - 1];
       if (last && last.kind === c.kind) last.count++;

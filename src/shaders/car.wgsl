@@ -14,7 +14,7 @@ struct Car {
   p6: vec4f,      // driver x, dash top y, style (kind index), -
         p7: vec4f,      // axle z shift, ground clearance, wheel width scale, third axle z (0 = none)
       p8: vec4f,      // tailgate shut line: half width, bottom y (0 = trunk lid); chin trim top y, start z (0 = none)
-  p9: vec4f,      // cladding: lower band top y, arch band outer radius (0 = none); -, -
+    p9: vec4f,      // cladding: lower band top y, arch band outer radius (0 = none); skid plates front, rear (half width cm + top m)
 };
 
 @group(1) @binding(0) var<storage, read> cars: array<Car>;
@@ -697,6 +697,19 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
         s.metal = 0.0;
         s.rough = 0.8;
         coat = 0.15;
+      }
+    }
+        // Satin-silver skid plates on the lower fascias, with a thin black edge.
+    let skid = select(c.p9.w, c.p9.z, lp.z > 0.0);
+    if (skid > 0.0 && abs(lp.z) > halfL - 0.35) {
+      let shw = floor(skid) / 100.0;
+      let stop = fract(skid);
+      let e = min(stop - lp.y, shw - abs(lp.x));
+      if (e > 0.0) {
+        s.albedo = select(vec3f(0.02), vec3f(0.62, 0.63, 0.64), e > 0.012);
+        s.metal = select(0.0, 1.0, e > 0.012);
+        s.rough = select(0.4, 0.38, e > 0.012);
+        coat = 0.0;
       }
     }
     // Lower body AO: sills and bumper undersides stop mirroring the sky.

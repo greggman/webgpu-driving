@@ -167,6 +167,12 @@ export interface BodyCurves {
   // Matte black plastic cladding (SUVs): everything below `top` (m above
   // the ground) and a band `arch` wide beyond each wheel arch.
   cladding?: {top: number; arch: number};
+  // Satin-silver skid plates on the lower fascias: from the bottom up to
+  // `top` (m, < 1), across |x| < halfWidth (m), within 0.35 m of each end.
+  skidPlates?: {
+    front?: {top: number; halfWidth: number};
+    rear?: {top: number; halfWidth: number};
+  };
   // Roof rails (gloss black) along the roof edges: rail height above the
   // roof, width, and inset inboard of the roof rail line (m).
   roofRails?: {height: number; width: number; inset: number};
@@ -1671,9 +1677,18 @@ export function chinTrimParams(sp: CarSpec): [number, number] {
   ];
 }
 
-// Cladding for the shader: [top height, arch band outer radius] (0s none).
-export function claddingParams(sp: CarSpec): [number, number] {
-  const cl = sp.body?.cladding;
-  if (!cl) return [0, 0];
-  return [cl.top, sp.wheelR + (sp.body?.archGap ?? 0.02) + cl.arch];
+// Cladding and skid plates for the shader: [cladding top, arch band outer
+// radius, front skid, rear skid] where a skid plate packs its half width
+// (cm) in the integer part and its top (m) in the fraction (0 = none).
+export function claddingParams(sp: CarSpec): [number, number, number, number] {
+  const cl = sp.body?.cladding,
+    sk = sp.body?.skidPlates;
+  const pack = (p?: {top: number; halfWidth: number}) =>
+    p ? Math.round(p.halfWidth * 100) + Math.min(p.top, 0.999) : 0;
+  return [
+    cl?.top ?? 0,
+    cl ? sp.wheelR + (sp.body?.archGap ?? 0.02) + cl.arch : 0,
+    pack(sk?.front),
+    pack(sk?.rear),
+  ];
 }
