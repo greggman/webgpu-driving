@@ -1313,7 +1313,10 @@ function prepareOpenings(
             // Body-colour collar with the skin's own normals.
             const i3 = (i + 1) % N;
             const cq = [collar[i], collar[i3], rimOut[i3], rimOut[i]];
-            const pts = cq.map(([u, v]) => P(u, v, -0.0006));
+            // (A contrasting black surround sits further out so the body
+            // skin under it can't show through.)
+            const lift = op.blackSurround ? -0.003 : -0.0006;
+            const pts = cq.map(([u, v]) => P(u, v, lift));
             const ns = cq.map(([u, v]) => surfN(u, v));
             const qy = (pts[0][1] + pts[1][1] + pts[2][1] + pts[3][1]) / 4,
               qz = (pts[0][2] + pts[1][2] + pts[2][2] + pts[3][2]) / 4;
