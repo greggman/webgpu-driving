@@ -134,6 +134,9 @@ export interface BodyCurves {
     frit?: [number, number];
   };
   chromeSill?: boolean; // thin chrome window seal
+  // Gloss-black splitter band along the bottom of the front fascia: its
+  // height (m) above the body bottom.
+  chinTrim?: number;
 }
 
 // ---- Curves ----
@@ -520,7 +523,14 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   });
   const near = (z: number, zc: number, w: number) => Math.abs(z - zc) < w;
 
-  const ops = prepareOpenings(c.openings ?? [], nose, tail, skinXAt, rakeZ);
+  const ops = prepareOpenings(
+    c.openings ?? [],
+    nose,
+    tail,
+    skinXAt,
+    rakeZ,
+    (y, z) => !!c.chinTrim && z > nose - 0.5 && y < g.bottom(z) + c.chinTrim,
+  );
 
   const mat = (i: number, j: number): number => {
     const z = (Z[i] + Z[i + 1]) / 2;
@@ -557,6 +567,16 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         if (cx > xIn && Math.hypot(cz - az, cy - R) < archR + 0.09) return -1;
     }
     if (s <= 1) return MAT_UNDER;
+    if (c.chinTrim && z > nose - 0.5) {
+      const q = [
+        grid[i][j],
+        grid[i + 1][j],
+        grid[i][j + 1],
+        grid[i + 1][j + 1],
+      ];
+      const cy = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4;
+      if (cy < g.bottom(z) + c.chinTrim && s <= 3) return MAT_TRIM;
+    }
     // The skin left inboard of a trimmed arch is the wheel well's wall.
     {
       const q = [
@@ -957,6 +977,9 @@ function prepareOpenings(
   tail: number,
   skinX: (z: number, y: number) => number,
   rakeZ: (z: number, x: number, y: number) => number,
+  // True where the skin at (y, z) is trim (e.g. the chin splitter): the
+  // collar takes that material there.
+  trimAt: (y: number, z: number) => boolean = () => false,
 ): PreparedOpening[] {
   const out: PreparedOpening[] = [];
   for (const op of list) {
@@ -1106,7 +1129,10 @@ function prepareOpenings(
             const cq = [collar[i], collar[i3], rimOut[i3], rimOut[i]];
             const pts = cq.map(([u, v]) => P(u, v, -0.0006));
             const ns = cq.map(([u, v]) => surfN(u, v));
-            for (const k of [0, 1, 2, 0, 2, 3]) push(pts[k], ns[k], collarMat);
+            const qy = (pts[0][1] + pts[1][1] + pts[2][1] + pts[3][1]) / 4,
+              qz = (pts[0][2] + pts[1][2] + pts[2][2] + pts[3][2]) / 4;
+            const cm = trimAt(qy, qz) ? MAT_TRIM : collarMat;
+            for (const k of [0, 1, 2, 0, 2, 3]) push(pts[k], ns[k], cm);
             const i2 = (i + 1) % N;
             const [ax, ay] = outline[i],
               [bx, by] = outline[i2];
