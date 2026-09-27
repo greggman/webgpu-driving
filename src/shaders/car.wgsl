@@ -330,10 +330,32 @@ fn rearViewMirror(rw: vec3f, lp: vec3f, wp: vec3f, c: Car) -> vec3f {
   return mirrorView(rw, wp) * mix(0.7, 0.05, 1.0 - frit);
 }
 
-// Rain on a car's outside surfaces, as a local-space normal offset:
-// beads everywhere (fewer on steep faces), drops running down vertical
-// panels and glass, and impact ripples on the roof / hood / trunk.
-fn rainNormal(lp: vec3f, ln: vec3f, t: f32) -> vec3f {
+// Rain on a car's outside surfaces: a static coat of beaded drops, as a
+// local-space normal offset. Two overlapping layers (different sizes, the
+// second rotated) so there's no grid; each bead a smooth dome that blends
+// into the surface at its edge; beads smaller than a pixel fade out (they
+// only shimmered). `px` = world size of a pixel here.
+fn beadLayer(uv: vec2f, cellSz: f32, seed: i32, dens: f32, px: f32) -> vec2f {
+  let bp = uv / cellSz;
+  let ci = vec2i(floor(bp));
+  let f = fract(bp) - 0.5;
+  let h1 = hash01(ci.x + seed, ci.y);
+  if (h1 >= dens) { return vec2f(0.0); }
+  let h2 = hash01(ci.x + 17 + seed, ci.y + 3);
+  let h3 = hash01(ci.x + 29 + seed, ci.y + 11);
+  let q = f - (vec2f(h2, h3) - 0.5) * 0.7;
+  // Radius in cell units; beads near the cell edge stay inside it.
+  let r = (0.12 + 0.2 * h2 * h3) * (1.0 - 0.8 * max(abs(q.x), abs(q.y)) * 0.0);
+  let d2 = dot(q, q) / (r * r);
+  if (d2 >= 1.0) { return vec2f(0.0); }
+  // Dome height (1 - d^2)^2: its slope -4 (1 - d^2) q / r^2 is zero at the
+  // rim and the centre, steepest between.
+  let slope = q / r * 4.0 * (1.0 - d2) * sqrt(d2 + 0.001);
+  let vis = smoothstep(0.7, 2.0, r * cellSz / max(px, 1e-5));
+  return slope * vis;
+}
+
+fn rainNormal(lp: vec3f, ln: vec3f, px: f32) -> vec3f {
   let up = saturate(ln.y);
   let sideX = abs(ln.x) > abs(ln.z);
   // Surface axes: horizontal faces (x, z); vertical faces (along, up).
@@ -345,49 +367,13 @@ fn rainNormal(lp: vec3f, ln: vec3f, t: f32) -> vec3f {
     a2 = vec3f(0.0, 1.0, 0.0);
     uv = vec2f(select(lp.x, lp.z, sideX), lp.y);
   }
-  var off = vec3f(0.0);
-  // Beads.
-  let bp = uv / 0.011;
-  let ci = vec2i(floor(bp));
-  let f = fract(bp) - 0.5;
-  let h1 = hash01(ci.x, ci.y);
-  let h2 = hash01(ci.x + 17, ci.y + 3);
-  let q = f - (vec2f(h1, h2) - 0.5) * 0.45;
-  let r = 0.14 + 0.2 * h2;
-  let dens = mix(0.25, 0.6, up);
-  if (h1 < dens && length(q) < r) {
-    let g = q / r;
-    off += (a1 * g.x + a2 * g.y) * 1.1;
-  }
-  // Drops running down vertical faces (a head and its trail).
-  if (up < 0.6) {
-    let col = floor(uv.x / 0.018);
-    let hc = hash01(i32(col), 91);
-    if (hc < 0.35) {
-      let x = (fract(uv.x / 0.018) - 0.5) * 0.018;
-      let speed = 0.12 + 0.25 * hash01(i32(col), 92);
-      let yy = uv.y + t * speed + hc * 5.0;
-      let cell = fract(yy / 0.35) * 0.35; // head at the cell bottom
-      let head = length(vec2f(x, cell - 0.012));
-      if (head < 0.004) {
-        off += (a1 * x + a2 * (cell - 0.012)) / 0.004;
-      } else if (abs(x) < 0.0017 && cell > 0.012 && cell < 0.12) {
-        off += a1 * (x / 0.0017) * 0.6;
-      }
-    }
-  }
-  // Impact ripples on horizontal faces.
-  if (up > 0.7) {
-    let rp = lp.xz / 0.07;
-    let rc = vec2i(floor(rp));
-    let rf = (fract(rp) - 0.5) * 0.07;
-    let ph = fract(t * 1.4 + hash01(rc.x + 5, rc.y + 9));
-    let rad = ph * 0.03;
-    let d = length(rf);
-    let ring = exp(-pow((d - rad) / 0.0025, 2.0)) * (1.0 - ph);
-    off += (a1 * rf.x + a2 * rf.y) / max(d, 1e-4) * ring * 0.7;
-  }
-  return off;
+  // Fewer beads on steep faces (they run off).
+  let dens = mix(0.22, 0.5, up);
+  var g = beadLayer(uv, 0.016, 0, dens, px);
+  let rot = mat2x2f(0.8, 0.6, -0.6, 0.8);
+  let g2 = beadLayer(rot * uv + vec2f(3.7, 1.3), 0.009, 101, dens * 0.8, px);
+  g += transpose(rot) * g2;
+  return (a1 * g.x + a2 * g.y) * 0.35;
 }
 
 fn carEnv(r: vec3f, rough: f32) -> vec3f {
@@ -1037,7 +1023,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Rain on the outside of the car (not the player's cabin view of it).
   let rainWet = F.weather.w * saturate(F.weather2.x * 1.5);
   if (rainWet > 0.0 && (body || mat == 2u || mat == 6u)) {
-    let lo = rainNormal(lp, ln, F.cam.w);
+        // (World size of a pixel, ~60 deg fov at ~1000 px.)
+    let pxw = distance(wp, F.cam.xyz) * 0.0011;
+    let lo = rainNormal(lp, ln, pxw);
     let wo = (c.model * vec4f(lo, 0.0)).xyz;
     s.n = normalize(s.n + wo * rainWet);
     // Wet paint reads deeper.
@@ -1170,7 +1158,7 @@ fn fsGlass(in: VOut) -> GlassOut {
     var nn2 = nn;
   let rainG = F.weather.w * saturate(F.weather2.x * 1.5);
   if (!interior && rainG > 0.0) {
-    let lo = rainNormal(lp, normalize(in.lnormal), F.cam.w);
+        let lo = rainNormal(lp, normalize(in.lnormal), distance(in.world, F.cam.xyz) * 0.0011);
     nn2 = normalize(nn + (c.model * vec4f(lo, 0.0)).xyz * rainG);
   }
   if (!interior) {

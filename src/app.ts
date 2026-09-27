@@ -410,11 +410,11 @@ export class App {
     await this.yieldToPaint();
     this.mark('generate start');
     this.biome = structuredClone(BIOMES[id]);
-    // Coast meadows: wildflowers only some of the time (a third of the
-    // worlds are just grass).
+    // Coast meadows: wildflowers in only a third of the worlds (the rest
+    // are just grass).
     if (
       id === 'coast' &&
-      Math.imul(this.params.seed | 0, 0x9e3779b1) >>> 0 < 0x55555555
+      Math.imul(this.params.seed | 0, 0x9e3779b1) >>> 0 >= 0x55555555
     )
       this.biome.scatter.flowers = 0;
     this.onWorldChanged(id);
