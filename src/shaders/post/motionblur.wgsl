@@ -24,7 +24,9 @@ fn fs(in: FsOut) -> @location(0) vec4f {
     uv0 += w * k * vec2f(0.0012, 0.002);
   }
   let c0 = textureSampleLevel(srcTex, samp, uv0, 0.0);
-  var vel = textureLoad(velTex, px, 0).xy * mb.x;
+    var vel = textureLoad(velTex, px, 0).xy * mb.x;
+  // Mirror glass sentinel (car.wgsl MIRROR_VEL): not blurred.
+  if (textureLoad(velTex, px, 0).x > 32.0) { vel = vec2f(0.0); }
   // Clamp to a maximum blur length (in pixels).
   let lenPx = length(vel * size);
   let maxPx = 40.0;
@@ -40,7 +42,8 @@ fn fs(in: FsOut) -> @location(0) vec4f {
     let uv = uv0 - vel * t;
     let q = vec2i(clamp(uv * size, vec2f(0.0), size - 1.0));
     let dq = textureLoad(depthTex, q, 0);
-    let vq = textureLoad(velTex, q, 0).xy * mb.x;
+        var vq = textureLoad(velTex, q, 0).xy * mb.x;
+    if (vq.x > 32.0 * mb.x && mb.x > 0.0) { vq = vec2f(0.0); }
     // Don't smear background over sharper foreground (reverse-Z: larger = closer).
     var w = 1.0;
     if (dq > d0 * 1.02 && length(vq * size) < length(vel * size) * 0.5) { w = 0.0; }

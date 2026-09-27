@@ -315,7 +315,11 @@ export class Director {
         // Wide aerial that keeps the horizon in frame: the car sits in the
         // lower third with the landscape ahead of it.
         const r = 55 + s.seed * 35;
-        const a = s.side * (0.5 + t * 0.05) + (s.seed - 0.5) * 1.2;
+        // The camera drifts round the car and back (bounded): an angle that
+        // grew with time swung it ahead of the car when the shot was held.
+        const a =
+          s.side * (0.55 + 0.3 * Math.sin(t * 0.05 + s.seed * 6.28)) +
+          (s.seed - 0.5) * 0.5;
         eye = at(-Math.cos(a) * r, Math.sin(a) * r * 0.7, 14 + s.seed * 16);
         target = at(40, 0, 2);
         fov = 38 * DEG;

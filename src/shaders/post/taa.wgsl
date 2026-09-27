@@ -69,7 +69,9 @@ fn fs(in: FsOut) -> @location(0) vec4f {
   if (taaParams.x > 0.5) {
     return vec4f(itm(center), 1.0);
   }
-  let vel = textureLoad(velTex, bestPx, 0).xy;
+    let vel = textureLoad(velTex, bestPx, 0).xy;
+  // Mirror glass (car.wgsl MIRROR_VEL): no history.
+  if (textureLoad(velTex, px, 0).x > 32.0) { return vec4f(itm(center), 1.0); }
   let prevUV = in.uv - vel;
   if (any(prevUV < vec2f(0.0)) || any(prevUV > vec2f(1.0))) {
     return vec4f(itm(center), 1.0);

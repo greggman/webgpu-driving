@@ -207,33 +207,92 @@ fn vsWheelShadow(v: VIn, @builtin(instance_index) ii: u32) -> CSOut {
 
 // Car reflection environment: the shared prefiltered environment map
 // (sky + clouds + distant hills band + ground).
-// What a mirror at local point lp shows along world ray rw: above the
-// horizon the environment; below it the road the car is driving on
-// (asphalt with the centre / edge lines, the verge beyond), traced to the
-// ground and fogged by distance. The env map alone has no nearby road.
-fn mirrorView(rw: vec3f, lp: vec3f, c: Car) -> vec3f {
-  if (rw.y > -0.003) { return envRadiance(rw, 0.0); }
-  let m = c.model;
-  let rl = vec3f(dot(m[0].xyz, rw), dot(m[1].xyz, rw), dot(m[2].xyz, rw));
-  let t = max(lp.y, 0.3) / -rw.y;
-    let x = lp.x + rl.x * t; // car-local lateral (+x left); US right lane
-  let light = F.sunColor.rgb * max(F.sun.y, 0.0) / PI + shIrradiance(vec3f(0.0, 1.0, 0.0));
-  var col = envRadiance(normalize(vec3f(rw.x, -0.06, rw.z)), 0.0); // verge
-  if (x > -1.95 && x < 5.4) {
-    col = vec3f(0.07, 0.07, 0.075) * light;
-    let yl = abs(abs(x - 1.75) - 0.08) < 0.05;
-    let wl = abs(x + 1.85) < 0.07;
-        if (yl) { col = vec3f(0.5, 0.38, 0.06) * light; }
-    if (wl) { col = vec3f(0.55) * light; }
-    // Faint tyre-track darkening in the lane.
-        col *= 1.0 - 0.15 * (1.0 - smoothstep(0.2, 0.5, abs(abs(x) - 0.8)));
+const MIRROR_VEL = 64.0; // see post/taa.wgsl, post/motionblur.wgsl
+
+// What a mirror at world point wp shows along world ray rw. The env map
+// only has the far sky and hills, so the ray is marched against the real
+// terrain heightfield; where it lands, the road there is shaded (asphalt
+// texture, its painted lines from the road's own lateral offset, dashes
+// along it, the shoulder), else textured grass: the scene recedes and
+// scrolls as the car drives, and hills and curves show.
+fn mirrorView(rw: vec3f, wp: vec3f) -> vec3f {
+  let sky = envRadiance(rw, 0.0);
+  if (rw.y > 0.03) { return sky; }
+  var t = 0.6;
+  var hit = false;
+  var prevT = 0.0;
+  for (var i = 0; i < 64; i++) {
+    let p = wp + rw * t;
+    let lvl = clamp(i32(log2(max(t * 0.004, 0.5) / 0.5)), 0, CLIP_LEVELS - 1);
+    if (p.y < clipSample(p.xz, lvl).x) { hit = true; break; }
+    prevT = t;
+    t = t * 1.09 + 0.3;
+    if (t > 900.0) { break; }
   }
-  return mix(fogColor(rw), col, fogTransmittance(F.cam.xyz + rw * t));
+  if (!hit) { return sky; }
+  // Refine the crossing.
+  var lo = prevT;
+  var hi = t;
+  for (var k = 0; k < 5; k++) {
+    let m = 0.5 * (lo + hi);
+    let p = wp + rw * m;
+    let lvl = clamp(i32(log2(max(m * 0.004, 0.5) / 0.5)), 0, CLIP_LEVELS - 1);
+    if (p.y < clipSample(p.xz, lvl).x) { hi = m; } else { lo = m; }
+  }
+  t = hi;
+  let q = wp + rw * t;
+  let g = clipSample(q.xz, clamp(i32(log2(max(t * 0.004, 0.5) / 0.5)), 0, CLIP_LEVELS - 1));
+  let nrm = normalize(vec3f(-g.y, 1.0, -g.z));
+  let w2 = q.xz + F.misc.xy;
+  let light = F.sunColor.rgb * saturate(dot(nrm, F.sun.xyz)) / PI + shIrradiance(nrm);
+  let d = g.w;
+  let ad = abs(d);
+  let halfW = F.road.w;
+  var alb: vec3f;
+  if (ad < halfW) {
+    // Asphalt with patches (they scroll past: motion).
+    alb = vec3f(0.075, 0.075, 0.08) * (0.8 + 0.4 * vnoise(w2 * 0.35));
+    if (F.palette[8].w < 0.5) {
+      let along = roadInfo(q.xz).along + F.misc.y;
+      let aa = max(t * 0.0015, 0.02);
+            // Same line styles and dash rhythm as road.wgsl.
+      let style = i32(F.palette[8].z);
+      let dash = step(fract(along / 12.8), 0.25);
+      var line = 0.0;
+      var lineCol = vec3f(0.6, 0.45, 0.08);
+      if (style == 1) {
+        line = 1.0 - smoothstep(0.06, 0.06 + aa, abs(ad - 0.18));
+      } else if (style == 2) {
+        line = (1.0 - smoothstep(0.07, 0.07 + aa, ad)) * dash;
+      } else if (style == 3) {
+        line = (1.0 - smoothstep(0.07, 0.07 + aa, ad)) * dash;
+        lineCol = vec3f(0.7);
+      }
+      if (F.lights.w > 1.5) {
+        let ln = (1.0 - smoothstep(0.07, 0.07 + aa, abs(ad - F.lights.z))) * dash;
+        if (ln > line) { lineCol = vec3f(0.7); }
+        line = max(line, ln);
+      }
+      if (F.palette[8].y > 0.5) {
+        let e = 1.0 - smoothstep(0.07, 0.07 + aa, abs(ad - (halfW - 0.25)));
+        if (e > line) { lineCol = vec3f(0.7); }
+        line = max(line, e);
+      }
+      alb = mix(alb, lineCol, line);
+    }
+  } else if (ad < halfW + 2.0) {
+    alb = pal(3) * (0.8 + 0.4 * vnoise(w2 * 0.8));
+  } else {
+    let mn = fbm2(w2 * 0.0025, 3);
+    alb = mix(pal(0), pal(1), saturate(mn * 1.8 - 0.4)) * (0.5 + 0.4 * vnoise(w2 * 0.2));
+  }
+  let col = alb * light;
+  return mix(fogColor(rw), col, fogTransmittance(q));
 }
 
 // The rear-view mirror also sees the car's own cabin: the rear bench top,
 // then the rear window framed by headliner, C-pillars and parcel shelf.
-fn rearViewMirror(rw: vec3f, lp: vec3f, c: Car) -> vec3f {
+fn rearViewMirror(rw: vec3f, lp: vec3f, wp: vec3f, c: Car) -> vec3f {
   let m = c.model;
   let rl = vec3f(dot(m[0].xyz, rw), dot(m[1].xyz, rw), dot(m[2].xyz, rw));
   let belt = c.p3.w;
@@ -265,7 +324,7 @@ fn rearViewMirror(rw: vec3f, lp: vec3f, c: Car) -> vec3f {
   }
   // Through the tinted rear glass, with a thin dark frit at its edge.
   let frit = 1.0 - smoothstep(-0.03, -0.015, d);
-  return mirrorView(rw, lp, c) * mix(0.7, 0.05, 1.0 - frit);
+  return mirrorView(rw, wp) * mix(0.7, 0.05, 1.0 - frit);
 }
 
 fn carEnv(r: vec3f, rough: f32) -> vec3f {
@@ -428,12 +487,17 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       s.metal = 0.0;
       s.rough = 1.0;
       s.spec = 0.0;
-            emissive = rearViewMirror(reflect(-v, n), lp, c) * 0.8;
+            emissive = rearViewMirror(reflect(-v, n), lp, wp, c) * 0.8;
     }
     let sh = sunShadow(wp, n) * cloudShadow(wp);
     var col = shadeSurface(s, wp, sh) + emissive;
     col = finishColor(col, wp);
-    return gbuffer(col, wp, in.prevWorld, n, s.rough);
+        var gb = gbuffer(col, wp, in.prevWorld, n, s.rough);
+    // Mirror glass: its picture moves while the glass doesn't, so TAA must
+    // not blend history there (it smeared): a sentinel velocity that TAA
+    // treats as off-screen and motion blur ignores.
+    if (in.mat == 16u) { gb.velocity = vec2f(MIRROR_VEL, 0.0); }
+    return gb;
   }
   var s: Surface;
   s.n = n;
@@ -856,7 +920,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       s.albedo = vec3f(0.0);
       s.rough = 1.0;
       s.spec = 0.0;
-      emissive = mirrorView(reflect(-normalize(F.cam.xyz - in.world), n), lp, c) * 0.8;
+      emissive = mirrorView(reflect(-normalize(F.cam.xyz - in.world), n), in.world) * 0.8;
     } else {
       // Tail light guide: bright red LED line.
       s.albedo = vec3f(0.5, 0.03, 0.02);
@@ -916,7 +980,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   }
   col += emissive;
   col = finishColor(col, wp);
-  return gbuffer(col, wp, in.prevWorld, s.n, s.rough);
+    var gb = gbuffer(col, wp, in.prevWorld, s.n, s.rough);
+  if (mat == 31u) { gb.velocity = vec2f(MIRROR_VEL, 0.0); } // door mirror glass
+  return gb;
 }
 
 // ---- Glass (blended pass): tinted reflective glass on every car; from the
