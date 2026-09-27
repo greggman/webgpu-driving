@@ -232,6 +232,11 @@ export class App {
 
   // Player car: index into CAR_KINDS (kept across environments).
   setPlayerCar(kind: CarKind) {
+    // (Swap once its mesh is built, so the player's car never vanishes.)
+    if (!this.renderer.cars.isReady(kind)) {
+      void this.renderer.cars.ready([kind]).then(() => this.setPlayerCar(kind));
+      return;
+    }
     this.playerKind = kind;
     this.traffic.setPlayerKind(kind);
     this.updateDriverEye();
@@ -460,6 +465,15 @@ export class App {
     this.mark('traffic done');
     this.mark('setWorld');
     this.renderer.setWorld(this.road, this.biome);
+    // Car meshes build in a worker; the ones on screen at the start (the
+    // player's and the traffic's) must be ready before the first frame.
+    {
+      const kinds = new Set<CarKind>(this.traffic.vehicles.map(v => v.kind));
+      kinds.add(this.traffic.player.kind);
+      if (kinds.has('semi')) kinds.add('trailer');
+      this.setProgress(`${name}: building cars`, 0.45);
+      await this.renderer.cars.ready(kinds);
+    }
     // Pipelines this biome needs for the first time (ocean, tyre tracks).
     if (pendingPipelines()) {
       await compileDeferred((done, total) =>
@@ -812,9 +826,9 @@ export class App {
     this.lastCamera = camera;
     this.frames++;
     if (this.frames % 10 === 0) this.updateHud(camera);
-    // Once running, build the remaining car kinds in the background (one
-    // every half second) so traffic that appears later doesn't hitch.
-    if (!this.showingProgress && this.frames % 30 === 0)
+    // Once running, queue the remaining car kinds for the mesh worker so
+    // traffic that appears later is already built (no main-thread work).
+    if (!this.showingProgress && this.frames === 60)
       this.renderer.cars.buildIdle();
   }
 

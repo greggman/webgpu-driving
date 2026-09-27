@@ -10,11 +10,12 @@ await fs.mkdir('dist', {recursive: true});
 await fs.copyFile('index.html', 'dist/index.html');
 
 const options = {
-  entryPoints: ['src/main.ts'],
+    // The car mesh worker is its own bundle (dist/meshWorker.js).
+  entryPoints: {main: 'src/main.ts', meshWorker: 'src/gen/meshWorker.ts'},
   bundle: true,
   format: 'esm',
   target: 'es2022',
-  outfile: 'dist/main.js',
+  outdir: 'dist',
   loader: {'.wgsl': 'text'},
   sourcemap: true,
   minify: !watch,

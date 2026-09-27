@@ -10,6 +10,7 @@ import {
   buildWheel,
   carSpec,
   CarSpec,
+  MeshData,
 } from '../gen/car';
 import {RENDER_PRELUDE} from './shaders';
 import {buildInterior, Interior} from '../gen/interior';
@@ -136,20 +137,21 @@ export class CarRenderer {
     return carSpec(kind);
   }
 
-  // A kind's GPU meshes, built the first time they're needed.
-  private mesh(kind: CarKind) {
-    let m = this.meshes.get(kind);
-    if (m) return m;
+  // Car meshes are built in a worker (meshWorker.ts) so generating them
+  // never stalls the frame loop; a kind is drawn once its mesh arrives.
+  private worker: Worker | null = null;
+  private requested = new Set<CarKind>();
+  private waiters = new Map<CarKind, Array<() => void>>();
+
+  private upload(kind: CarKind, body: MeshData, interior: Interior) {
     const device = this.device;
-    const spec = carSpec(kind);
-    const body = kind === 'trailer' ? buildTrailer() : buildCarBody(spec);
     const buf = device.createBuffer({
       label: `car-body-${kind}`,
-      size: body.vertices.byteLength,
+      size: Math.max(body.vertices.byteLength, 32),
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
-    device.queue.writeBuffer(buf, 0, body.vertices);
-    const interior = buildInterior(spec);
+    if (body.vertices.byteLength)
+      device.queue.writeBuffer(buf, 0, body.vertices);
     const interiorBuf = device.createBuffer({
       label: `car-interior-${kind}`,
       size: Math.max(interior.vertices.byteLength, 32),
@@ -157,18 +159,88 @@ export class CarRenderer {
     });
     if (interior.vertices.byteLength)
       device.queue.writeBuffer(interiorBuf, 0, interior.vertices);
-    m = {buf, count: body.count, spec, interior, interiorBuf};
-    this.meshes.set(kind, m);
-    return m;
+    this.meshes.set(kind, {
+      buf,
+      count: body.count,
+      spec: carSpec(kind),
+      interior,
+      interiorBuf,
+    });
+    for (const w of this.waiters.get(kind) ?? []) w();
+    this.waiters.delete(kind);
   }
 
-  // Builds one not-yet-built kind (call when idle, so a traffic kind that
-  // appears later doesn't cause a hitch). Returns false when all are built.
+  // Builds on the main thread (no worker, or it failed).
+  private buildNow(kind: CarKind) {
+    const spec = carSpec(kind);
+    this.upload(
+      kind,
+      kind === 'trailer' ? buildTrailer() : buildCarBody(spec),
+      buildInterior(spec),
+    );
+  }
+
+  private getWorker(): Worker | null {
+    if (this.worker) return this.worker;
+    try {
+      const w = new Worker(new URL('meshWorker.js', import.meta.url), {
+        type: 'module',
+      });
+      w.onmessage = (
+        e: MessageEvent<{kind: CarKind; body: MeshData; interior: Interior}>,
+      ) => {
+        const {kind, body, interior} = e.data;
+        if (!this.meshes.has(kind)) this.upload(kind, body, interior);
+      };
+      w.onerror = e => {
+        console.error(`[car-mesh-worker] ${e.message}`);
+        // Fall back: build whatever is still missing here.
+        this.worker = null;
+        for (const k of this.requested)
+          if (!this.meshes.has(k)) this.buildNow(k);
+      };
+      this.worker = w;
+    } catch (e) {
+      console.error(`[car-mesh-worker] ${(e as Error).message}`);
+      this.worker = null;
+    }
+    return this.worker;
+  }
+
+  // Starts building a kind's meshes (once).
+  request(kind: CarKind) {
+    if (this.meshes.has(kind) || this.requested.has(kind)) return;
+    this.requested.add(kind);
+    const w = this.getWorker();
+    if (w) w.postMessage({kind});
+    else this.buildNow(kind);
+  }
+
+  // Resolves once all of these kinds have meshes.
+  ready(kinds: Iterable<CarKind>): Promise<void> {
+    const waits: Array<Promise<void>> = [];
+    for (const k of new Set(kinds)) {
+      if (this.meshes.has(k)) continue;
+      waits.push(
+        new Promise(res => {
+          const l = this.waiters.get(k) ?? [];
+          l.push(res);
+          this.waiters.set(k, l);
+        }),
+      );
+      this.request(k);
+    }
+    return Promise.all(waits).then(() => undefined);
+  }
+
+  isReady(kind: CarKind): boolean {
+    return this.meshes.has(kind);
+  }
+
+  // Queues every kind (traffic can show any of them later).
   buildIdle(): boolean {
-    const kind = MESH_KINDS.find(k => !this.meshes.has(k));
-    if (!kind) return false;
-    this.mesh(kind);
-    return true;
+    for (const k of MESH_KINDS) this.request(k);
+    return false;
   }
 
   createPipelines(
@@ -346,7 +418,13 @@ export class CarRenderer {
     this.interiorDraw = null;
     let i = 0;
     for (const c of sorted.slice(0, MAX_CARS)) {
-      const spec = this.mesh(c.kind).spec;
+      // (Kinds whose meshes are still being built aren't drawn yet.)
+      const km0 = this.meshes.get(c.kind);
+      if (!km0) {
+        this.request(c.kind);
+        continue;
+      }
+      const spec = km0.spec;
       const o = i * CAR_FLOATS;
       this.data.set(c.model, o);
       this.data.set(c.prevModel, o + 16);
@@ -375,7 +453,7 @@ export class CarRenderer {
         ],
         o + 48,
       );
-      const km = this.mesh(c.kind);
+      const km = this.meshes.get(c.kind)!;
       const wheelAngle = -c.steer * 14; // steering ratio
       this.data.set(
         [c.interior ? 1 : 0, c.speed ?? 0, c.rpm ?? 0, wheelAngle],
@@ -443,7 +521,7 @@ export class CarRenderer {
     pass.draw(6, this.total);
     pass.setPipeline(this.glassPipe);
     for (const r of this.ranges) {
-      const m = this.mesh(r.kind);
+      const m = this.meshes.get(r.kind)!;
       pass.setVertexBuffer(0, m.buf);
       pass.draw(m.count, r.count, 0, r.first);
     }
@@ -452,7 +530,7 @@ export class CarRenderer {
   // The player's glass into the glass-FX target (see fsGlassFx).
   drawGlassFx(pass: GPURenderPassEncoder, water: GPUBindGroup) {
     if (!this.interiorDraw || !this.glassFxPipe) return;
-    const m = this.mesh(this.interiorDraw.kind);
+    const m = this.meshes.get(this.interiorDraw.kind)!;
     pass.setPipeline(this.glassFxPipe);
     pass.setBindGroup(1, this.bg);
     pass.setBindGroup(2, this.emptyGroup);
@@ -477,7 +555,7 @@ export class CarRenderer {
       .get('debug')
       ?.includes('nobody');
     for (const r of skipBody ? [] : this.ranges) {
-      const m = this.mesh(r.kind);
+      const m = this.meshes.get(r.kind)!;
       pass.setVertexBuffer(0, m.buf);
       pass.draw(m.count, r.count, 0, r.first);
     }
@@ -489,7 +567,7 @@ export class CarRenderer {
     if (body === this.bodyPipe) {
       pass.setPipeline(body);
       for (const r of this.ranges) {
-        const m = this.mesh(r.kind);
+        const m = this.meshes.get(r.kind)!;
         pass.setVertexBuffer(0, m.interiorBuf);
         pass.draw(m.interior.count, r.count, 0, r.first);
       }
