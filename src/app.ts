@@ -437,6 +437,16 @@ export class App {
         : fence === 'guardrail'
           ? {offset: this.road.halfWidth + 0.7, top: 0.8}
           : {offset: this.road.halfWidth + 3.2, top: 1.4};
+    {
+      // Grass reaches ~1.9x its nominal height; wheat ~1.05 m; flowering
+      // plants ~1.2 m (see grass.wgsl).
+      const S = this.biome.scatter;
+      this.director.vegTop = Math.max(
+        S.grass > 0 ? S.grassHeight * 1.9 : 0,
+        S.crops > 0 ? 1.05 : 0,
+        S.flowers > 0 ? 1.2 : 0,
+      );
+    }
     const kinds = this.biome.scatter.treeKinds;
     this.director.canopy = kinds.includes('redwood')
       ? 55

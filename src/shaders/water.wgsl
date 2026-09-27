@@ -93,18 +93,31 @@ fn fs(in: WVOut) -> GBufferOut {
   let sunC = F.sunColor.rgb * cloudShadow(wp);
   let amb = shIrradiance(vec3f(0.0, 1.0, 0.0));
 
-  // Reflection.
-  let fres = 0.02 + 0.98 * pow(1.0 - saturate(nv), 5.0);
+    // Reflection. A choppy sea seen at a grazing angle is a field of wave
+  // facets tilted toward the viewer (those tilted away are hidden behind
+  // crests): it mirrors sky well above the horizon (deep blue, not the pale
+  // horizon band) and reflects less than a flat mirror would. Model that
+  // with the facets' slope spread: the view angle and the reflected ray
+  // can't be more grazing than it.
+  let sigma = 0.12 + 0.05 * saturate(dist / 3000.0);
+  let nvEff = sqrt(nv * nv + sigma * sigma);
+  let fres = 0.02 + 0.98 * pow(1.0 - saturate(nvEff), 5.0);
   var r = reflect(-v, nn);
-  r.y = abs(r.y);
+  r.y = max(abs(r.y), sigma * 1.4);
+  r = normalize(r);
   var refl = envRadiance(r, rough);
+  // Sun glitter: its spread is the wave slopes' (not the distance-blurred
+  // roughness, which smeared a white sheen over the whole far sea).
+  let gr = clamp(sqrt(0.03 * 0.03 + variance * 0.5), 0.03, 0.2);
   let h = normalize(v + l);
-  let spec = min(D_GGX(saturate(dot(nn, h)), rough * rough) * V_SmithGGX(nv, saturate(dot(nn, l)), rough * rough) * 4.0, 80.0);
+  let spec = min(D_GGX(saturate(dot(nn, h)), gr * gr) * V_SmithGGX(nv, saturate(dot(nn, l)), gr * gr), 60.0);
   refl += sunC * spec * F.sun.w * saturate(dot(nn, l) * 4.0);
 
   // Subsurface scattering / body colour.
-  let sssCol = vec3f(0.05, 0.3, 0.32);
-  let deep = vec3f(0.006, 0.035, 0.06);
+    // Pacific blue: deep water a saturated dark blue, green-blue where
+  // light scatters back through the crests.
+  let sssCol = vec3f(0.03, 0.25, 0.32);
+    let deep = vec3f(0.004, 0.04, 0.13);
   let crest = saturate(in.height * 0.6 + 0.35);
   let back = pow(saturate(dot(l, -v)), 4.0) * pow(saturate(0.5 - 0.5 * dot(l, nn)), 3.0);
   var body = deep * (amb * 2.5 + sunC * saturate(l.y) * 0.08);

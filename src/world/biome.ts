@@ -428,7 +428,15 @@ export const BIOMES: Record<BiomeId, Biome> = {
       rocks: 0.05,
       flowers: 0.3,
     },
-    sky: {...baseSky, timeOfDay: 17.8, sunAzimuth: 70, clouds: 0.25},
+    sky: {
+      ...baseSky,
+      timeOfDay: 17.8,
+      sunAzimuth: 70,
+      clouds: 0.25,
+      // Clear, saturated California coast light.
+      fogDensity: baseSky.fogDensity * 0.5,
+      saturation: 1.15,
+    },
     weather: {...noWeather, wind: 0.7},
     ocean: true,
     headlights: false,

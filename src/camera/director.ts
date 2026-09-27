@@ -77,6 +77,9 @@ export class Director {
   canopy = 12; // min aerial clearance above ground (m)
   // Roadside fence line (lateral offset from the road centre, top height).
   fence: {offset: number; top: number} | null = null;
+  // Tallest roadside grass / crops / flowering plants (m): roadside
+  // cameras stay half a metre above it.
+  vegTop = 1;
   // User orbit camera (mouse / touch / wheel / arrows): angles around the
   // car relative to its heading, distance, and a focus offset in car-local
   // (forward, left, up), limited to ORBIT_FOCUS_MAX.
@@ -145,7 +148,15 @@ export class Director {
       let h = this.rng.range(0.6, 2.0);
       if (this.fence && off > this.fence.offset - 0.4)
         h = Math.max(h, this.fence.top + 0.5);
-      const eye: [number, number, number] = [p.pos[0], g + h, p.pos[2]];
+      // Above the grass / flowers (else they hide most of the car) and
+      // never below the road surface.
+      h = Math.max(h, this.vegTop + 0.5);
+      const roadY = road.atS(s).y;
+      const eye: [number, number, number] = [
+        p.pos[0],
+        Math.max(g + h, roadY + 0.6),
+        p.pos[2],
+      ];
       // Never under a bridge deck.
       if (road.groundHeight(eye[0], eye[2]) > eye[1] - 0.3) continue;
       if (

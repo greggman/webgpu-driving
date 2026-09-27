@@ -1,0 +1,6 @@
+[
+  {"name": "ocean-low", "params": {"biome": "coast", "cam": "custom", "s": "2600", "tod": "13", "eye": "0,0,2.5", "look": "300,300,-5", "fov": "60"}},
+  {"name": "ocean-high", "params": {"biome": "coast", "cam": "custom", "s": "2600", "tod": "13", "eye": "-40,-30,70", "look": "400,250,0", "fov": "65"}},
+  {"name": "ocean-chase", "params": {"biome": "coast", "cam": "chase", "s": "2600", "tod": "13"}},
+  {"name": "ocean-evening", "params": {"biome": "coast", "cam": "custom", "s": "2600", "eye": "0,0,2.5", "look": "300,300,-5", "fov": "60"}}
+]
