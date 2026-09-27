@@ -260,18 +260,22 @@ fn dial(uv: vec2f, value: f32, maxV: f32, ticks: f32) -> vec4f {
   return vec4f(col, cov);
 }
 
-fn interiorShade(mat: u32, lp: vec3f, c: Car) -> vec4f {
+fn interiorShade(mat: u32, lp: vec3f, c: Car, ln: vec3f) -> vec4f {
+  // Surface pattern coordinates projected along the dominant normal axis
+  // (no streaks down vertical faces).
+  let an = abs(ln);
+  let puv = select(select(lp.xy, lp.zy, an.x > an.z), lp.xz, an.y > max(an.x, an.z));
   // Returns (albedo rgb, roughness) or emissive handled by caller.
   if (mat == 12u) {
     // Tan leather with perforation pattern.
-    let perf = step(0.85, vnoise(lp.xz * 120.0));
-    return vec4f(vec3f(0.32, 0.19, 0.1) * (1.0 - 0.25 * perf), 0.55);
+        let perf = step(0.85, vnoise(puv * 120.0));
+    return vec4f(vec3f(0.32, 0.19, 0.1) * (1.0 - 0.08 * perf), 0.55);
   }
   if (mat == 13u) { return vec4f(vec3f(0.03), 0.75); }
   if (mat == 15u) { return vec4f(vec3f(0.25), 0.45); }
   if (mat == 17u) { return vec4f(vec3f(0.025), 0.95); }
   // Dashboard: soft-touch dark plastic with a fine grain.
-  return vec4f(vec3f(0.05, 0.05, 0.055) * (0.9 + 0.2 * vnoise(lp.xz * 80.0)), 0.7);
+  return vec4f(vec3f(0.05, 0.05, 0.055) * (0.9 + 0.2 * vnoise(puv * 80.0)), 0.7);
 }
 
 @fragment
@@ -290,7 +294,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // (Underbody / wheel-well liners stay dark from either side.)
   if ((in.mat >= 10u && in.mat < 20u) || (!ff && !wheelMat && in.mat != 5u)) {
     var s: Surface;
-    let im = interiorShade(select(10u, in.mat, in.mat >= 10u), lp, c);
+        let im = interiorShade(select(10u, in.mat, in.mat >= 10u), lp, c, normalize(in.lnormal));
     s.albedo = im.rgb;
     s.rough = im.a;
     if (in.mat < 10u) {

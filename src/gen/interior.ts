@@ -304,21 +304,106 @@ export function buildInterior(spec: CarSpec): Interior {
   const oy = belt - 1.0; // taller cars sit higher
   // Front seats follow the driver's eye (under the roof's middle).
   const sz = driverZ(spec) + 0.6;
+  // Lofted seat parts in a local frame (x across, y up the part, z
+  // toward its face), tilted back about x like the old boxes.
+  const place = (c: number[], tilt: number) => {
+    const cs = Math.cos(tilt),
+      sn = Math.sin(tilt);
+    return (p: number[]): P3 => [
+      c[0] + p[0],
+      c[1] + p[1] * cs - p[2] * sn,
+      c[2] + p[1] * sn + p[2] * cs,
+    ];
+  };
+  const smooth = (e0: number, e1: number, x: number) => {
+    const t = Math.min(Math.max((x - e0) / (e1 - e0), 0), 1);
+    return t * t * (3 - 2 * t);
+  };
+  // A padded slab: rows along y (-h..h), each a closed section whose face
+  // (+z) rises into side bolsters; the top is rounded.
+  const pad = (
+    c: number[],
+    tilt: number,
+    hwid: number,
+    h: number,
+    front: number,
+    back: number,
+    bolster: number,
+    // bolsters from this fraction of the half width (ends of a bench)
+    bFrom = 0.55,
+  ) => {
+    const T = place(c, tilt);
+    const rows: P3[][] = [];
+    const NY = 16;
+    for (let i = 0; i <= NY; ++i) {
+      const t = i / NY;
+      // Rounded ends (top and bottom).
+      const endK = Math.sqrt(Math.max(0, 1 - Math.pow(Math.abs(t * 2 - 1), 6)));
+      const wv = hwid * (1 - 0.1 * t) * Math.max(endK, 0.05);
+      const y = -h + 2 * h * t;
+      const row: P3[] = [];
+      for (let k = 0; k <= 32; ++k) {
+        const th = (k / 32) * Math.PI * 2;
+        const cx = Math.cos(th),
+          cz = Math.sin(th);
+        const x = Math.sign(cx) * Math.pow(Math.abs(cx), 0.45) * wv;
+        const b =
+          bolster * smooth(bFrom, 0.95, Math.abs(x) / Math.max(wv, 1e-3));
+        const zf = (front + b) * Math.max(endK, 0.3);
+        const z =
+          cz > 0
+            ? Math.pow(cz, 0.4) * zf
+            : -Math.pow(-cz, 0.4) * back * Math.max(endK, 0.3);
+        row.push(T([x, y, z]));
+      }
+      rows.push(row);
+    }
+    const ctr = T([0, 0, 0]);
+    emitGrid(
+      push,
+      rows,
+      () => MI_SEAT,
+      p => [p[0] - ctr[0], p[1] - ctr[1], p[2] - ctr[2]] as P3,
+      false,
+    );
+  };
   for (const sx of [dx, -dx]) {
-    box([sx, 0.45 + oy, -0.55 + sz], [0.25, 0.07, 0.26], MI_SEAT);
-    box([sx, 0.82 + oy, -0.86 + sz], [0.25, 0.34, 0.07], MI_SEAT, -0.28);
-    box(
+    // Cushion: a pad lying down (its face up), back = underside.
+    pad(
+      [sx, 0.45 + oy, -0.55 + sz],
+      -Math.PI / 2,
+      0.25,
+      0.26,
+      0.05,
+      0.06,
+      0.04,
+    );
+    // Back and headrest.
+    pad([sx, 0.82 + oy, -0.86 + sz], -0.28, 0.25, 0.34, 0.04, 0.05, 0.06);
+    pad(
       [sx, Math.min(1.22 + oy, spec.roofY - 0.16), -0.98 + sz],
-      [0.13, 0.09, 0.06],
-      MI_SEAT,
       -0.2,
+      0.13,
+      0.09,
+      0.03,
+      0.035,
+      0.0,
     );
   }
   // Rear bench (visible through the side glass on the outside view).
   if (spec.kind !== 'pickup' && spec.kind !== 'coupe') {
     const rz = spec.rearBase + 0.3;
-    box([0, 0.45 + oy, rz + 0.3], [hw * 0.8, 0.07, 0.22], MI_SEAT);
-    box([0, 0.72 + oy, rz], [hw * 0.8, 0.24, 0.07], MI_SEAT, -0.25);
+    pad(
+      [0, 0.45 + oy, rz + 0.3],
+      -Math.PI / 2,
+      hw * 0.8,
+      0.22,
+      0.05,
+      0.06,
+      0.03,
+      0.85,
+    );
+    pad([0, 0.72 + oy, rz], -0.25, hw * 0.8, 0.24, 0.04, 0.05, 0.04, 0.85);
   }
   // Floor.
   quad(
@@ -383,36 +468,70 @@ export function buildInterior(spec: CarSpec): Interior {
       for (const q of [A, B, C, A, C, D]) push(q.p, q.n, MI_WHEEL);
     }
   }
-  // Spokes (3) + hub.
-  const spoke = (ang: number) => {
-    const dir = [
-      u[0] * Math.cos(ang) + w[0] * Math.sin(ang),
-      u[1] * Math.cos(ang) + w[1] * Math.sin(ang),
-      u[2] * Math.cos(ang) + w[2] * Math.sin(ang),
-    ];
-    const mid = [0, 1, 2].map(k => wc[k] + dir[k] * ringR * 0.5);
-    const side = [
-      dir[1] * axis[2] - dir[2] * axis[1],
-      dir[2] * axis[0] - dir[0] * axis[2],
-      dir[0] * axis[1] - dir[1] * axis[0],
-    ];
-    const e = (s: number, t: number, o: number) =>
-      [0, 1, 2].map(
-        k =>
-          mid[k] + dir[k] * s * ringR * 0.5 + side[k] * t * 0.025 + axis[k] * o,
-      );
-    quad(
-      e(-1, -1, 0.01),
-      e(1, -1, 0.01),
-      e(1, 1, 0.01),
-      e(-1, 1, 0.01),
-      MI_WHEEL,
+  // Padded airbag hub: a rounded cushion bulging toward the driver.
+  const at = (du: number, dw: number, da: number): P3 => [
+    wc[0] + u[0] * du + w[0] * dw + axis[0] * da,
+    wc[1] + u[1] * du + w[1] * dw + axis[1] * da,
+    wc[2] + u[2] * du + w[2] * dw + axis[2] * da,
+  ];
+  {
+    const rows: P3[][] = [];
+    const rho = [0, 0.3, 0.55, 0.75, 0.88, 0.96, 1, 1.02];
+    for (const r of rho) {
+      const off =
+        r <= 1 ? 0.012 + 0.03 * Math.sqrt(Math.max(0, 1 - r ** 4)) : -0.015;
+      const row: P3[] = [];
+      for (let k = 0; k <= 24; ++k) {
+        const th = (k / 24) * Math.PI * 2;
+        const cx = Math.cos(th),
+          cy = Math.sin(th);
+        const ex = Math.sign(cx) * Math.pow(Math.abs(cx), 0.7),
+          ey = Math.sign(cy) * Math.pow(Math.abs(cy), 0.7);
+        row.push(at(ex * 0.085 * r, ey * 0.065 * r, off));
+      }
+      rows.push(row);
+    }
+    emitGrid(
+      push,
+      rows,
+      () => MI_WHEEL,
+      p => [0, 1, 2].map(k => p[k] - wc[k] + axis[k] * 0.05) as P3,
+      false,
     );
-  };
-  spoke(0);
-  spoke(Math.PI);
-  spoke(-Math.PI / 2);
-  box([wc[0], wc[1], wc[2]], [0.06, 0.06, 0.035], MI_WHEEL, -tilt);
+  }
+  // Three spokes: lofted bars with an elliptical section, tapering from
+  // the hub to the rim and set back slightly (a shallow dish).
+  for (const ang of [0, Math.PI, Math.PI / 2]) {
+    const ca = Math.cos(ang),
+      sa = Math.sin(ang);
+    const rows: P3[][] = [];
+    for (let i = 0; i <= 6; ++i) {
+      const t = i / 6;
+      const r = 0.07 + (ringR - 0.075) * t;
+      const half = (ang === Math.PI / 2 ? 0.035 : 0.028) * (1 - 0.35 * t);
+      const thick = 0.009;
+      const off = 0.012 * (1 - t);
+      const row: P3[] = [];
+      for (let k = 0; k <= 10; ++k) {
+        const th = (k / 10) * Math.PI * 2;
+        const sd = Math.cos(th) * half,
+          ax = Math.sin(th) * thick;
+        // radial dir (ca, sa) in the (u, w) plane; side dir perpendicular.
+        row.push(at(ca * r - sa * sd, sa * r + ca * sd, off + ax));
+      }
+      rows.push(row);
+    }
+    emitGrid(
+      push,
+      rows,
+      () => MI_WHEEL,
+      p => {
+        const c = at(ca * 0.12, sa * 0.12, 0.006);
+        return [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
+      },
+      false,
+    );
+  }
   const out = new Float32Array(v);
   return {
     vertices: out,

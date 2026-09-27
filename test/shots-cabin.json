@@ -1,10 +1,38 @@
 [
   {
     "name": "cabin-driver",
-    "params": {"biome": "country", "showroom": "1", "car": "sedan", "paint": "red", "view": "interior", "s": "1500", "tod": "13"}
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "car": "sedan",
+      "paint": "red",
+      "view": "interior",
+      "s": "1500",
+      "tod": "13"
+    }
   },
   {
     "name": "cabin-passenger",
-    "params": {"biome": "country", "car": "sedan", "paint": "red", "cam": "passenger", "s": "1500", "tod": "13", "freeze": "1"}
+    "params": {
+      "biome": "country",
+      "car": "sedan",
+      "paint": "red",
+      "cam": "passenger",
+      "s": "1500",
+      "tod": "13",
+      "freeze": "1"
+    }
+  },
+  {
+    "name": "cabin-rear",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "car": "sedan",
+      "paint": "red",
+      "view": "cabin",
+      "s": "1500",
+      "tod": "13"
+    }
   }
 ]

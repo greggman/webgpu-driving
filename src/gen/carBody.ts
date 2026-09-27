@@ -318,6 +318,10 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   const inCabin = (z: number) =>
     z > cab.rearGlassBase && z < cab.windscreenBase;
   const pillarW = cab.aPillarWidth ?? 0.06;
+  // The lower door-line crease dies out ahead of the front wheel (it
+  // made a hard facet into the bumper).
+  const doorCreaseW = (z: number) =>
+    1 - sm(axles[0] + 0.1, axles[0] + R + 0.35, z);
   const fritW = cab.frit ?? [0, 0];
 
   // Section half (x >= 0) through the character lines at z.
@@ -383,7 +387,16 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     const sp2 = spline2(
       pts,
       SPAN_COUNTS,
-      [0, 0, 0, cr.door ?? 0, cr.shoulder ?? 0, cr.belt ?? 0, 0, hoodCrease],
+      [
+        0,
+        0,
+        0,
+        (cr.door ?? 0) * doorCreaseW(z),
+        cr.shoulder ?? 0,
+        cr.belt ?? 0,
+        0,
+        hoodCrease,
+      ],
       SPAN_COUNTS.map((_, i) => (i === 6 ? u6 : undefined)),
     );
     // Door panel bow: a gentle outward belly between door line and
@@ -661,7 +674,10 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   if ((cr.shoulder ?? 0) >= 0.5) creaseK.add(spanStart[4]);
   if ((cr.belt ?? 0) >= 0.5) creaseK.add(spanStart[5]);
   if ((c.hoodLines?.crease ?? 0) >= 0.5) creaseK.add(spanStart[7]);
-  emitSkin(push, grid, mat, H, creaseK);
+  const doorK = spanStart[3];
+  emitSkin(push, grid, mat, H, creaseK, (i, k) =>
+    k === doorK ? doorCreaseW(Z[i]) : 1,
+  );
   for (const o of ops) o.emit(push);
 
   // Wheel-well liners (dark half tubes) closing the trimmed arches.
@@ -917,6 +933,8 @@ function emitSkin(
   mat: (i: number, j: number) => number,
   H: number,
   creaseK: Set<number>,
+  // Crease strength per station / row (0 = smooth there).
+  creaseW: (i: number, k: number) => number = () => 1,
 ) {
   const NS = grid.length,
     NR = grid[0].length;
@@ -945,8 +963,17 @@ function emitSkin(
   };
   // Normal of vertex (i, j) as used by a quad lying toward ring index
   // j + dir (dir = +1 or -1 along the ring).
-  const vn = (i: number, j: number, dir: 1 | -1) =>
-    creaseK.has(kOf(j)) ? normalAt(i, j, dir) : normalAt(i, j, 0);
+  const vn = (i: number, j: number, dir: 1 | -1) => {
+    const k = kOf(j);
+    if (!creaseK.has(k)) return normalAt(i, j, 0);
+    const w = creaseW(i, k);
+    if (w >= 0.999) return normalAt(i, j, dir);
+    const a = normalAt(i, j, dir),
+      b = normalAt(i, j, 0);
+    const n = a.map((x, q) => x * w + b[q] * (1 - w));
+    const l = Math.hypot(n[0], n[1], n[2]) || 1;
+    return n.map(x => x / l);
+  };
   for (let i = 0; i < NS - 1; ++i) {
     for (let j = 0; j < NR - 1; ++j) {
       const m = mat(i, j);
