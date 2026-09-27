@@ -330,6 +330,66 @@ fn rearViewMirror(rw: vec3f, lp: vec3f, wp: vec3f, c: Car) -> vec3f {
   return mirrorView(rw, wp) * mix(0.7, 0.05, 1.0 - frit);
 }
 
+// Rain on a car's outside surfaces, as a local-space normal offset:
+// beads everywhere (fewer on steep faces), drops running down vertical
+// panels and glass, and impact ripples on the roof / hood / trunk.
+fn rainNormal(lp: vec3f, ln: vec3f, t: f32) -> vec3f {
+  let up = saturate(ln.y);
+  let sideX = abs(ln.x) > abs(ln.z);
+  // Surface axes: horizontal faces (x, z); vertical faces (along, up).
+  var a1 = vec3f(1.0, 0.0, 0.0);
+  var a2 = vec3f(0.0, 0.0, 1.0);
+  var uv = lp.xz;
+  if (up < 0.6) {
+    a1 = select(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 0.0, 1.0), sideX);
+    a2 = vec3f(0.0, 1.0, 0.0);
+    uv = vec2f(select(lp.x, lp.z, sideX), lp.y);
+  }
+  var off = vec3f(0.0);
+  // Beads.
+  let bp = uv / 0.011;
+  let ci = vec2i(floor(bp));
+  let f = fract(bp) - 0.5;
+  let h1 = hash01(ci.x, ci.y);
+  let h2 = hash01(ci.x + 17, ci.y + 3);
+  let q = f - (vec2f(h1, h2) - 0.5) * 0.45;
+  let r = 0.14 + 0.2 * h2;
+  let dens = mix(0.25, 0.6, up);
+  if (h1 < dens && length(q) < r) {
+    let g = q / r;
+    off += (a1 * g.x + a2 * g.y) * 1.1;
+  }
+  // Drops running down vertical faces (a head and its trail).
+  if (up < 0.6) {
+    let col = floor(uv.x / 0.018);
+    let hc = hash01(i32(col), 91);
+    if (hc < 0.35) {
+      let x = (fract(uv.x / 0.018) - 0.5) * 0.018;
+      let speed = 0.12 + 0.25 * hash01(i32(col), 92);
+      let yy = uv.y + t * speed + hc * 5.0;
+      let cell = fract(yy / 0.35) * 0.35; // head at the cell bottom
+      let head = length(vec2f(x, cell - 0.012));
+      if (head < 0.004) {
+        off += (a1 * x + a2 * (cell - 0.012)) / 0.004;
+      } else if (abs(x) < 0.0017 && cell > 0.012 && cell < 0.12) {
+        off += a1 * (x / 0.0017) * 0.6;
+      }
+    }
+  }
+  // Impact ripples on horizontal faces.
+  if (up > 0.7) {
+    let rp = lp.xz / 0.07;
+    let rc = vec2i(floor(rp));
+    let rf = (fract(rp) - 0.5) * 0.07;
+    let ph = fract(t * 1.4 + hash01(rc.x + 5, rc.y + 9));
+    let rad = ph * 0.03;
+    let d = length(rf);
+    let ring = exp(-pow((d - rad) / 0.0025, 2.0)) * (1.0 - ph);
+    off += (a1 * rf.x + a2 * rf.y) / max(d, 1e-4) * ring * 0.7;
+  }
+  return off;
+}
+
 fn carEnv(r: vec3f, rough: f32) -> vec3f {
   return envRadiance(r, rough);
 }
@@ -974,6 +1034,15 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   s.ao = min(s.ao, ao);
     if (body || mat == 2u || mat == 5u) { s.ao *= mix(1.0, 0.25, saturate(-in.lnormal.y * 1.5)); }
   let sh = sunShadow(wp, s.n) * cloudShadow(wp);
+    // Rain on the outside of the car (not the player's cabin view of it).
+  let rainWet = F.weather.w * saturate(F.weather2.x * 1.5);
+  if (rainWet > 0.0 && (body || mat == 2u || mat == 6u)) {
+    let lo = rainNormal(lp, ln, F.cam.w);
+    let wo = (c.model * vec4f(lo, 0.0)).xyz;
+    s.n = normalize(s.n + wo * rainWet);
+    // Wet paint reads deeper.
+    s.albedo *= mix(1.0, 0.82, rainWet);
+  }
   var col = clearcoatShade(s, wp, sh, coat);
   if (coat > 0.0 && s.metal > 0.0) {
     // Metallic base coat mirrors the environment (horizon/treeline band),
@@ -1098,8 +1167,16 @@ fn fsGlass(in: VOut) -> GlassOut {
     o.color = vec4f(vec3f(0.0), 0.93);
     return o;
   }
+    var nn2 = nn;
+  let rainG = F.weather.w * saturate(F.weather2.x * 1.5);
+  if (!interior && rainG > 0.0) {
+    let lo = rainNormal(lp, normalize(in.lnormal), F.cam.w);
+    nn2 = normalize(nn + (c.model * vec4f(lo, 0.0)).xyz * rainG);
+  }
   if (!interior) {
-    // Tinted, reflective glass seen from outside.
+    // Tinted, reflective glass seen from outside (rain beads and runs on
+    // it catch the light).
+    let nn = nn2;
     let r = reflect(-v, nn);
     let l = F.sun.xyz;
     let h = normalize(v + l);
