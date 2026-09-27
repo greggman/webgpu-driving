@@ -449,11 +449,14 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   // Inboard of xIn the skin stays, forming the well's inner wall.
   const xIn = sp.track / 2 - 0.2;
 
+  const maxHalfW = Math.max(...c.width.map(k => k[1]));
   // Raked fascias: the upper nose / tail leans back from the bumper.
   const rakeZ = (z: number, x: number, y: number) => {
-    const Wz = Math.max(width(z), 1e-3);
+    // Corners are measured against the body's full half width (near the
+    // end stations the local width goes to 0, and a local measure made
+    // every point a "corner": a fin at the centre line).
     let zz = z;
-    const corner = sm(0.75, 1.0, Math.abs(x) / Wz);
+    const corner = sm(0.75, 1.0, Math.abs(x) / maxHalfW);
     if (c.noseRake) {
       const r = c.noseRake;
       const e = sm(nose - 0.5, nose, z);
@@ -1058,6 +1061,8 @@ function prepareOpenings(
               n = n.map(v => -v);
             for (const p of [a, b, cc, a, cc, d]) push(p, n, m);
           };
+          let pocketTop = -1e9;
+          for (const [, y] of outline) pocketTop = Math.max(pocketTop, y);
           let ocx = 0,
             ocy = 0;
           for (const [x, y] of outline) {
@@ -1112,7 +1117,9 @@ function prepareOpenings(
               P(px, py, -0.001),
               P(bx, by, -0.001),
               P(ax, ay, -0.001),
-              pocket ? bodyMat : MAT_TRIM,
+              // A pocket's rim is body colour except a thin shadow line
+              // along its top edge (so a shallow recess reads head-on).
+              pocket && (ay + by) / 2 < pocketTop - 0.01 ? bodyMat : MAT_TRIM,
             );
             quad(
               P(ax, ay, -0.001),
