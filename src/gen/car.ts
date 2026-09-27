@@ -143,8 +143,12 @@ export interface CarSpec {
 function spec(
   s: Omit<CarSpec, 'top' | 'belt' | 'headlightY' | 'taillightY'>,
 ): CarSpec {
-  const headlightY = s.noseY - 0.05;
-  const taillightY = s.tailY - 0.16;
+  // (With a plate height override the "lamp" heights follow the plates:
+  // for curve bodies they only place the plates / plate texture.)
+  const pf = s.body?.plateY?.front,
+    pr = s.body?.plateY?.rear;
+  const headlightY = pf !== undefined ? pf + 0.32 : s.noseY - 0.05;
+  const taillightY = pr !== undefined ? pr + 0.3 : s.tailY - 0.16;
   return {
     ...s,
     headlightY,

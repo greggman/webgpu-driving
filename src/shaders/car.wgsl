@@ -12,7 +12,8 @@ struct Car {
   p4: vec4f,      // interior view (1), speed km/h, rpm, steering wheel angle
   p5: vec4f,      // steering wheel center xyz, tilt
   p6: vec4f,      // driver x, dash top y, style (kind index), -
-    p7: vec4f,      // axle z shift, ground clearance, wheel width scale, third axle z (0 = none)
+        p7: vec4f,      // axle z shift, ground clearance, wheel width scale, third axle z (0 = none)
+  p8: vec4f,      // tailgate shut line: half width, bottom y (0 = trunk lid), -, -
 };
 
 @group(1) @binding(0) var<storage, read> cars: array<Car>;
@@ -552,7 +553,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Rear diffuser with exhaust tips.
                     // Rear diffuser (sedan: a lower, narrower centre section).
     let diffuser = select(lp.y < ty - 0.5, lp.y < 0.28 && ax < 0.75, style == 0u);
-    if (lp.z < -halfL + 0.4 && diffuser) {
+        if (decals && lp.z < -halfL + 0.4 && diffuser) {
       part = 4u;
       if (style != 2u && style != 5u && ln.z < -0.2) {
                 // Rectangular black exhaust finishers.
@@ -711,9 +712,15 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     if (ln.z < -0.3) {
       // Trunk / tailgate opening on the rear face.
                   
-      // The trunk lid shuts just above the lamps.
-      if (ax < 0.8) { seam = min(seam, abs(lp.y - (ty + 0.13))); }
-      if (lp.y > ty + 0.13) { seam = min(seam, abs(ax - 0.8) * halfW); }
+            if (c.p8.x > 0.0) {
+        // Hatch tailgate: along its bottom edge and up both sides.
+        if (abs(lp.x) < c.p8.x) { seam = min(seam, abs(lp.y - c.p8.y)); }
+        if (lp.y > c.p8.y) { seam = min(seam, abs(abs(lp.x) - c.p8.x)); }
+      } else {
+        // The trunk lid shuts just above the lamps.
+        if (ax < 0.8) { seam = min(seam, abs(lp.y - (ty + 0.13))); }
+        if (lp.y > ty + 0.13) { seam = min(seam, abs(ax - 0.8) * halfW); }
+      }
             // Recessed plate pocket (modelled bodies have a real one).
       if (decals) {
         let pp = vec2f(abs(lp.x) - 0.3, abs(lp.y - (ty - 0.3)) - 0.09);

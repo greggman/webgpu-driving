@@ -142,6 +142,13 @@ export interface BodyCurves {
   // Gloss-black splitter band along the bottom of the front fascia: its
   // height (m) above the body bottom.
   chinTrim?: number;
+  // Licence plate centre heights (m); default from noseY / tailY.
+  plateY?: {front?: number; rear?: number};
+  // Hatch tailgate: half width of its shut line on the rear face and the
+  // height of its bottom edge (m); replaces the trunk-lid seams.
+  tailgate?: {halfWidth: number; bottom: number};
+  // Roof spoiler lip over the rear window: overhang and drop (m).
+  spoiler?: {length: number; drop: number};
 }
 
 // ---- Curves ----
@@ -911,6 +918,53 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         MAT_CHROME,
       );
     }
+  // Roof spoiler: a thin body-colour blade across the roof at the top of
+  // the rear window, following the roof's crown and overhanging the glass.
+  if (c.spoiler) {
+    const z0 = cab.roofBack + 0.03;
+    const {p} = sectionHalf(z0);
+    const rail = p[spanStart[6]][0];
+    const roofYAt = (x: number) => {
+      let best = -1e9;
+      for (let k = spanStart[6]; k + 1 < p.length; ++k) {
+        const a = p[k],
+          b = p[k + 1];
+        if ((a[0] - x) * (b[0] - x) <= 0 && a[0] !== b[0])
+          best = Math.max(
+            best,
+            a[1] + ((b[1] - a[1]) * (x - a[0])) / (b[0] - a[0]),
+          );
+      }
+      return best > -1e8 ? best : p[p.length - 1][1];
+    };
+    const L = c.spoiler.length,
+      dr = c.spoiler.drop;
+    // Closed thin section (z, y offsets from the roof point).
+    const sec: Array<[number, number]> = [
+      [0.04, -0.004],
+      [0.0, 0.004],
+      [-L * 0.6, -dr * 0.4],
+      [-L, -dr],
+      [-L + 0.004, -dr - 0.01],
+      [-L * 0.5, -dr * 0.4 - 0.012],
+      [0.02, -0.012],
+    ];
+    const rows: P3[][] = [];
+    for (let k = 0; k <= 24; ++k) {
+      const x = (-1 + (2 * k) / 24) * rail * 0.94;
+      const ry = roofYAt(Math.abs(x));
+      // Taper the blade at its ends.
+      const e = Math.sqrt(1 - Math.pow(Math.abs(x) / (rail * 0.94), 8));
+      rows.push(sec.map(([dz, dy]) => [x, ry + dy * e, z0 + dz * e] as P3));
+    }
+    emitGrid(
+      push,
+      rows,
+      () => MAT_PAINT,
+      q => [0, q[1] - roofYAt(Math.abs(q[0])) + 0.006, q[2] - z0 + L * 0.3],
+      false,
+    );
+  }
   // Plates.
   // Plates sit on the skin at their height (the fascias may be raked).
   const faceZ = (y: number, front: boolean) => {
