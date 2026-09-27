@@ -705,7 +705,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     if (ax > 0.8 && lp.z < doorF && lp.z > doorR) { seam = min(seam, abs(lp.y - doorBot)); }
     if (ln.y > 0.5) {
       seam = min(seam, abs(lp.z - (c.p3.x + 0.03)));
-      seam = min(seam, abs(ax - 0.9) * halfW);
+            // Hood side shut lines (only on the hood: an upward-facing shoulder
+      // ledge along the doors would get one too).
+      if (lp.z > c.p3.x - 0.05) { seam = min(seam, abs(ax - 0.9) * halfW); }
       // Trunk lid (sedan, coupe) front edge.
       if (style == 0u || style == 3u) { seam = min(seam, abs(lp.z - (c.p3.z - 0.05))); }
     }
