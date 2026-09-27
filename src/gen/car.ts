@@ -274,10 +274,10 @@ export function carSpec(kind: CarKind): CarSpec {
         roofY: 1.285,
         roofW: 0.68,
         wsBase: 0.95,
-        roofFront: 0.1,
+        roofFront: 0.16,
         roofBack: -0.55,
         rearBase: -1.82,
-        sideRear: -1.2,
+        sideRear: -1.55,
       });
     case 'wagon':
       return spec({
