@@ -1,6 +1,6 @@
-[ ] Turn off hud by default
+[x] Turn off hud by default
 
-[ ] The forest flower road has way too much fog
+[x] The forest flower road has way too much fog
 
     I'm not sure it needs any fog. it also has no flowers
     as far as I can tell. What I imagined is the grass renderer

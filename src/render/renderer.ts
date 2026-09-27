@@ -99,7 +99,7 @@ const VOLUME: Record<string, [number, number, number]> = {
   country: [0.0005, 0.65, 40],
   desert: [0.0003, 0.7, 60],
   coast: [0.0006, 0.6, 40],
-  forest: [0.0045, 0.72, 35],
+  forest: [0.0007, 0.72, 35], // (a light touch: sun shafts, no haze)
   snow: [0, 0.5, 50],
   lahonda: [0.0025, 0.65, 45],
   night: [0.0022, 0.5, 30],
@@ -886,7 +886,7 @@ export class Renderer {
       S.hedges,
       S.buildings,
       S.trees,
-      0,
+      S.flowers, // palette[11].x: wildflowers / flowering plants (grass)
       0,
       0,
       0,

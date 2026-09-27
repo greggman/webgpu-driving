@@ -137,6 +137,22 @@ fn spawn(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) li: 
         }
       }
     }
+        // Flowering plants (~0.6-1.1 m, drawn as billboards): only on the
+    // coarsest candidate grid, so they persist out to the grass limit, in
+    // patches that are densest along the roadside.
+    var plant = false;
+    if (flowers > 0.0 && kind == 0.0 && cls == 3u) {
+      let band = 1.0 - smoothstep(halfW + 5.0, halfW + 18.0, roadD);
+            let patchF = smoothstep(0.3, 0.55, fbm2(world * 0.06 + 31.0, 3));
+      let pf = flowers * patchF * max(band, 0.3) * smoothstep(halfW + 0.8, halfW + 1.8, roadD);
+            if (rand01(pcg(h0 + 23u)) < pf * 0.9) {
+        plant = true;
+        kind = 5.0;
+                height = 0.8 + 0.4 * rand01(pcg(h0 + 24u));
+        bend = 0.0;
+        dens = 1.0;
+      }
+    }
     // Wildflowers (forest roadside, coast meadows).
     if (flowers > 0.0 && kind == 0.0) {
       let band = 1.0 - smoothstep(halfW + 6.0, halfW + 16.0, roadD);
@@ -149,7 +165,8 @@ fn spawn(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) li: 
     var b: Blade;
     b.pos = pos;
     b.height = height * grow;
-    b.width = (0.012 + 0.012 * rand01(pcg(h0 + 19u))) * widen * grow;
+        b.width = (0.012 + 0.012 * rand01(pcg(h0 + 19u))) * widen * grow;
+    if (plant) { b.width = height * 0.28 * grow; } // billboard half width
     b.rot = rand01(pcg(h0 + 20u)) * 6.2831;
     b.bend = bend;
     b.kindTint = kind * 10.0 + tint;
@@ -176,7 +193,30 @@ struct GOut {
   @location(4) side: f32,
 };
 
+// Flowering plant: a camera-facing billboard in rows (t = 0 .. 1), the
+// plant itself drawn in the fragment shader (fsPlant) and cut out.
+fn plantVertex(b: Blade, vi: u32, segments: u32) -> GOut {
+  let rows = select(2u, 3u, segments >= 3u);
+  var r = min(vi / 2u, rows - 1u);
+  var side = select(-1.0, 1.0, (vi & 1u) == 1u);
+  if (vi >= rows * 2u) { r = rows - 1u; side = 1.0; }
+  let t = f32(r) / f32(rows - 1u);
+  let toCam = F.cam.xyz - b.pos;
+  let across = normalize(vec3f(toCam.z, 0.0, -toCam.x) + vec3f(1e-4, 0.0, 0.0));
+  var p = b.pos + vec3f(0.0, t * b.height, 0.0) + across * side * b.width;
+  p += windOffset(p, t * t * 1.2, fract(b.rot)) * b.height;
+  var o: GOut;
+  o.world = p;
+  o.pos = F.viewProj * vec4f(p, 1.0);
+  o.normal = normalize(vec3f(toCam.x, 0.0, toCam.z) * 0.35 / max(length(toCam.xz), 0.01) + vec3f(0.0, 1.0, 0.0));
+  o.t = t;
+  o.kindTint = b.kindTint;
+  o.side = side;
+  return o;
+}
+
 fn bladeVertex(b: Blade, vi: u32, segments: u32) -> GOut {
+  if (floor(b.kindTint / 10.0) == 5.0) { return plantVertex(b, vi, segments); }
   let tipIdx = segments * 2u;
   var t: f32;
   var side: f32;
@@ -219,10 +259,78 @@ fn vsFar(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> GO
   return bladeVertex(blades[ii], vi, 2u);
 }
 
+// The flowering plant on its billboard: X across (plant heights), Y up.
+// Returns rgb and coverage (0 = cut out).
+fn plantShape(X: f32, Y: f32, tv: f32) -> vec4f {
+  let green = vec3f(0.09, 0.22, 0.05);
+  var col = vec3f(0.0);
+  var cov = 0.0;
+  // Stem with a slight curve.
+  let sx = 0.025 * sin(Y * 4.0 + tv * 20.0);
+    if (abs(X - sx) < 0.008 && Y < 0.9) { col = green * 0.8; cov = 1.0; }
+  // Short stalks from the stem to the side heads.
+  if (Y > 0.78 && Y < 0.9 && abs(X - sx) < 0.2 * (Y - 0.78) / 0.12 && abs(abs(X - sx) - 1.4 * (Y - 0.78)) < 0.006) {
+    col = green * 0.8;
+    cov = 1.0;
+  }
+  // Leaves: lanceolate, from the stem outward and up.
+  for (var i = 0; i < 3; i++) {
+    let fi = f32(i);
+    let s = select(-1.0, 1.0, ((i + i32(tv * 7.0)) & 1) == 1);
+    let a = vec2f(sx, 0.12 + 0.2 * fi);
+    let b = a + vec2f(s * (0.2 - 0.04 * fi), 0.16);
+    let ab = b - a;
+    let u = saturate(dot(vec2f(X, Y) - a, ab) / dot(ab, ab));
+    let d = length(vec2f(X, Y) - (a + ab * u));
+    if (d < 0.028 * sin(3.14159 * u) + 0.002) { col = green * (0.9 + 0.3 * u); cov = 1.0; }
+  }
+  // Blossoms near the top: 1-3 five-petal heads.
+    let heads = 2 + i32(tv * 3.99);
+  for (var k = 0; k < heads; k++) {
+    let fk = f32(k);
+        // Spread across the top in a loose dome.
+    let off = fk - f32(heads - 1) * 0.5;
+    let c = vec2f(sx + off * 0.085, 0.9 - 0.035 * off * off + 0.02 * fract(tv * 7.0 + fk * 0.53));
+    let d = vec2f(X, Y) - c;
+    let r = length(d);
+        let R = 0.07 + 0.025 * fract(tv * 13.0 + fk * 0.37);
+    let ang = atan2(d.y, d.x) + tv * 6.0 + fk;
+    let petal = R * (0.55 + 0.45 * abs(cos(2.5 * ang)));
+    if (r < petal) {
+      // Petal colour: the biome's flower colour, white, violet or pink.
+      let h = fract(tv * 3.7 + fk * 0.21);
+      var pc = pal(7);
+      if (h > 0.55) { pc = vec3f(0.92, 0.92, 0.95); }
+      if (h > 0.75) { pc = vec3f(0.55, 0.25, 0.8); }
+      if (h > 0.9) { pc = vec3f(0.95, 0.4, 0.6); }
+      col = mix(pc * 0.8, pc, r / max(petal, 1e-4));
+      if (r < R * 0.28) { col = vec3f(0.85, 0.65, 0.1); }
+      cov = 1.0;
+    }
+  }
+  return vec4f(col, cov);
+}
+
 @fragment
 fn fs(in: GOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   let kind = floor(in.kindTint / 10.0);
   let tv = fract(in.kindTint);
+  if (kind == 5.0) {
+    let ps = plantShape(in.side * 0.28, in.t, tv);
+    if (ps.a < 0.5) { discard; }
+    var s: Surface;
+    s.albedo = ps.rgb;
+    s.n = normalize(in.normal);
+    s.rough = 0.6;
+    s.metal = 0.0;
+    s.ao = mix(0.5, 1.0, in.t);
+    s.spec = 0.3;
+    s.sss = 0.6;
+    let sh = sunShadow(in.world, s.n) * cloudShadow(in.world);
+    var c = shadeSurface(s, in.world, sh);
+    c = finishColor(c, in.world);
+    return gbuffer(c, in.world, in.world, s.n, 0.6);
+  }
   let world2 = in.world.xz + F.misc.xy;
   // Base color matches the terrain's grass.
   let macroN = fbm2(world2 * 0.0025, 4);
