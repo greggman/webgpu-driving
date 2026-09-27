@@ -347,8 +347,9 @@ export class CarRenderer {
         [
           spec.wsBase,
           // B pillar (door shut line); coupes have one long door.
+          // (Coupes: the rear shut line of the single door.)
           spec.kind === 'coupe'
-            ? spec.wsBase - 0.08
+            ? (spec.body?.cabin.doorRear ?? spec.wsBase - 0.98)
             : (spec.roofFront + spec.roofBack) / 2,
           spec.rearBase,
           spec.belt,

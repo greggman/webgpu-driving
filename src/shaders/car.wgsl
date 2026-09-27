@@ -695,7 +695,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     var seam = 1.0;
     let doorBot = c.p7.y + 0.14;
     let doorF = c.p3.x - 0.08;
-        var doorR = select(c.p3.z + 0.1, c.p3.y - 0.9, style == 3u);
+        var doorR = select(c.p3.z + 0.1, c.p3.y, style == 3u); // coupe: p3.y = its one rear shut line
     // Sedan rear doors end ~1 m behind the B pillar (not in the quarter).
     if (style == 0u) { doorR = c.p3.y - 1.0; }
     if (style == 5u) { doorR = c.p3.y; }

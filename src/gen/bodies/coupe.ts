@@ -159,6 +159,7 @@ export const COUPE_BODY: BodyCurves = {
     sideFront: 0.78,
     sideRear: -1.12,
     pillars: [],
+    doorRear: -0.45,
     pillarWidth: 0.1,
     quarterLight: [-1.5, -1.19],
     aPillarWidth: 0.05,

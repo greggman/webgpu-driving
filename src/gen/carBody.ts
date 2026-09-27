@@ -137,6 +137,8 @@ export interface BodyCurves {
     // z range of a small fixed window in the A-pillar sail (ahead of
     // sideFront; a black divider fills the gap back to sideFront).
     frontQuarter?: [number, number];
+    // z of a 2-door car's rear door shut line (one long door per side).
+    doorRear?: number;
     // Painted A / C pillar band across the top of the windscreen and
     // backlight edges (m, measured inboard from the rail).
     aPillarWidth?: number;
@@ -919,10 +921,13 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     }
   }
   // Door handles.
-  const doorZ = [
-    (cab.sideFront + (cab.pillars[0] ?? cab.sideRear)) / 2 - 0.25,
-    ...(cab.pillars.length ? [cab.pillars[0] - 0.35] : []),
-  ];
+  const doorZ =
+    cab.doorRear !== undefined
+      ? [cab.doorRear + 0.15]
+      : [
+          (cab.sideFront + (cab.pillars[0] ?? cab.sideRear)) / 2 - 0.25,
+          ...(cab.pillars.length ? [cab.pillars[0] - 0.35] : []),
+        ];
   for (const sx of [-1, 1])
     for (const z of doorZ) {
       // Body-colour grip with a chrome strip, over a dark recess.
