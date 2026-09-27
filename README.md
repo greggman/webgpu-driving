@@ -19,6 +19,10 @@ wheel, hood and interior shots.
 
 <img src="screenshots/webgpu-driving-autumn.jpg">
 
+<img src="screenshots/webgpu-driving-rain.jpg">
+
+https://github.com/user-attachments/assets/d8b28ee4-b77f-435c-a15c-491157bf5736
+
 Nine environments: **country road**, **desert dirt road**, **ocean coastline**,
 **forest flower road**, **Pennsylvania snowstorm**, **La Honda Road**, **night drive** and
 **Arizona storm** (rainy desert night with lightning; rain on the glass refracts the view
