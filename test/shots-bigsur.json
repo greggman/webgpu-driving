@@ -1,0 +1,7 @@
+[
+  {"name": "bigsur-heli", "params": {"biome": "bigsur", "cam": "helicopter", "s": "1500", "t": "3"}},
+  {"name": "bigsur-drone", "params": {"biome": "bigsur", "cam": "drone", "s": "2600", "t": "4"}},
+  {"name": "bigsur-chase", "params": {"biome": "bigsur", "cam": "chase", "s": "2600"}},
+  {"name": "bigsur-sea", "params": {"biome": "bigsur", "cam": "custom", "s": "2600", "eye": "-60,-40,110", "look": "300,300,-40", "fov": "65"}},
+  {"name": "bigsur-along", "params": {"biome": "bigsur", "cam": "custom", "s": "2600", "eye": "-30,120,60", "look": "250,40,0", "fov": "60"}}
+]

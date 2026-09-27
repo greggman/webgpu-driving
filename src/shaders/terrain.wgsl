@@ -62,12 +62,30 @@ fn naturalHeight(x: f32, z: f32, d: f32) -> f32 {
     h -= tp(16) * c * c;
   }
 
-  if (tp(12) != 0.0) {
-    let o = tp(13) + 50.0 * noised(vec2f(p.y * 0.004, 3.1)).x;
+    if (tp(12) != 0.0) {
+    // Rugged coasts (tp(28) > 0): coves and headlands along the shore.
+    let o = tp(13) + 50.0 * noised(vec2f(p.y * 0.004, 3.1)).x
+      + tp(28) * noised(vec2f(p.y * 0.013, 7.7)).x;
     let sd = d * tp(12) - o;
     let t = smoothstep(-tp(15), tp(15) * 0.3, sd);
     let beach = tp(14) + 6.0 * noised(p * 0.01).x;
     h = mix(h, beach, t);
+    if (tp(28) > 0.0) {
+      // Gullies and buttresses down the cliff face.
+      let face = t * (1.0 - t) * 4.0;
+      let g = 1.0 - abs(noised(p * 0.045).x) * 1.6;
+      h += tp(28) * 0.45 * face * g;
+    }
+    if (tp(29) > 0.0) {
+      // Sea stacks and rock shelves off the cliff foot.
+      let off = sd - tp(15) * 0.3;
+      if (off > 0.0 && off < tp(29)) {
+                let n = noised(vec2f(p.x * 0.06 + 5.3, p.y * 0.06)).x;
+        let k = smoothstep(0.42, 0.52, n) * (1.0 - off / tp(29));
+        let top = 3.0 + 30.0 * smoothstep(-0.4, 0.8, noised(p * 0.05).x);
+        h = mix(h, top, k);
+      }
+    }
   }
   return h;
 }

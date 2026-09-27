@@ -5,6 +5,7 @@ export type BiomeId =
   | 'country'
   | 'desert'
   | 'coast'
+  | 'bigsur'
   | 'forest'
   | 'snow'
   | 'lahonda'
@@ -39,6 +40,8 @@ export interface TerrainParams {
   valleyDepth: number;
   valleyWidth: number;
   dunes: number;
+  cliffRugged?: number; // coves / cliff-face gullies amplitude (m)
+  seaStacks?: number; // range of sea stacks off the cliff foot (m)
 }
 
 export interface RoadStyle {
@@ -442,6 +445,82 @@ export const BIOMES: Record<BiomeId, Biome> = {
     headlights: false,
     shotWeights: {helicopter: 3, drone: 2, chase: 1.5, roadside: 1.5},
   },
+  // Pacific Coast Highway, Big Sur: the road on a shelf high on steep
+  // mountains that plunge into the sea as sheer rock cliffs, with coves,
+  // sea stacks, canyon bridges, golden grass and dark chaparral.
+  bigsur: {
+    id: 'bigsur',
+    name: 'Big Sur (PCH)',
+    terrain: {
+      ...baseTerrain,
+      hillAmp: 70,
+      hillFreq: 1 / 700,
+      baseHeight: 95,
+      coastSide: 1,
+      coastOffset: 75,
+      seaFloor: -35,
+      cliffWidth: 75,
+      cliffRugged: 45,
+      seaStacks: 110,
+      canyonDepth: 110,
+      canyonFreq: 1 / 1300,
+      canyonWidth: 0.06,
+      mountAmp: 520,
+      mountFreq: 1 / 2600,
+      mountStart: 80,
+      mountEnd: 1400,
+      valleyDepth: 180,
+      valleyWidth: 420,
+      macroAmp: 25,
+      cutSlope: 1.8,
+      // Steep drop-offs beside the road (a gentle fill slope turned the
+      // sea cliffs into a long grassy ramp).
+      fillSlope: 3.5,
+      roadFlatHalf: 5,
+    },
+    road: {
+      ...baseRoad,
+      lanesPerDir: 1,
+      maxHeading: 0.9,
+      wiggle: 0.8,
+      smoothing: 90,
+      fence: 'guardrail',
+      cruise: 20,
+    },
+    palette: {
+      ...basePalette,
+      // Olive coastal scrub and golden dry grass.
+      grassA: [0.13, 0.19, 0.06],
+      grassB: [0.5, 0.41, 0.19],
+      dry: [0.6, 0.48, 0.26],
+      foliage: [0.07, 0.12, 0.04],
+      rock: [0.34, 0.3, 0.25],
+      sand: [0.62, 0.56, 0.45],
+      flower: [0.95, 0.8, 0.25],
+    },
+    scatter: {
+      ...baseScatter,
+      grassHeight: 0.4,
+      trees: 0.012,
+      treeKinds: ['cypress', 'pine', 'redwood'],
+      bushes: 0.95,
+      rocks: 0.18,
+      flowers: 0.08,
+      forestEdge: 12,
+    },
+    sky: {
+      ...baseSky,
+      timeOfDay: 13.2,
+      sunAzimuth: 110,
+      clouds: 0.12,
+      fogDensity: baseSky.fogDensity * 0.4,
+      saturation: 1.15,
+    },
+    weather: {...noWeather, wind: 0.6},
+    ocean: true,
+    headlights: false,
+    shotWeights: {helicopter: 3, drone: 3, chase: 1.5, roadside: 1.5},
+  },
   forest: {
     id: 'forest',
     name: 'Forest Flower Road',
@@ -670,6 +749,7 @@ export const BIOME_ORDER: BiomeId[] = [
   'country',
   'desert',
   'coast',
+  'bigsur',
   'forest',
   'snow',
   'lahonda',
@@ -711,8 +791,8 @@ export function packTerrain(t: TerrainParams, seed: number): Float32Array {
     t.valleyDepth,
     t.valleyWidth,
     t.dunes,
-    0,
-    0,
+    t.cliffRugged ?? 0,
+    t.seaStacks ?? 0,
     0,
     0,
   ]);

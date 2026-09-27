@@ -88,11 +88,32 @@ export function naturalHeight(
 
   // Coastline: beyond the shoreline offset on the ocean side, drop to seabed.
   if (P[12] !== 0) {
-    const o = P[13] + 50 * noised(pz * 0.004, 3.1)[0];
+    // Rugged coasts (P[28] > 0): coves and headlands along the shore.
+    const o =
+      P[13] +
+      50 * noised(pz * 0.004, 3.1)[0] +
+      P[28] * noised(pz * 0.013, 7.7)[0];
     const sd = d * P[12] - o;
     const t = smoothstep(-P[15], P[15] * 0.3, sd);
     const beach = P[14] + 6 * noised(px * 0.01, pz * 0.01)[0];
     h = mix(h, beach, t);
+    if (P[28] > 0) {
+      // Gullies and buttresses down the cliff face.
+      const face = t * (1 - t) * 4;
+      const g = 1 - Math.abs(noised(px * 0.045, pz * 0.045)[0]) * 1.6;
+      h += P[28] * 0.45 * face * g;
+    }
+    if (P[29] > 0) {
+      // Sea stacks and rock shelves off the cliff foot.
+      const off = sd - P[15] * 0.3;
+      if (off > 0 && off < P[29]) {
+        const n = noised(px * 0.06 + 5.3, pz * 0.06)[0];
+        const k = smoothstep(0.42, 0.52, n) * (1 - off / P[29]);
+        const top =
+          3 + 30 * smoothstep(-0.4, 0.8, noised(px * 0.05, pz * 0.05)[0]);
+        h = mix(h, top, k);
+      }
+    }
   }
   return h;
 }

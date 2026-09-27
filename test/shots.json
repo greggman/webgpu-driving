@@ -151,5 +151,22 @@
       "seed": "3",
       "cam": "helicopter"
     }
+  },
+  {
+    "name": "bigsur-chase",
+    "params": {
+      "biome": "bigsur",
+      "cam": "chase",
+      "s": "2600"
+    }
+  },
+  {
+    "name": "bigsur-heli",
+    "params": {
+      "biome": "bigsur",
+      "cam": "helicopter",
+      "s": "1500",
+      "t": "3"
+    }
   }
 ]

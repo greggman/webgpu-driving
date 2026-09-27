@@ -99,6 +99,7 @@ const VOLUME: Record<string, [number, number, number]> = {
   country: [0.0005, 0.65, 40],
   desert: [0.0003, 0.7, 60],
   coast: [0.00025, 0.6, 40], // (clear coastal air: a saturated sea)
+  bigsur: [0.00025, 0.6, 60],
   forest: [0.00007, 0.72, 35], // (barely any: it washed the forest out)
   snow: [0, 0.5, 50],
   lahonda: [0.0025, 0.65, 45],
