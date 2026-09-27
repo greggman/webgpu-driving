@@ -628,7 +628,9 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         cz = (q[0][2] + q[1][2] + q[2][2] + q[3][2]) / 4;
       for (const az of axles) {
         const dz = cz - az;
+        // (Lower body only: a low hood above the axle is not a well wall.)
         if (
+          s <= 3 &&
           Math.abs(dz) < archR &&
           cx < xIn + 0.02 &&
           cy < R + Math.sqrt(archR * archR - dz * dz) - 0.005
@@ -767,7 +769,26 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         // The swell fades out at the ends of the arch (no flap).
         const fe = sm(0, 0.15, a / N) * sm(1, 0.85, a / N);
         const row: P3[] = [];
-        for (const [r, dx] of LIP) {
+        for (const [r0, dx] of LIP) {
+          // Keep the flange on the car's side: where the arch comes near a
+          // low hood, a point past the bodywork (no skin at that height)
+          // is pulled in along its radius (it collapsed to the centre line
+          // and spread a sheet across the hood).
+          let r = r0;
+          if (r0 > archR) {
+            const onSide = (rr: number) =>
+              skinX(az + Math.cos(th) * rr, R + Math.sin(th) * rr) > xIn;
+            if (!onSide(r0)) {
+              let lo = archR,
+                hi = r0;
+              for (let it = 0; it < 16; ++it) {
+                const m = (lo + hi) / 2;
+                if (onSide(m)) lo = m;
+                else hi = m;
+              }
+              r = lo;
+            }
+          }
           const z = az + Math.cos(th) * r,
             y = R + Math.sin(th) * r;
           // The outer rows follow the skin (where the plan turns in toward
@@ -1044,6 +1065,11 @@ function emitSkin(
     NR = grid[0].length;
   const kOf = (j: number) => (j < H ? j : 2 * H - 2 - j);
   const sub = (a: P3, b: P3) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  // The grid is parameterised consistently (stations along z, the ring
+  // around the section), so one orientation fits the whole skin: taken at
+  // the widest vertex, whose normal must face +x. (A per-vertex "outward"
+  // guess flipped some normals on low, domed hoods.)
+  let orient = 0;
   const normalAt = (i: number, j: number, side: -1 | 0 | 1): number[] => {
     const a = grid[Math.max(i - 1, 0)][j],
       b = grid[Math.min(i + 1, NS - 1)][j];
@@ -1058,13 +1084,32 @@ function emitSkin(
       du[2] * dv[0] - du[0] * dv[2],
       du[0] * dv[1] - du[1] * dv[0],
     ];
-    const l = Math.hypot(n[0], n[1], n[2]) || 1;
-    n = n.map(x => x / l);
+    const l = Math.hypot(n[0], n[1], n[2]);
     const p = grid[i][j];
-    const o = [p[0], p[1] - 0.6, p[2] * 0.25];
-    if (n[0] * o[0] + n[1] * o[1] + n[2] * o[2] < 0) n = n.map(x => -x);
-    return n;
+    if (l < 1e-9 || orient === 0) {
+      // Degenerate (collapsed end / centre points) or not yet oriented:
+      // fall back to a rough outward direction.
+      n = n.map(x => x / (l || 1));
+      const o = [p[0], p[1] - 0.6, p[2] * 0.25];
+      if (n[0] * o[0] + n[1] * o[1] + n[2] * o[2] < 0) n = n.map(x => -x);
+      return n;
+    }
+    return n.map(x => (x / l) * orient);
   };
+  {
+    let bi = 0,
+      bj = 0;
+    for (let i = 0; i < NS; ++i)
+      for (let j = 0; j < NR; ++j)
+        if (grid[i][j][0] > grid[bi][bj][0]) {
+          bi = i;
+          bj = j;
+        }
+    const n0 = normalAt(bi, bj, 0); // (fallback path: faces +x there)
+    orient = 1;
+    const raw = normalAt(bi, bj, 0);
+    orient = raw[0] * n0[0] + raw[1] * n0[1] + raw[2] * n0[2] < 0 ? -1 : 1;
+  }
   // Normal of vertex (i, j) as used by a quad lying toward ring index
   // j + dir (dir = +1 or -1 along the ring).
   const vn = (i: number, j: number, dir: 1 | -1) => {
@@ -1162,6 +1207,11 @@ function offsetPoly(poly: Array<[number, number]>, d: number) {
   });
 }
 
+// Openings sit on the fascia: the surface search runs this far in from the
+// end (deeper, points near the top of the nose landed on a low hood and
+// projected the housing onto it).
+const FASCIA_DEPTH = 0.5;
+
 function prepareOpenings(
   list: Opening[],
   nose: number,
@@ -1194,7 +1244,7 @@ function prepareOpenings(
       // Skin surface z seen from the end at (x, y): the station where the
       // section just stops covering |x| (bisection), then the rake.
       const surfZ = (x: number, y: number): number => {
-        let a = endZ - dir * 0.9,
+        let a = endZ - dir * FASCIA_DEPTH,
           b = endZ;
         // Beyond the body's silhouette: clamp onto it (no spikes).
         const ax = Math.min(Math.abs(x), skinX(a, y) * 0.999);
@@ -1292,8 +1342,8 @@ function prepareOpenings(
           const onBody = (x: number, y: number) =>
             Math.max(
               skinX(endZ - dir * 0.3, y),
-              skinX(endZ - dir * 0.6, y),
-              skinX(endZ - dir * 0.9, y),
+              skinX(endZ - dir * 0.45, y),
+              skinX(endZ - dir * FASCIA_DEPTH, y),
             ) >
             Math.abs(x) + 0.004;
           const collar = offsetPoly(outline, 0.042).map((c, i) => {
