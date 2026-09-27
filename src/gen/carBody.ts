@@ -391,7 +391,15 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         }
     };
     if (c.doorBow) bow(3, c.doorBow);
-    if (c.doorConcave) bow(2, -c.doorConcave);
+    // The lower-door dish fades out before the fascias (where the section
+    // turns toward the nose / tail it would make a shelf under the crease).
+    if (c.doorConcave)
+      bow(
+        2,
+        -c.doorConcave *
+          sm(nose - 0.3, nose - 0.7, z) *
+          sm(tail + 0.3, tail + 0.7, z),
+      );
     return sp2;
   };
 
@@ -668,7 +676,15 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         for (const [r, dx] of LIP) {
           const z = az + Math.cos(th) * r,
             y = R + Math.sin(th) * r;
-          row.push([sx * Math.max(skinX(z, y) + dx * fe, xIn), y, z]);
+          // The outer rows follow the skin (where the plan turns in toward
+          // a fascia the skin is narrower than xIn; clamping there made a
+          // flat plate); the inner channel stays behind the skin.
+          const sk = skinX(z, y);
+          const x =
+            dx >= 0
+              ? sk + dx * fe
+              : Math.max(sk + dx * fe, Math.min(xIn, sk - 0.012));
+          row.push([sx * x, y, z]);
         }
         lg.push(row);
       }

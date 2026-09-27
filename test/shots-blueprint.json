@@ -82,5 +82,17 @@
       "paint": "red",
       "view": "wheel"
     }
+  },
+  {
+    "name": "bp-corner",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "sedan",
+      "paint": "red",
+      "view": "corner"
+    }
   }
 ]

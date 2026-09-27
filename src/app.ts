@@ -47,6 +47,7 @@ const SHOWROOM_VIEWS: Record<string, [number[], number[], number]> = {
   rear34: [[-5.2, 3.1, 1.3], [0, 0, 0.62], 34],
   side: [[0.2, 7.0, 0.95], [0.2, 0, 0.7], 36],
   wheel: [[2.5, 1.95, 0.5], [1.35, 0.8, 0.38], 40],
+  corner: [[3.3, 1.9, 0.55], [2.0, 0.75, 0.38], 38],
   top34: [[4.2, -4.2, 3.6], [0, 0, 0.45], 36],
   front: [[7.5, 0.0, 1.0], [0, 0, 0.7], 30],
   // Near-orthographic "blueprint" views (long lens from far away).
@@ -357,8 +358,12 @@ export class App {
       // Scale the framing to the vehicle; a semi rig is framed around its
       // middle (the pose is the tractor's).
       const sp = carSpec(p.kind);
-      const k = view === 'wheel' ? 1 : Math.max(1, p.length / 4.8);
-      const ky = view === 'wheel' ? 1 : Math.max(1, sp.roofY / 1.45);
+      const k =
+        view === 'wheel' || view === 'corner' ? 1 : Math.max(1, p.length / 4.8);
+      const ky =
+        view === 'wheel' || view === 'corner'
+          ? 1
+          : Math.max(1, sp.roofY / 1.45);
       const mid = p.kind === 'semi' ? -semiLayout().tractor : 0;
       this.director.customEye = [v[0][0] * k + mid, v[0][1] * k, v[0][2] * ky];
       this.director.customTarget = [

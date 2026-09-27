@@ -26,9 +26,10 @@ fn build(@builtin(global_invocation_id) id: vec3u) {
     col += envMoon(dir);
     // Distant hills / treeline in the lowest few degrees (hazed).
     let az = atan2(dir.x, dir.z);
-    let ridge = 0.02 + 0.035 * (0.5 + 0.5 * sin(az * 5.0 + 1.3) * sin(az * 2.3));
-    let band = smoothstep(ridge, ridge * 0.5, dir.y);
-    let hills = mix(pal(6) * (amb + sunLit) * 0.7, skyRadiance(normalize(vec3f(dir.x, 0.01, dir.z))), 0.55);
+        let ridge = 0.025 + 0.045 * (0.5 + 0.5 * sin(az * 5.0 + 1.3) * sin(az * 2.3));
+        // A crisp treeline edge: glossy paint mirrors it as a horizon line.
+    let band = smoothstep(ridge, ridge * 0.8, dir.y);
+    let hills = mix(pal(6) * (amb + sunLit) * 0.7, skyRadiance(normalize(vec3f(dir.x, 0.01, dir.z))), 0.35);
     col = mix(col, hills, band);
   } else {
     let horizon = skyRadiance(normalize(vec3f(dir.x, 0.01, dir.z)));
