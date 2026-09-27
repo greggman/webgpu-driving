@@ -270,37 +270,18 @@ fn mirrorCarColor(i: u32, p: vec3f, rd: vec3f) -> vec3f {
   return col;
 }
 
-// Tree canopies seen in a mirror: a procedural stand matching the biome's
-// tree density beyond its forest edge (one canopy per 9 m cell, jittered).
-fn mirrorTreeAt(p: vec3f, ground: f32, d: f32) -> bool {
-  let dens = F.palette[10].w;
-  if (dens <= 0.0 || abs(d) < F.road.w + F.palette[11].z) { return false; }
-  let w = p.xz + F.misc.xy;
-  let cell = floor(w / 9.0);
-  let h = hash01(i32(cell.x), i32(cell.y) + 5003);
-  if (h > min(dens * 1.4, 0.95)) { return false; }
-  let jitter = vec2f(hash01(i32(cell.x) + 11, i32(cell.y)), hash01(i32(cell.x), i32(cell.y) + 13));
-  let c = (cell + 0.2 + jitter * 0.6) * 9.0;
-  let r = 3.0 + 2.0 * hash01(i32(cell.x) + 7, i32(cell.y) + 3);
-  let cy = ground + r * 1.6;
-  let dh = p.y - cy;
-  let dxz = length(w - c);
-  return dxz * dxz + dh * dh * 0.45 < r * r || (dxz < 0.35 && p.y < cy);
-}
-
 fn mirrorView(rw: vec3f, wp: vec3f) -> vec3f {
   let sky = envRadiance(rw, 0.0);
   let carHit = mirrorCarHit(wp, rw);
   var t = 0.6;
-  var hit = 0u; // 1 ground, 2 tree
+  var hit = 0u; // 1 ground
   var prevT = 0.0;
   for (var i = 0; i < 72; i++) {
     if (t > carHit.x) { break; }
     let p = wp + rw * t;
     let lvl = clamp(i32(log2(max(t * 0.004, 0.5) / 0.5)), 0, CLIP_LEVELS - 1);
     let g = clipSample(p.xz, lvl);
-    if (p.y < g.x) { hit = 1u; break; }
-    if (p.y < g.x + 20.0 && mirrorTreeAt(p, g.x, g.w)) { hit = 2u; break; }
+        if (p.y < g.x) { hit = 1u; break; }
     prevT = t;
     t = t * 1.07 + 0.25;
     if (t > 900.0) { break; }
@@ -311,14 +292,6 @@ fn mirrorView(rw: vec3f, wp: vec3f) -> vec3f {
     return mix(fogColor(rw), col, fogTransmittance(p));
   }
   if (hit == 0u) { return sky; }
-  if (hit == 2u) {
-    let p = wp + rw * t;
-    let amb = shIrradiance(vec3f(0.0, 1.0, 0.0));
-    let sun = F.sunColor.rgb * max(F.sun.y, 0.0) / PI;
-    let n = vnoise((p.xz + F.misc.xy) * 0.7 + p.y * 0.5);
-    let col = pal(6) * (amb * 0.55 + sun * 0.35) * (0.45 + 0.55 * n);
-    return mix(fogColor(rw), col, fogTransmittance(p));
-  }
   // Refine the ground crossing.
   var lo = prevT;
   var hi = t;
@@ -333,20 +306,31 @@ fn mirrorView(rw: vec3f, wp: vec3f) -> vec3f {
   let g = clipSample(q.xz, clamp(i32(log2(max(t * 0.004, 0.5) / 0.5)), 0, CLIP_LEVELS - 1));
   let nrm = normalize(vec3f(-g.y, 1.0, -g.z));
   let w2 = q.xz + F.misc.xy;
-  let light = F.sunColor.rgb * saturate(dot(nrm, F.sun.xyz)) / PI + shIrradiance(nrm);
-  let d = g.w;
+  // Lit as flat ground: the clipmap's small slope variations, seen this
+  // flat, stretched into streaks.
+  let upN = normalize(mix(vec3f(0.0, 1.0, 0.0), nrm, 0.25));
+  let light = F.sunColor.rgb * saturate(dot(upN, F.sun.xyz)) / PI + shIrradiance(upN);
+    let d = g.w;
   let ad = abs(d);
   let halfW = F.road.w;
+  // A mirror pixel's footprint on the ground (m): across the view and,
+  // stretched by the grazing angle, along it. Ground textures seen this
+  // flat stretch into streaks toward the vanishing point (a "zoom smear"),
+  // so the reflection uses plain colours; the lines are filtered by the
+  // footprint.
+  let pxA = 0.0015;
+  let fpAcross = t * pxA;
+  let fpAlong = fpAcross / max(abs(rw.y), 0.01);
   var alb: vec3f;
   if (ad < halfW) {
-    // Asphalt with patches (they scroll past: motion).
-    alb = vec3f(0.075, 0.075, 0.08) * (0.8 + 0.4 * vnoise(w2 * 0.35));
+    alb = vec3f(0.075, 0.075, 0.08);
     if (F.palette[8].w < 0.5) {
       let along = roadInfo(q.xz).along + F.misc.y;
-      let aa = max(t * 0.0015, 0.02);
+            let aa = max(fpAcross * 2.0, 0.02);
             // Same line styles and dash rhythm as road.wgsl.
       let style = i32(F.palette[8].z);
-      let dash = step(fract(along / 12.8), 0.25);
+            // Dashes average out once the footprint along the road nears them.
+      let dash = mix(0.25, step(fract(along / 12.8), 0.25), saturate(1.5 - fpAlong / 2.0));
       var line = 0.0;
       var lineCol = vec3f(0.6, 0.45, 0.08);
       if (style == 1) {
@@ -370,10 +354,10 @@ fn mirrorView(rw: vec3f, wp: vec3f) -> vec3f {
       alb = mix(alb, lineCol, line);
     }
   } else if (ad < halfW + 2.0) {
-    alb = pal(3) * (0.8 + 0.4 * vnoise(w2 * 0.8));
+        alb = pal(3);
   } else {
     let mn = fbm2(w2 * 0.0025, 3);
-    alb = mix(pal(0), pal(1), saturate(mn * 1.8 - 0.4)) * (0.5 + 0.4 * vnoise(w2 * 0.2));
+        alb = mix(pal(0), pal(1), saturate(mn * 1.8 - 0.4)) * 0.7;
   }
   let col = alb * light;
   return mix(fogColor(rw), col, fogTransmittance(q));
