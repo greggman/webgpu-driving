@@ -571,6 +571,35 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   });
   const near = (z: number, zc: number, w: number) => Math.abs(z - zc) < w;
 
+  // Per arch and angle above the axle: how much of the arch flange fits
+  // on the car's side (1 = all of it). A low hood / fender top cuts it
+  // short; both the arch cut and the lip use this.
+  const ARCH_N = 48;
+  const archFit = axles.map(az =>
+    Array.from({length: ARCH_N + 1}, (_, a) => {
+      const th = (Math.PI * a) / ARCH_N;
+      const onSide = (rr: number) =>
+        skinXAt(az + Math.cos(th) * rr, R + Math.sin(th) * rr) > xIn;
+      const rOut = archR + 0.15;
+      if (onSide(rOut)) return 1;
+      let lo = archR,
+        hi = rOut;
+      for (let it = 0; it < 14; ++it) {
+        const m = (lo + hi) / 2;
+        if (onSide(m)) lo = m;
+        else hi = m;
+      }
+      return Math.max((lo - archR) / (rOut - archR), 0.12);
+    }),
+  );
+  const archK = (ai: number, th: number) => {
+    if (th <= 0 || th >= Math.PI) return 1;
+    const u = (th / Math.PI) * ARCH_N,
+      i0 = Math.floor(u),
+      f = u - i0;
+    const t = archFit[ai];
+    return t[i0] * (1 - f) + t[Math.min(i0 + 1, ARCH_N)] * f;
+  };
   const ops = prepareOpenings(
     c.openings ?? [],
     nose,
@@ -611,8 +640,12 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       const cx = Math.abs(q[0][0] + q[1][0] + q[2][0] + q[3][0]) / 4,
         cy = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4,
         cz = (q[0][2] + q[1][2] + q[2][2] + q[3][2]) / 4;
-      for (const az of axles)
-        if (cx > xIn && Math.hypot(cz - az, cy - R) < archR + 0.09) return -1;
+      for (let ai = 0; ai < axles.length; ++ai) {
+        const az = axles[ai];
+        const k = archK(ai, Math.atan2(cy - R, cz - az));
+        if (cx > xIn && Math.hypot(cz - az, cy - R) < archR + 0.09 * k)
+          return -1;
+      }
     }
     if (s <= 1) return MAT_UNDER;
     // The skin left inboard of a trimmed arch is the wheel well's wall.
@@ -769,26 +802,12 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         // The swell fades out at the ends of the arch (no flap).
         const fe = sm(0, 0.15, a / N) * sm(1, 0.85, a / N);
         const row: P3[] = [];
+        // Keep the flange on the car's side: where the arch comes near a
+        // low hood it is narrowed (scaled toward the arch) at that angle
+        // (points past the bodywork collapsed onto the centre line).
+        const kr = archK(axles.indexOf(az), th);
         for (const [r0, dx] of LIP) {
-          // Keep the flange on the car's side: where the arch comes near a
-          // low hood, a point past the bodywork (no skin at that height)
-          // is pulled in along its radius (it collapsed to the centre line
-          // and spread a sheet across the hood).
-          let r = r0;
-          if (r0 > archR) {
-            const onSide = (rr: number) =>
-              skinX(az + Math.cos(th) * rr, R + Math.sin(th) * rr) > xIn;
-            if (!onSide(r0)) {
-              let lo = archR,
-                hi = r0;
-              for (let it = 0; it < 16; ++it) {
-                const m = (lo + hi) / 2;
-                if (onSide(m)) lo = m;
-                else hi = m;
-              }
-              r = lo;
-            }
-          }
+          const r = r0 > archR ? archR + (r0 - archR) * kr : r0;
           const z = az + Math.cos(th) * r,
             y = R + Math.sin(th) * r;
           // The outer rows follow the skin (where the plan turns in toward
@@ -1370,7 +1389,7 @@ function prepareOpenings(
             const cq = [collar[i], collar[i3], rimOut[i3], rimOut[i]];
             // (A contrasting black surround sits further out so the body
             // skin under it can't show through.)
-            const lift = op.blackSurround ? -0.003 : -0.0006;
+            const lift = op.blackSurround ? -0.005 : -0.0006;
             const pts = cq.map(([u, v]) => P(u, v, lift));
             const ns = cq.map(([u, v]) => surfN(u, v));
             const qy = (pts[0][1] + pts[1][1] + pts[2][1] + pts[3][1]) / 4,

@@ -402,7 +402,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
         // Seen from outside, the roof and pillars shade the cabin (it reads
     // dark through the glass, as on a real car in daylight).
         s.ao = select(0.25, 0.7, interior);
-    s.albedo = s.albedo * select(0.2, 1.0, interior);
+    s.albedo = s.albedo * select(0.14, 1.0, interior);
     s.spec = 0.5;
     s.sss = 0.0;
     var emissive = vec3f(0.0);
@@ -1006,7 +1006,7 @@ fn fsGlass(in: VOut) -> GlassOut {
     let spec = D_GGX(saturate(dot(nn, h)), 0.0004) * V_SmithGGX(max(nv, 1e-3), saturate(dot(nn, l)), 0.0004) * fres;
     let refl = envRadiance(r, 0.02) * fres + F.sunColor.rgb * min(spec, 200.0) * sh * saturate(dot(nn, l));
     // Traffic glass is darker (privacy glass) than windscreens.
-        let tint = select(0.84, 0.74, lp.z > c.p3.x - 0.9 && nn.y > 0.2);
+        let tint = select(0.86, 0.8, lp.z > c.p3.x - 0.9 && nn.y > 0.2);
     let a = 1.0 - (1.0 - tint) * (1.0 - fres);
     o.color = vec4f(refl, a);
     return o;
