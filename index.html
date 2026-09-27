@@ -87,7 +87,9 @@
       padding: 6px 14px; border-radius: 16px; background: rgba(0,0,0,0.5); color: #fff;
       font: 13px system-ui, sans-serif; pointer-events: none; opacity: 0; transition: opacity 0.25s;
     }
-    #toast.visible { opacity: 1; }
+        #toast.visible { opacity: 1; }
+    /* No room between the top buttons: drop below them. */
+    #toast.below { top: 64px; max-width: calc(100% - 24px); text-align: center; }
     #settings {
       position: absolute; top: 64px; left: 12px; bottom: 12px; width: 300px;
       max-width: calc(100% - 24px); display: flex; flex-direction: column;

@@ -309,6 +309,14 @@ export class App {
     const el = document.getElementById('toast');
     if (!el) return;
     el.textContent = text;
+    // Centred at the top if it fits between the left buttons and the
+    // regen button; otherwise (phones, thin windows) below them.
+    el.classList.remove('below');
+    const w = el.getBoundingClientRect().width;
+    const leftEnd = 204,
+      rightStart = window.innerWidth - 60;
+    const x0 = (window.innerWidth - w) / 2;
+    if (x0 < leftEnd + 8 || x0 + w > rightStart - 8) el.classList.add('below');
     el.classList.add('visible');
     clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(
@@ -580,9 +588,10 @@ export class App {
           this.settings.sync();
           break;
         case 'h':
-          this.hudEl.classList.toggle('hidden');
-          document.body.classList.toggle('ui-hidden');
-          this.settings.close();
+          // Shows / hides the HUD text (the buttons stay).
+          this.setHudVisible(this.hudHidden);
+          this.settings.sync();
+          this.settings.saveNow();
           break;
         case 'r':
           void this.regenerate();
@@ -865,7 +874,7 @@ export class App {
     const st = this.renderer.stats;
     this.hudEl.textContent =
       `${this.biome.name}  ·  ${kmh} km/h  ·  ${cam.shot} cam  ·  ${this.fps.toFixed(0)} fps\n` +
-      `←/→ lanes  ↑/↓ speed  C camera  R new world  P autopilot (${t.autopilot ? 'on' : 'off'})  ${envKeys()} environments  H hide\n` +
+      `←/→ lanes  ↑/↓ speed  C camera  V car  B environment  R new world  P autopilot (${t.autopilot ? 'on' : 'off'})  ${envKeys()} environments  H HUD\n` +
       `terrain nodes ${st.terrainNodes}  road chunks ${st.roadChunks}  cars ${st.cars}`;
   }
 

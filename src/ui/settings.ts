@@ -138,6 +138,10 @@ export class SettingsPanel {
     this.gear.setAttribute('aria-expanded', 'false');
   }
 
+  saveNow() {
+    this.save();
+  }
+
   private save() {
     const app = this.app;
     const stored: Stored = {
@@ -346,7 +350,7 @@ export class SettingsPanel {
       el(
         'p',
         {class: 'hint'},
-        `Keys: ←/→ lanes · ↑/↓ speed · C next shot · V next car · B next environment · R new world · ${envKeys()} environments · H hide UI · Esc close`,
+        `Keys: ←/→ lanes · ↑/↓ speed · C next shot · V next car · B next environment · R new world · ${envKeys()} environments · H show/hide HUD · Esc close`,
       ),
     );
 
