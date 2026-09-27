@@ -491,9 +491,10 @@ export const BIOMES: Record<BiomeId, Biome> = {
     palette: {
       ...basePalette,
       // Olive coastal scrub and golden dry grass.
-      grassA: [0.13, 0.19, 0.06],
-      grassB: [0.5, 0.41, 0.19],
-      dry: [0.6, 0.48, 0.26],
+            // Late-summer dry grass: muted straw gold with olive in the dips.
+      grassA: [0.2, 0.2, 0.08],
+      grassB: [0.4, 0.31, 0.14],
+      dry: [0.47, 0.36, 0.18],
       foliage: [0.07, 0.12, 0.04],
       rock: [0.34, 0.3, 0.25],
       sand: [0.62, 0.56, 0.45],
