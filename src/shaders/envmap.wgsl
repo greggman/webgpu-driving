@@ -32,7 +32,8 @@ fn build(@builtin(global_invocation_id) id: vec3u) {
         let ridge = 0.025 + 0.045 * (0.5 + 0.5 * sin(az * 5.0 + 1.3) * sin(az * 2.3));
         // A crisp treeline edge: glossy paint mirrors it as a horizon line.
     let band = smoothstep(ridge, ridge * 0.8, dir.y);
-    let hills = mix(pal(6) * (amb + sunLit) * 0.7, skyRadiance(normalize(vec3f(dir.x, 0.01, dir.z))), 0.35);
+        let h0 = pal(6);
+    let hills = mix(mix(vec3f(dot(h0, vec3f(0.3, 0.55, 0.15))), h0, 0.4) * (amb + sunLit) * 0.7, skyRadiance(normalize(vec3f(dir.x, 0.01, dir.z))), 0.35);
         col = mix(col, hills, band);
     dist = mix(5000.0, 1500.0, band);
   } else {
@@ -40,7 +41,10 @@ fn build(@builtin(global_invocation_id) id: vec3u) {
     let horizon = skyRadiance(normalize(vec3f(dir.x, 0.01, dir.z)));
         // Far ground is the biome's ground; steeply down (within a few metres,
     // under whatever is being reflected) it is road surface.
-    let far = mix(pal(0), vec3f(0.12), 0.35);
+        // (Mostly desaturated: seen in reflections, a saturated ground tints
+    // chrome and silver.)
+    let g0 = pal(0);
+    let far = mix(mix(vec3f(dot(g0, vec3f(0.3, 0.55, 0.15))), g0, 0.3), vec3f(0.12), 0.35);
     let ground = mix(far, vec3f(0.07, 0.07, 0.075), smoothstep(0.08, 0.35, -dir.y)) * (amb + sunLit);
     col = mix(horizon * 0.6, ground, saturate(-dir.y * 6.0));
   }

@@ -212,7 +212,10 @@ fn shadeSurface(s: Surface, worldPos: vec3f, shadowIn: f32) -> vec3f {
     col += diffCol * sunCol * s.sss * back * saturate(dot(-n, l) * 0.5 + 0.5) / PI;
   }
   // Ambient: SH sky irradiance + sky specular.
-  let fAmb = f0 + (max(vec3f(1.0 - s.rough), f0) - f0) * pow(1.0 - nv, 5.0);
+    // spec 0 (a base layer under a clear coat) has no grazing sheen of its
+  // own either; only its metallic part reflects.
+  let graze = select(1.0, s.metal, s.spec <= 0.0);
+  let fAmb = f0 + (max(vec3f(1.0 - s.rough), f0) - f0) * pow(1.0 - nv, 5.0) * graze;
   col += diffCol * shIrradiance(n) * s.ao;
   let r = reflect(-v, n);
   col += envSpecular(r, s.rough, n) * fAmb * s.ao * (1.0 - s.rough * 0.7);

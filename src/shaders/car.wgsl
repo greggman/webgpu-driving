@@ -215,7 +215,10 @@ fn clearcoatShade(base: Surface, wp: vec3f, sh: f32, coat: f32) -> vec3f {
   let v = normalize(F.cam.xyz - wp);
   let n = base.n;
   let nv = saturate(dot(n, v));
-  let fc = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
+    // Clear-coat Fresnel, capped at grazing angles (the coat's slight
+  // roughness and orange peel keep the paint colour from vanishing into a
+  // silver sheen on panels seen edge-on).
+  let fc = min(0.04 + 0.96 * pow(1.0 - nv, 5.0), 0.6);
   let r = reflect(-v, n);
   let l = F.sun.xyz;
   let h = normalize(v + l);
