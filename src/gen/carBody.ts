@@ -76,6 +76,8 @@ export interface Opening {
   // Thin body-colour bars across the opening at these heights (m), e.g.
   // the horizontal bar through a grille.
   bars?: number[];
+  // Gloss-black surround instead of the body-colour collar (grilles).
+  blackSurround?: boolean;
 }
 
 function sm(a: number, b: number, x: number) {
@@ -974,10 +976,11 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       const e = Math.sqrt(1 - Math.pow(Math.abs(x) / (rail * 0.94), 8));
       rows.push(sec.map(([dz, dy]) => [x, ry + dy * e, z0 + dz * e] as P3));
     }
+    // Body-colour top, dark underside (so it separates from the roof).
     emitGrid(
       push,
       rows,
-      () => MAT_PAINT,
+      (_i, j) => (j >= 3 ? MAT_TRIM : MAT_PAINT),
       q => [0, q[1] - roofYAt(Math.abs(q[0])) + 0.006, q[2] - z0 + L * 0.3],
       false,
     );
@@ -1314,7 +1317,8 @@ function prepareOpenings(
             const ns = cq.map(([u, v]) => surfN(u, v));
             const qy = (pts[0][1] + pts[1][1] + pts[2][1] + pts[3][1]) / 4,
               qz = (pts[0][2] + pts[1][2] + pts[2][2] + pts[3][2]) / 4;
-            const cm = trimAt(qy, qz) ? MAT_TRIM : collarMat;
+            const cm =
+              trimAt(qy, qz) || op.blackSurround ? MAT_TRIM : collarMat;
             for (const k of [0, 1, 2, 0, 2, 3]) push(pts[k], ns[k], cm);
             const i2 = (i + 1) % N;
             const [ax, ay] = outline[i],
