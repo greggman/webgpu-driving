@@ -887,10 +887,19 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       const by = g.belt(z);
       const zs0 = z - 0.06,
         zs1 = z + 0.16;
+      // The tip stays under the window frame (near the windscreen base
+      // the rail drops toward the belt).
+      const sec1 = sectionHalf(zs1).p;
+      const railP = sec1[spanStart[6]];
+      const f = Math.min(1, 0.13 / Math.max(railP[1] - by, 0.01)) * 0.85;
       const pts: P3[] = [
         [bx, by + 0.005, zs0],
         [bx, by + 0.005, zs1],
-        [bx - sx * 0.02, by + 0.13, zs1],
+        [
+          sx * (Math.abs(bx) + (railP[0] + 0.006 - Math.abs(bx)) * f),
+          by + (railP[1] - by) * f,
+          zs1,
+        ],
       ];
       for (const p of pts) push(p, [sx, 0, 0], MAT_TRIM);
       for (const p of [pts[0], pts[2], pts[1]]) push(p, [-sx, 0, 0], MAT_TRIM);
