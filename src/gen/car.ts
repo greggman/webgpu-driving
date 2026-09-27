@@ -218,7 +218,7 @@ export function carSpec(kind: CarKind): CarSpec {
         wsBase: 1.08,
         roofFront: 0.2,
         roofBack: -1.4,
-        rearBase: -1.97,
+        rearBase: -2.05,
         sideRear: -1.2,
       });
     case 'suv':

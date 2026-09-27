@@ -11,10 +11,10 @@ export const HATCH_BODY: BodyCurves = {
   // Centre-line silhouette.
   top: [
     // tailgate face -> tailgate top
-    [-2.14, 0.97],
-    [-2.125, 1.0],
-    [-2.06, 1.02],
-    [-1.97, 1.035],
+    [-2.14, 0.9],
+    [-2.125, 0.935],
+    [-2.09, 0.958],
+    [-2.05, 0.968],
     // raked rear window (about 57 deg from vertical) -> spoiler
     [-1.8, 1.16],
     [-1.6, 1.29],
@@ -49,10 +49,10 @@ export const HATCH_BODY: BodyCurves = {
     [2.14, 0.2],
   ],
   belt: [
-    [-2.14, 0.93],
-    [-2.12, 0.98],
-    [-2.06, 1.02],
-    [-1.97, 1.035],
+    [-2.14, 0.86],
+    [-2.12, 0.91],
+    [-2.09, 0.945],
+    [-2.05, 0.968],
     [-1.75, 1.1],
     [-1.5, 1.08],
     [-1.2, 1.045],
@@ -66,8 +66,8 @@ export const HATCH_BODY: BodyCurves = {
     [2.14, 0.6],
   ],
   shoulder: [
-    [-2.14, 0.85],
-    [-2.1, 0.885],
+    [-2.14, 0.78],
+    [-2.1, 0.84],
     [-1.9, 0.94],
     [-1.4, 0.95],
     [0.0, 0.905],
@@ -89,7 +89,7 @@ export const HATCH_BODY: BodyCurves = {
   ],
   // Roof side rail over the cabin (starts and ends on the belt).
   rail: [
-    [-1.97, 1.035],
+    [-2.05, 0.968],
     [-1.8, 1.14],
     [-1.6, 1.255],
     [-1.4, 1.335],
@@ -125,14 +125,14 @@ export const HATCH_BODY: BodyCurves = {
   ],
   beltIn: [
     [-2.12, 0.93],
-    [-1.6, 0.86],
-    [0.0, 0.9],
+    [-1.6, 0.85],
+    [0.0, 0.885],
     [1.08, 0.93],
     [2.12, 0.96],
   ],
   // Thick C pillar: the rail pulls well inboard over the rear quarter.
   railIn: [
-    [-1.97, 0.82],
+    [-2.05, 0.84],
     [-1.8, 0.69],
     [-1.4, 0.69],
     [-0.8, 0.74],
@@ -143,8 +143,8 @@ export const HATCH_BODY: BodyCurves = {
   rockerIn: 0.92,
   doorIn: 1.0,
   doorLine: [
-    [-2.0, 0.62],
-    [-1.2, 0.56],
+    [-2.0, 0.67],
+    [-1.2, 0.585],
     [0.0, 0.5],
     [1.2, 0.46],
     [1.9, 0.45],
@@ -156,7 +156,7 @@ export const HATCH_BODY: BodyCurves = {
     windscreenBase: 1.08,
     roofFront: 0.2,
     roofBack: -1.4,
-    rearGlassBase: -1.97,
+    rearGlassBase: -2.05,
     sideFront: 0.88,
     sideRear: -1.2,
     quarterLight: [-1.6, -1.3],
@@ -167,12 +167,13 @@ export const HATCH_BODY: BodyCurves = {
   },
   plateY: {front: 0.38, rear: 0.52},
   tailgate: {halfWidth: 0.52, bottom: 0.42},
-  tailBulge: {y: 0.85, depth: 0.05, width: 0.12},
+  tailBulge: {y: 0.8, depth: 0.05, width: 0.12},
   spoiler: {length: 0.09, drop: 0.015},
+  hoodLines: {x: 0.3, height: 0.008, crease: 0.4},
   chromeSill: false,
   chromeDLO: false,
   doorBow: 0.012,
-  doorConcave: 0.01,
+  doorConcave: 0.016,
   chinTrim: 0.11,
   archGap: 0.012,
   mirror: {w: 0.14, h: 0.085, out: 0.05},
@@ -218,7 +219,21 @@ export const HATCH_BODY: BodyCurves = {
         [0.0, 0.495],
       ],
       bars: [0.565],
-      depth: 0.05,
+      blackSurround: true,
+      depth: 0.03,
+    },
+    // Black scoops from the lamps' outer corners down toward the blades.
+    {
+      kind: 'intake',
+      end: 'front',
+      mirror: true,
+      outline: [
+        [0.73, 0.57],
+        [0.785, 0.575],
+        [0.72, 0.43],
+        [0.67, 0.425],
+      ],
+      depth: 0.035,
     },
     // Corner air curtains.
     {
@@ -246,39 +261,42 @@ export const HATCH_BODY: BodyCurves = {
         [0.272, 0.308],
         [0.0, 0.308],
       ],
-      depth: 0.017,
+      depth: 0.025,
     },
-    // Split tail lamps: outer part on the quarter panel ...
+    // Tail lamps: tall outer clusters on the quarters with L-shaped
+    // light guides ...
     {
       kind: 'taillamp',
       end: 'rear',
       mirror: true,
       outline: [
-        [0.535, 0.955],
-        [0.7, 0.965],
-        [0.8, 0.955],
-        [0.83, 0.92],
-        [0.815, 0.855],
-        [0.72, 0.85],
-        [0.6, 0.875],
-        [0.535, 0.895],
+        [0.535, 0.905],
+        [0.7, 0.915],
+        [0.8, 0.9],
+        [0.83, 0.86],
+        [0.825, 0.775],
+        [0.775, 0.765],
+        [0.73, 0.83],
+        [0.6, 0.845],
+        [0.535, 0.85],
       ],
-      strip: [0.0, 0.45],
+      strip: [0.0, 0.62],
       depth: 0.04,
     },
-    // ... and inner part on the tailgate, across the shut line.
+    // ... joined across the tailgate by a thin lit bar.
     {
       kind: 'taillamp',
       end: 'rear',
-      mirror: true,
+      mirror: 'merge',
       outline: [
-        [0.12, 0.93],
-        [0.505, 0.95],
-        [0.505, 0.9],
-        [0.4, 0.905],
-        [0.12, 0.915],
+        [0.0, 0.885],
+        [0.3, 0.887],
+        [0.505, 0.895],
+        [0.505, 0.855],
+        [0.3, 0.866],
+        [0.0, 0.868],
       ],
-      strip: [0.0, 0.45],
+      strip: [0.0, 1.0],
       depth: 0.03,
     },
     // Diffuser: two openings split by a centre fin.
