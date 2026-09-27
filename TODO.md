@@ -18,6 +18,6 @@
     As it is, it looks like some 2d smear effect. Maybe make it big for debugging, in fact
     you can just draw it full screen, and it will be clear it's not correct.
 
-[ ] We're using 1-9 for biome keys. Should we add 0 for big sur?
+[ ] We're using 1-9 for biome keys. There are 10 biome now. Should we use 1 to 0 across the keyboard?
 
 [ ] The hud message about 1-7 for biomes is out of date. 

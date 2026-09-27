@@ -40,27 +40,32 @@ fn terrainVertex(vi: u32, ii: u32, eye: vec3f) -> vec3f {
   let frac = fract(gi * 0.5) * 2.0;
   let g = gi - frac * k;
   let p = vec2f(node.minX, node.minZ) + g * spacing;
-    let l = clipLevelFor(p, clamp(lod, 0, CLIP_LEVELS - 1));
-  var h = clipSampleLevel(p, l).x;
-  // Coarse LODs: a triangle spanning the road and a cut slope beside it
-  // bulges above the road between its vertices (the distant road vanished
-  // under the terrain). Vertices within about a triangle of the road come
-  // down to just under its surface, so the coarse surface stays below it.
-  let span = spacing * select(1.0, 2.0, k > 0.0);
-  if (span > 0.9) {
-    let ri = roadInfo(p);
-    if (abs(ri.d) < F.road.w + 1.5 + span * 1.25 && ri.bridge < 0.5) {
-      h = min(h, ri.y - 0.15 - 0.03 * span);
-    }
-  }
+  let l = clipLevelFor(p, clamp(lod, 0, CLIP_LEVELS - 1));
+  let h = clipSampleLevel(p, l).x;
   return vec3f(p.x, h, p.y);
 }
 
 @vertex
 fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
-  let w = terrainVertex(vi, ii, F.cam.xyz);
+    let w = terrainVertex(vi, ii, F.cam.xyz);
   var o: VOut;
   o.pos = F.viewProj * vec4f(w, 1.0);
+  // Coarse (distant) terrain triangles can bulge above the road between
+  // their vertices and cover it. Near the road the terrain is pushed back
+  // in depth only (its shape, and so its look, is unchanged): not at all
+  // near the camera where it's exact, rising smoothly with distance and
+  // falling off smoothly across about one triangle beside the road, so
+  // there is no step between LOD levels.
+  let span = nodes[ii].size / GRID * 1.5;
+  let dist = distance(w, F.cam.xyz);
+  let far = smoothstep(60.0, 400.0, dist);
+  if (far > 0.0) {
+    let rd = abs(roadInfo(w.xz).d);
+    let halfW = F.road.w;
+    let near = 1.0 - smoothstep(halfW + 0.5 * span, halfW + 1.5 + 1.5 * span, rd);
+    // Reversed depth: dividing z pushes the vertex back (screen xy kept).
+    o.pos.z = o.pos.z / (1.0 + 0.03 * far * near);
+  }
   o.world = w;
   o.viewDist = distance(w, F.cam.xyz);
   return o;
