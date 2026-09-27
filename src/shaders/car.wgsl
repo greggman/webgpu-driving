@@ -376,6 +376,28 @@ fn rainNormal(lp: vec3f, ln: vec3f, px: f32) -> vec3f {
   return (a1 * g.x + a2 * g.y) * 0.35;
 }
 
+// Snow on a car in a snowy world: caked on the roof, hood, trunk and
+// other upward faces (patchy, thinning toward their edges, amount varying
+// per car), and grey-brown road slush sprayed up the lower body. Returns
+// (snow cover, slush cover). `seed` is per car.
+fn carSnow(lp: vec3f, ln: vec3f, seed: f32, halfL: f32) -> vec2f {
+  let amt = F.palette[7].w;
+  if (amt <= 0.0) { return vec2f(0.0); }
+  let p = lp.xz * 3.0 + seed * 37.0;
+  let big = fbm2(p * 0.6, 3);
+  let fine = vnoise(lp.xz * 40.0 + seed * 11.0);
+  // Upward faces hold snow; it slides off as they steepen, and wind and
+  // driving strip it from the leading edges (front of the hood / roof).
+  let hold = smoothstep(0.45, 0.85, ln.y + (big - 0.5) * 0.35);
+  let lead = smoothstep(halfL - 0.05, halfL - 0.5, lp.z) * 0.5 + 0.5;
+  let perCar = 0.75 + 0.35 * fract(seed * 7.13);
+  let snow = saturate(hold * (0.35 + 0.9 * big) * perCar * lead * amt * 1.6 + (fine - 0.5) * 0.25 * hold) ;
+  // Slush / salt spray low on the body, heaviest behind the wheels.
+  let low = smoothstep(0.62, 0.2, lp.y + (big - 0.5) * 0.15);
+  let slush = saturate(low * (0.6 + 0.6 * fine) * amt);
+  return vec2f(smoothstep(0.3, 0.55, snow), slush);
+}
+
 fn carEnv(r: vec3f, rough: f32) -> vec3f {
   return envRadiance(r, rough);
 }
@@ -1031,6 +1053,26 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // Wet paint reads deeper.
     s.albedo *= mix(1.0, 0.82, rainWet);
   }
+    // Snowy worlds: caked snow on top, road slush low down.
+  if (F.palette[7].w > 0.0 && (body || mat == 2u || mat == 6u || mat == 1u)) {
+    let seed = fract(dot(c.color.rgb, vec3f(12.9898, 78.233, 37.719)) * 43.7585);
+    let sn = carSnow(lp, ln, seed, halfL);
+    // Road slush: dull grey-brown film over the paint.
+    s.albedo = mix(s.albedo, vec3f(0.2, 0.18, 0.16), sn.y * 0.85);
+    s.rough = mix(s.rough, 0.7, sn.y);
+    coat *= 1.0 - sn.y * 0.8;
+    if (sn.x > 0.0) {
+      // Snow: bright, matte, slightly lumpy.
+      let lump = noised(lp.xz * 18.0 + seed * 5.0).yz * 0.25;
+      s.n = normalize(mix(s.n, normalize(n + (c.model * vec4f(lump.x, 0.0, lump.y, 0.0)).xyz), sn.x));
+      s.albedo = mix(s.albedo, vec3f(0.86, 0.88, 0.92), sn.x);
+      s.metal = mix(s.metal, 0.0, sn.x);
+      s.rough = mix(s.rough, 0.85, sn.x);
+      s.spec = mix(s.spec, 0.4, sn.x);
+      coat *= 1.0 - sn.x;
+      emissive *= 1.0 - sn.x;
+    }
+  }
   var col = clearcoatShade(s, wp, sh, coat);
   if (coat > 0.0 && s.metal > 0.0) {
     // Metallic base coat mirrors the environment (horizon/treeline band),
@@ -1173,8 +1215,24 @@ fn fsGlass(in: VOut) -> GlassOut {
     let refl = envRadiance(r, 0.02) * fres + F.sunColor.rgb * min(spec, 200.0) * sh * saturate(dot(nn, l));
     // Traffic glass is darker (privacy glass) than windscreens.
         let tint = select(0.86, 0.8, lp.z > c.p3.x - 0.9 && nn.y > 0.2);
-    let a = 1.0 - (1.0 - tint) * (1.0 - fres);
-    o.color = vec4f(refl, a);
+        var a = 1.0 - (1.0 - tint) * (1.0 - fres);
+    var gcol = refl;
+    // Snowy worlds: snow on the rear window, roof glass and the edges of
+    // the windscreen (the wipers keep its middle clear).
+    if (F.palette[7].w > 0.0) {
+      let lnG = normalize(in.lnormal);
+      let seed = fract(dot(c.color.rgb, vec3f(12.9898, 78.233, 37.719)) * 43.7585);
+      var sn = carSnow(lp, lnG, seed, c.p2.x).x;
+      let windscreen = lp.z > c.p3.x - 0.9 && lnG.z > 0.2;
+      if (windscreen) {
+        let wiped = smoothstep(0.75, 0.55, abs(lp.x) / c.p2.y) * smoothstep(c.p3.x - 0.05, c.p3.x - 0.2, lp.z);
+        sn *= 1.0 - wiped;
+      }
+      let lit = shIrradiance(nn) + F.sunColor.rgb * sh * saturate(dot(nn, l)) / PI;
+      gcol = mix(gcol, vec3f(0.86, 0.88, 0.92) * lit, sn);
+      a = mix(a, 1.0, sn);
+    }
+    o.color = vec4f(gcol, a);
     return o;
   }
   // From inside: faint reflections, snow on the glass, wipers.
