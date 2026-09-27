@@ -57,7 +57,9 @@ export type Knots = Array<[number, number]>; // (z, value)
 // (x = car-left; a smooth closed spline goes through them). Mirrored
 // openings are given for x >= 0 and duplicated at -x.
 export interface Opening {
-  kind: 'headlamp' | 'taillamp' | 'grille' | 'intake';
+  // 'pocket': a body-colour recess (e.g. the licence plate's; a plate at
+  // that end sits on its back face).
+  kind: 'headlamp' | 'taillamp' | 'grille' | 'intake' | 'pocket';
   end: 'front' | 'rear';
   outline: Array<[number, number]>;
   // true: a copy at -x; 'merge': the outline (x >= 0, from the centre line
@@ -558,7 +560,14 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     // Fascias (the shader draws lamps / grille / plates there).
     const end =
       z > nose - 0.35 ? MAT_FRONT : z < tail + 0.35 ? MAT_REAR : MAT_PAINT;
-    if (s === 2 && first) return MAT_TRIM; // sill line
+    // Sill line: only along the sills, between the wheel arches.
+    if (
+      s === 2 &&
+      first &&
+      z < axles[0] - archR - 0.03 &&
+      z > axles[1] + archR + 0.03
+    )
+      return MAT_TRIM;
     if (s < SPAN_GLASS) return end;
     const cabin = inCabin(z);
     if (s === SPAN_GLASS) {
@@ -772,8 +781,27 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   };
   const fy = sp.headlightY - 0.32,
     ry = sp.taillightY - 0.3;
-  box(push, [0, fy, faceZ(fy, true) + 0.004], [0.26, 0.06, 0.006], MAT_PLATE);
-  box(push, [0, ry, faceZ(ry, false) - 0.004], [0.26, 0.065, 0.006], MAT_PLATE);
+  // A plate pocket at that end sets the plate back by its depth.
+  const pocketDepth = (y: number, end: 'front' | 'rear') => {
+    for (const o of c.openings ?? []) {
+      if (o.kind !== 'pocket' || o.end !== end) continue;
+      const ys = o.outline.map(p => p[1]);
+      if (y > Math.min(...ys) && y < Math.max(...ys)) return o.depth ?? 0.04;
+    }
+    return 0;
+  };
+  box(
+    push,
+    [0, fy, faceZ(fy, true) - pocketDepth(fy, 'front') + 0.004],
+    [0.26, 0.06, 0.006],
+    MAT_PLATE,
+  );
+  box(
+    push,
+    [0, ry, faceZ(ry, false) + pocketDepth(ry, 'rear') - 0.004],
+    [0.26, 0.065, 0.006],
+    MAT_PLATE,
+  );
 
   const out = orient(new Float32Array(verts));
   return {vertices: out, count: out.length / 8};
@@ -958,6 +986,8 @@ function prepareOpenings(
       for (const [x, y] of outline)
         reach = Math.max(reach, Math.abs(endZ - surfZ(x, y)));
       const isLamp = op.kind === 'headlamp' || op.kind === 'taillamp';
+      const pocket = op.kind === 'pocket';
+      const bodyMat = front ? MAT_FRONT : MAT_REAR;
       const backMat =
         op.kind === 'headlamp'
           ? MAT_LAMP_HEAD
@@ -965,8 +995,14 @@ function prepareOpenings(
             ? MAT_LAMP_TAIL
             : op.kind === 'grille'
               ? MAT_GRILLE
-              : MAT_INTAKE;
-      const wallMat = op.kind === 'grille' ? MAT_CHROME : MAT_TRIM;
+              : pocket
+                ? bodyMat
+                : MAT_INTAKE;
+      const wallMat = pocket
+        ? bodyMat
+        : op.kind === 'grille'
+          ? MAT_CHROME
+          : MAT_TRIM;
       const P = (x: number, y: number, dz: number): number[] => [
         x,
         y,
@@ -999,7 +1035,7 @@ function prepareOpenings(
           // Rim: a thin dark gap on the skin, then the housing wall down
           // to the back.
           const rimOut = offsetPoly(outline, 0.006);
-          const collar = offsetPoly(outline, 0.035);
+          const collar = offsetPoly(outline, 0.042);
           const collarMat = front ? MAT_FRONT : MAT_REAR;
           const N = outline.length;
           for (let i = 0; i < N; ++i) {
@@ -1019,7 +1055,7 @@ function prepareOpenings(
               P(px, py, -0.001),
               P(bx, by, -0.001),
               P(ax, ay, -0.001),
-              MAT_TRIM,
+              pocket ? bodyMat : MAT_TRIM,
             );
             quad(
               P(ax, ay, -0.001),
