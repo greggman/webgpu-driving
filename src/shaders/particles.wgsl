@@ -132,14 +132,19 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
   } else {
     let L = P.volume;
         let wind = vec3f(F.weather.x, 0.0, F.weather.y) * select(3.0, 1.5, P.kind == 1u);
-    var swirl = vec3f(sin(t * 0.7 + r1 * 30.0), 0.0, cos(t * 0.6 + r2 * 30.0)) * select(0.4, 0.8, P.kind == 1u);
-    if (P.kind == 3u) { swirl = vec3f(0.0); }
-    vel = wind + swirl + vec3f(0.0, -P.fall * (0.7 + 0.6 * r3), 0.0);
-        let base = vec3f(r1, r2, r3) * L * 7.0;
+        let amp = select(select(0.4, 0.8, P.kind == 1u), 0.0, P.kind == 3u);
+    let swirl = vec3f(sin(t * 0.7 + r1 * 30.0), 0.0, cos(t * 0.6 + r2 * 30.0)) * amp;
+    let drift = wind + vec3f(0.0, -P.fall * (0.7 + 0.6 * r3), 0.0);
+    vel = drift + swirl;
+    // Position = the integral of that velocity: steady drift * t plus the
+    // swirl's bounded sway. (It was vel * t: the swirl term's amplitude
+    // grew with time, flinging flakes about like a swarm of flies.)
+    let sway = vec3f(-cos(t * 0.7 + r1 * 30.0) / 0.7, 0.0, sin(t * 0.6 + r2 * 30.0) / 0.6) * amp;
+    let base = vec3f(r1, r2, r3) * L * 7.0 + sway;
     // World-anchored (the floating origin shifts local coordinates: flakes
     // jumped together on every rebase).
     let origin = vec3f(F.misc.x, 0.0, F.misc.y);
-    center = wrapAround(base + vel * t - origin, F.cam.xyz + P.camVel.xyz * 0.25, L);
+        center = wrapAround(base + drift * t - origin, F.cam.xyz + P.camVel.xyz * 0.25, L);
         let dcam = distance(center, F.cam.xyz);
     // Flakes come right up to the camera (that's what sells the speed);
     // none inside the player's car (interior cameras).
