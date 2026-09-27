@@ -278,6 +278,7 @@ export interface BodyGeom {
   halfWidth: (z: number) => number; // skin half width at the shoulder
   beltX: (z: number) => number;
   rail: (z: number) => number;
+  railX: (z: number) => number; // half width at the roof rail
   top: (z: number) => number;
   bottom: (z: number) => number;
 }
@@ -289,10 +290,12 @@ export function bodyGeom(c: BodyCurves): BodyGeom {
     width = makeCurve(c.width),
     beltIn = asCurve(c.beltIn);
   const railK = makeCurve(c.rail);
+  const railIn = asCurve(c.railIn);
   const cab = c.cabin;
   const inCabin = (z: number) =>
     z > cab.rearGlassBase && z < cab.windscreenBase;
   return {
+    railX: z => Math.max(width(z), 0) * railIn(z),
     belt,
     halfWidth: z => Math.max(width(z), 0),
     beltX: z => Math.max(width(z), 0) * beltIn(z),

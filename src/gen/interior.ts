@@ -2,6 +2,7 @@
 // screen and console, steering wheel, seats, mirror, floor). Car-local frame:
 // +z forward, +y up, +x left (US left-hand drive: driver at x > 0).
 import {CarSpec, MeshData, P3, driverZ, emitGrid} from './car';
+import {bodyGeom} from './carBody';
 
 // Catmull-Rom through pts (z, y), `per` samples per segment (+ the end).
 function crPath(pts: Array<[number, number]>, per: number) {
@@ -517,18 +518,30 @@ export function buildInterior(spec: CarSpec): Interior {
         }
       }
     // Seatbelts hanging down the B pillars, with the D-ring at the top.
+    // The strap's top follows the pillar's inside face (the greenhouse
+    // tapers in toward the roof).
+    const y0 = spec.roofY - 0.2,
+      y1 = belt - 0.32;
+    let xTop = xIn - 0.01;
+    if (spec.body) {
+      const gb = bodyGeom(spec.body);
+      const b0 = gb.belt(bp),
+        r0 = gb.rail(bp);
+      const f = Math.min(Math.max((y0 - b0) / Math.max(r0 - b0, 0.05), 0), 1);
+      const xs = gb.beltX(bp) + (gb.railX(bp) - gb.beltX(bp)) * f;
+      xTop = Math.min(xTop, xs - 0.04);
+    }
     for (const sgn of [1, -1]) {
-      const x = sgn * (xIn - 0.01);
-      const y0 = spec.roofY - 0.2,
-        y1 = belt - 0.32;
+      const xt = sgn * xTop,
+        xb = sgn * (xIn - 0.03);
       quad(
-        [x, y0, bp + 0.025],
-        [x, y0, bp - 0.02],
-        [x - sgn * 0.02, y1, bp - 0.02],
-        [x - sgn * 0.02, y1, bp + 0.025],
+        [xt, y0, bp + 0.025],
+        [xt, y0, bp - 0.02],
+        [xb, y1, bp - 0.02],
+        [xb, y1, bp + 0.025],
         MI_DASH,
       );
-      box([x - sgn * 0.004, y0 + 0.015, bp], [0.006, 0.02, 0.035], MI_ALU);
+      box([xt - sgn * 0.004, y0 + 0.015, bp], [0.006, 0.02, 0.035], MI_ALU);
     }
     // Front floor mats.
     for (const sgn of [1, -1])
