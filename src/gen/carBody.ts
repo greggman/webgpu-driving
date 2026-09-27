@@ -40,6 +40,8 @@ import {
   MAT_LAMP_TAIL,
   MAT_GRILLE,
   MAT_LENS,
+  MAT_MIRROR,
+  driverZ,
   MAT_INTAKE,
   MAT_DRL,
   MAT_PROJ,
@@ -784,6 +786,26 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       mh = mc.h,
       md = 0.08;
     const x0 = sx * (wz + mc.out);
+    // Aimed at the driver's eye: the glass normal bisects the directions
+    // to the eye and straight back (so it shows the road behind).
+    const eye = [0.37, Math.min(sp.belt + 0.27, sp.roofY - 0.14), driverZ(sp)];
+    const hc = [x0, y, z - 0.02];
+    const aim = rotFromTo(
+      [0, 0, -1],
+      normalize3([
+        (eye[0] - hc[0]) /
+          Math.hypot(eye[0] - hc[0], eye[1] - hc[1], eye[2] - hc[2]),
+        (eye[1] - hc[1]) /
+          Math.hypot(eye[0] - hc[0], eye[1] - hc[1], eye[2] - hc[2]),
+        (eye[2] - hc[2]) /
+          Math.hypot(eye[0] - hc[0], eye[1] - hc[1], eye[2] - hc[2]) -
+          1,
+      ]),
+    );
+    const R = (p: P3): P3 => {
+      const q = aim([p[0] - hc[0], p[1] - hc[1], p[2] - hc[2]]);
+      return [q[0] + hc[0], q[1] + hc[1], q[2] + hc[2]];
+    };
     const mg: P3[][] = [];
     for (let a = 0; a <= 10; ++a) {
       const t = a / 10;
@@ -800,11 +822,13 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
           s0 = Math.sin(th),
           sy = Math.sign(s0) * Math.pow(Math.abs(s0), 0.6); // squarer section
         const dz = cz > 0 ? cz * md : cz * 0.012;
-        row.push([
-          x0 + sx * (t - 0.5) * mw,
-          y + sy * mh * 0.5 * sc,
-          z - 0.02 + dz * sc,
-        ]);
+        row.push(
+          R([
+            x0 + sx * (t - 0.5) * mw,
+            y + sy * mh * 0.5 * sc,
+            z - 0.02 + dz * sc,
+          ]),
+        );
       }
       mg.push(row);
     }
@@ -825,17 +849,18 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
           cy = Math.sin(th);
         const ex = Math.sign(cx) * Math.pow(Math.abs(cx), 0.45),
           ey = Math.sign(cy) * Math.pow(Math.abs(cy), 0.45);
-        return [x0 + ex * mw * 0.44 * sc2, y + ey * mh * 0.36 * sc2, gz];
+        return R([x0 + ex * mw * 0.44 * sc2, y + ey * mh * 0.36 * sc2, gz]);
       };
       for (let k = 0; k < 24; ++k) {
+        const gn = aim([0, 0, -1]);
         const tri = (a: P3, b: P3, cc: P3, m: number) => {
-          for (const p of [a, b, cc]) push(p, [0, 0, -1], m);
+          for (const p of [a, b, cc]) push(p, gn, m);
         };
         tri(
-          [x0, y, gz - 0.0005],
+          R([x0, y, gz - 0.0005]),
           ringAt(k, 0.9),
           ringAt(k + 1, 0.9),
-          MAT_CHROME,
+          MAT_MIRROR,
         );
         const o0 = ringAt(k, 1),
           o1 = ringAt(k + 1, 1),
@@ -1321,4 +1346,33 @@ function prepareOpenings(
     }
   }
   return out;
+}
+
+function normalize3(v: number[]): number[] {
+  const l = Math.hypot(v[0], v[1], v[2]) || 1;
+  return v.map(x => x / l);
+}
+
+// Rotation taking unit vector a onto unit vector b (Rodrigues).
+function rotFromTo(a: number[], b: number[]): (p: number[]) => P3 {
+  const k = [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+  const sn = Math.hypot(k[0], k[1], k[2]);
+  const cs = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  if (sn < 1e-8) return p => [p[0], p[1], p[2]];
+  const u = k.map(x => x / sn);
+  return p => {
+    const d = u[0] * p[0] + u[1] * p[1] + u[2] * p[2];
+    const c = [
+      u[1] * p[2] - u[2] * p[1],
+      u[2] * p[0] - u[0] * p[2],
+      u[0] * p[1] - u[1] * p[0],
+    ];
+    return [0, 1, 2].map(
+      i => p[i] * cs + c[i] * sn + u[i] * d * (1 - cs),
+    ) as P3;
+  };
 }

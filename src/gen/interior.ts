@@ -37,6 +37,7 @@ export const MI_SCREEN = 14;
 export const MI_ALU = 15;
 export const MI_MIRROR = 16;
 export const MI_CARPET = 17;
+export const MI_FABRIC = 18; // headliner-matching fabric (sun visors)
 
 export interface Interior extends MeshData {
   wheelCenter: [number, number, number];
@@ -306,14 +307,17 @@ export function buildInterior(spec: CarSpec): Interior {
   const sz = driverZ(spec) + 0.6;
   // Lofted seat parts in a local frame (x across, y up the part, z
   // toward its face), tilted back about x like the old boxes.
-  const place = (c: number[], tilt: number) => {
+  // (Tilted about x, then turned by `yaw` about y.)
+  const place = (c: number[], tilt: number, yaw = 0) => {
     const cs = Math.cos(tilt),
       sn = Math.sin(tilt);
-    return (p: number[]): P3 => [
-      c[0] + p[0],
-      c[1] + p[1] * cs - p[2] * sn,
-      c[2] + p[1] * sn + p[2] * cs,
-    ];
+    const cy = Math.cos(yaw),
+      sy = Math.sin(yaw);
+    return (p: number[]): P3 => {
+      const y = p[1] * cs - p[2] * sn,
+        z = p[1] * sn + p[2] * cs;
+      return [c[0] + p[0] * cy + z * sy, c[1] + y, c[2] - p[0] * sy + z * cy];
+    };
   };
   const smooth = (e0: number, e1: number, x: number) => {
     const t = Math.min(Math.max((x - e0) / (e1 - e0), 0), 1);
@@ -331,8 +335,10 @@ export function buildInterior(spec: CarSpec): Interior {
     bolster: number,
     // bolsters from this fraction of the half width (ends of a bench)
     bFrom = 0.55,
+    mat = MI_SEAT,
+    yaw = 0,
   ) => {
-    const T = place(c, tilt);
+    const T = place(c, tilt, yaw);
     const rows: P3[][] = [];
     const NY = 16;
     for (let i = 0; i <= NY; ++i) {
@@ -362,7 +368,7 @@ export function buildInterior(spec: CarSpec): Interior {
     emitGrid(
       push,
       rows,
-      () => MI_SEAT,
+      () => mat,
       p => [p[0] - ctr[0], p[1] - ctr[1], p[2] - ctr[2]] as P3,
       false,
     );
@@ -413,16 +419,91 @@ export function buildInterior(spec: CarSpec): Interior {
     [-hw, 0.3, -1.6],
     MI_CARPET,
   );
-  // Rear-view mirror.
-  box([0, belt + 0.33, ws - 0.42], [0.12, 0.035, 0.012], MI_DASH);
-  quad(
-    [0.115, belt + 0.3, ws - 0.435],
-    [-0.115, belt + 0.3, ws - 0.435],
-    [-0.115, belt + 0.36, ws - 0.435],
-    [0.115, belt + 0.36, ws - 0.435],
-    MI_MIRROR,
-    true,
-  );
+  // Rear-view mirror: a rounded housing on a stem up to the glass, and
+  // sun visors folded up under the header.
+  {
+    // Windscreen height at z (roughly straight from cowl to header).
+    const glassY = (z: number) =>
+      belt +
+      (spec.roofY - belt) *
+        Math.min(Math.max((ws - z) / (ws - spec.roofFront), 0), 1);
+    // Just under the header, near the top of the windscreen.
+    const mz = spec.roofFront + 0.09,
+      my = Math.min(spec.roofY - 0.105, glassY(mz) - 0.05);
+    // Aimed at the driver's eye so it shows the road straight behind.
+    const eye = [dx, Math.min(belt + 0.27, spec.roofY - 0.14), driverZ(spec)];
+    const e = [eye[0], eye[1] - my, eye[2] - mz];
+    const el = Math.hypot(e[0], e[1], e[2]);
+    const nv = [e[0] / el, e[1] / el, e[2] / el - 1];
+    const nl = Math.hypot(nv[0], nv[1], nv[2]);
+    const [nx, ny, nz] = nv.map(x => x / nl);
+    const pitch = Math.asin(ny),
+      yaw = Math.atan2(-nx, -nz);
+    pad(
+      [0, my, mz],
+      Math.PI + pitch,
+      0.125,
+      0.038,
+      0.012,
+      0.024,
+      0,
+      0.55,
+      MI_DASH,
+      yaw,
+    );
+    const G = place([0, my, mz], Math.PI + pitch, yaw);
+    quad(
+      G([-0.112, -0.028, 0.0135]),
+      G([0.112, -0.028, 0.0135]),
+      G([0.112, 0.028, 0.0135]),
+      G([-0.112, 0.028, 0.0135]),
+      MI_MIRROR,
+    );
+    // Short stem up and forward to the glass.
+    const top = [0, Math.min(spec.roofY - 0.05, glassY(mz + 0.03)), mz + 0.03];
+    const bot = [0, my + 0.02, mz + 0.012];
+    const r = 0.011;
+    const d = [top[0] - bot[0], top[1] - bot[1], top[2] - bot[2]];
+    const len = Math.hypot(d[0], d[1], d[2]) || 1;
+    const ax = d.map(x => x / len);
+    const s1 = [1, 0, 0];
+    const s2 = [
+      ax[1] * s1[2] - ax[2] * s1[1],
+      ax[2] * s1[0] - ax[0] * s1[2],
+      ax[0] * s1[1] - ax[1] * s1[0],
+    ];
+    const P = (e: number[], a: number, b: number) =>
+      [0, 1, 2].map(k => e[k] + s1[k] * a * r + s2[k] * b * r);
+    const sq = [
+      [1, 1],
+      [-1, 1],
+      [-1, -1],
+      [1, -1],
+    ];
+    for (let k = 0; k < 4; ++k) {
+      const [a0, b0] = sq[k],
+        [a1, b1] = sq[(k + 1) % 4];
+      quad(
+        P(bot, a0, b0),
+        P(bot, a1, b1),
+        P(top, a1, b1),
+        P(top, a0, b0),
+        MI_DASH,
+      );
+    }
+    for (const sx of [dx, -dx])
+      pad(
+        [sx * 0.9, spec.roofY - 0.035, spec.roofFront - 0.14],
+        Math.PI / 2,
+        0.15,
+        0.085,
+        0.01,
+        0.012,
+        0,
+        0.55,
+        MI_FABRIC,
+      );
+  }
   // Steering wheel (built around its own center; rotated in the shader).
   const wc: [number, number, number] = [dx, dashTop - 0.06, dashFront - 0.26];
   const tilt = 0.4; // radians back from vertical

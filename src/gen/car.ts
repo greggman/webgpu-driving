@@ -97,6 +97,7 @@ export const MAT_INTAKE = 27; // intake insert (dark mesh)
 export const MAT_DRL = 28; // daytime running light strip (white LED)
 export const MAT_PROJ = 29; // projector lens
 export const MAT_LED = 30; // tail light guide (red LED)
+export const MAT_MIRROR = 31; // door mirror glass
 
 export interface CarSpec {
   kind: CarKind;

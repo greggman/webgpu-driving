@@ -205,6 +205,30 @@ fn vsWheelShadow(v: VIn, @builtin(instance_index) ii: u32) -> CSOut {
 
 // Car reflection environment: the shared prefiltered environment map
 // (sky + clouds + distant hills band + ground).
+// What a mirror at local point lp shows along world ray rw: above the
+// horizon the environment; below it the road the car is driving on
+// (asphalt with the centre / edge lines, the verge beyond), traced to the
+// ground and fogged by distance. The env map alone has no nearby road.
+fn mirrorView(rw: vec3f, lp: vec3f, c: Car) -> vec3f {
+  if (rw.y > -0.003) { return envRadiance(rw, 0.0); }
+  let m = c.model;
+  let rl = vec3f(dot(m[0].xyz, rw), dot(m[1].xyz, rw), dot(m[2].xyz, rw));
+  let t = max(lp.y, 0.3) / -rw.y;
+    let x = lp.x + rl.x * t; // car-local lateral (+x left); US right lane
+  let light = F.sunColor.rgb * max(F.sun.y, 0.0) / PI + shIrradiance(vec3f(0.0, 1.0, 0.0));
+  var col = envRadiance(normalize(vec3f(rw.x, -0.06, rw.z)), 0.0); // verge
+  if (x > -1.95 && x < 5.4) {
+    col = vec3f(0.07, 0.07, 0.075) * light;
+    let yl = abs(abs(x - 1.75) - 0.08) < 0.05;
+    let wl = abs(x + 1.85) < 0.07;
+        if (yl) { col = vec3f(0.5, 0.38, 0.06) * light; }
+    if (wl) { col = vec3f(0.55) * light; }
+    // Faint tyre-track darkening in the lane.
+        col *= 1.0 - 0.15 * (1.0 - smoothstep(0.2, 0.5, abs(abs(x) - 0.8)));
+  }
+  return mix(fogColor(rw), col, fogTransmittance(F.cam.xyz + rw * t));
+}
+
 fn carEnv(r: vec3f, rough: f32) -> vec3f {
   return envRadiance(r, rough);
 }
@@ -266,10 +290,29 @@ fn interiorShade(mat: u32, lp: vec3f, c: Car, ln: vec3f) -> vec4f {
   let an = abs(ln);
   let puv = select(select(lp.xy, lp.zy, an.x > an.z), lp.xz, an.y > max(an.x, an.z));
   // Returns (albedo rgb, roughness) or emissive handled by caller.
-  if (mat == 12u) {
-    // Tan leather with perforation pattern.
-        let perf = step(0.85, vnoise(puv * 120.0));
-    return vec4f(vec3f(0.32, 0.19, 0.1) * (1.0 - 0.08 * perf), 0.55);
+    if (mat == 12u) {
+    // Tan leather: fine low-contrast grain, a perforated centre insert
+    // between stitched seams, and a moulded plastic shell on the backs.
+    if (ln.z < -0.6 && lp.y > c.p6.y - 0.45) { return vec4f(vec3f(0.035), 0.5); }
+    let rearSeat = lp.z < c.p3.y - 0.45;
+    let edge = select(0.135, (c.p2.y - 0.1) * 0.68, rearSeat);
+    let dxs = select(abs(abs(lp.x) - c.p6.x), abs(lp.x), rearSeat);
+    let sd = abs(dxs - edge);
+    let insert = dxs < edge;
+    var col = vec3f(0.32, 0.19, 0.1) * (0.94 + 0.06 * vnoise(puv * 260.0));
+    let perf = step(0.85, vnoise(puv * 140.0)) * select(0.0, 1.0, insert);
+    col *= 1.0 - 0.1 * perf;
+    // Horizontal pleats across the insert.
+    let pleat = abs(fract(lp.y / 0.11) - 0.5) * 0.11;
+    let seam = max(1.0 - smoothstep(0.0015, 0.0035, sd), select(0.0, 1.0 - smoothstep(0.001, 0.0025, pleat), insert && abs(ln.y) < 0.6));
+    col *= 1.0 - 0.55 * seam;
+    // Contrast stitching beside the side seams.
+    let stitch = step(abs(sd - 0.007), 0.0011) * step(0.45, fract((lp.y + lp.z) * 90.0));
+    col = mix(col, vec3f(0.5, 0.42, 0.3), stitch * 0.8);
+    return vec4f(col, 0.5);
+  }
+  if (mat == 18u) {
+    return vec4f(vec3f(0.22, 0.21, 0.19) * (0.93 + 0.07 * vnoise(puv * 150.0)), 0.95);
   }
   if (mat == 13u) { return vec4f(vec3f(0.03), 0.75); }
   if (mat == 15u) { return vec4f(vec3f(0.25), 0.45); }
@@ -300,8 +343,11 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     if (in.mat < 10u) {
       // Inside of the shell: fabric headliner above, soft-touch door cards below.
       let lnI = normalize(in.lnormal);
-      if (lnI.y > 0.45) {
-        s.albedo = vec3f(0.32, 0.3, 0.27) * (0.9 + 0.1 * vnoise(lp.xz * 60.0));
+            if (lnI.y > 0.45) {
+        // Fabric headliner: fine weave noise, darker toward the glass
+        // edges where the roof curves down (occlusion).
+        s.albedo = vec3f(0.22, 0.21, 0.19) * (0.93 + 0.07 * vnoise(lp.xz * 150.0)) * (0.92 + 0.08 * vnoise(lp.xz * 9.0));
+        s.albedo *= mix(0.55, 1.0, smoothstep(0.5, 0.95, lnI.y));
         s.rough = 0.95;
       } else {
         let stitch = step(0.96, fract(lp.y * 9.0));
@@ -334,10 +380,12 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       s.albedo = vec3f(0.005);
       s.rough = 0.1;
     } else if (in.mat == 16u) {
-      // Rear-view mirror: dim reflection of the sky behind.
-      s.albedo = vec3f(0.12);
-      s.metal = 1.0;
-      s.rough = 0.15;
+                  // Rear-view mirror glass.
+      s.albedo = vec3f(0.0);
+      s.metal = 0.0;
+      s.rough = 1.0;
+      s.spec = 0.0;
+      emissive = mirrorView(reflect(-v, n), lp, c) * 0.8;
     }
     let sh = sunShadow(wp, n) * cloudShadow(wp);
     var col = shadeSurface(s, wp, sh) + emissive;
@@ -676,7 +724,7 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     s.spec = 0.06;
     // Rubber sits partly in the arch shadow.
     s.ao = 0.6;
-    } else if (mat >= 23u && mat <= 30u) {
+    } else if (mat >= 23u && mat <= 31u) {
     // Modelled lamp / grille parts (see carBody.ts openings).
     let brake = c.p1.y;
     if (mat == 23u) {
@@ -716,6 +764,12 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       s.rough = 0.02;
       coat = 1.0;
       emissive = vec3f(1.0, 0.97, 0.9) * (0.05 + 40.0 * lightsOn);
+        } else if (mat == 31u) {
+            // Door mirror glass.
+      s.albedo = vec3f(0.0);
+      s.rough = 1.0;
+      s.spec = 0.0;
+      emissive = mirrorView(reflect(-normalize(F.cam.xyz - in.world), n), lp, c) * 0.8;
     } else {
       // Tail light guide: bright red LED line.
       s.albedo = vec3f(0.5, 0.03, 0.02);

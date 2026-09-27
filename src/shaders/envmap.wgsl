@@ -35,9 +35,9 @@ fn build(@builtin(global_invocation_id) id: vec3u) {
         let h0 = pal(6);
     let hills = mix(mix(vec3f(dot(h0, vec3f(0.3, 0.55, 0.15))), h0, 0.4) * (amb + sunLit) * 0.7, skyRadiance(normalize(vec3f(dir.x, 0.01, dir.z))), 0.35);
         col = mix(col, hills, band);
-    dist = mix(5000.0, 1500.0, band);
+        dist = mix(5000.0, 700.0, band);
   } else {
-    dist = min(2.0 / max(-dir.y, 1e-3), 1500.0);
+        dist = min(1.3 / max(-dir.y, 1e-3), 400.0);
     let horizon = skyRadiance(normalize(vec3f(dir.x, 0.01, dir.z)));
         // Far ground is the biome's ground; steeply down (within a few metres,
     // under whatever is being reflected) it is road surface.
@@ -46,7 +46,7 @@ fn build(@builtin(global_invocation_id) id: vec3u) {
     let g0 = pal(0);
     let far = mix(mix(vec3f(dot(g0, vec3f(0.3, 0.55, 0.15))), g0, 0.3), vec3f(0.12), 0.35);
     let ground = mix(far, vec3f(0.07, 0.07, 0.075), smoothstep(0.08, 0.35, -dir.y)) * (amb + sunLit);
-    col = mix(horizon * 0.6, ground, saturate(-dir.y * 6.0));
+    col = mix(horizon * 0.6, ground, saturate(-dir.y * 25.0));
   }
   if (F.fog.x > 0.0) {
     col = mix(fogColor(dir), col, fogTransmittance(F.cam.xyz + dir * dist));
