@@ -22,6 +22,7 @@ import {SEDAN_BODY} from './bodies/sedan';
 import {HATCH_BODY} from './bodies/hatch';
 import {COUPE_BODY} from './bodies/coupe';
 import {WAGON_BODY} from './bodies/wagon';
+import {SUV_BODY} from './bodies/suv';
 
 export type CarKind =
   | 'sedan'
@@ -226,30 +227,31 @@ export function carSpec(kind: CarKind): CarSpec {
     case 'suv':
       return spec({
         kind,
-        axleShift: 0.08,
+        body: SUV_BODY,
+        axleShift: 0.05,
         boxy: 7,
         cladding: true,
         quarter: true,
         flare: 0.03,
-        length: 4.85,
-        width: 1.96,
-        wheelbase: 2.9,
-        wheelR: 0.425,
-        track: 1.71,
-        clearance: 0.24,
-        noseY: 0.95,
-        hoodY: 1.14,
-        beltF: 1.15,
-        beltR: 1.2,
-        deckY: 1.2,
-        tailY: 1.12,
-        roofY: 1.75,
+        length: 4.65,
+        width: 1.87,
+        wheelbase: 2.7,
+        wheelR: 0.375,
+        track: 1.61,
+        clearance: 0.2,
+        noseY: 0.9,
+        hoodY: 1.1,
+        beltF: 1.1,
+        beltR: 1.16,
+        deckY: 1.15,
+        tailY: 1.2,
+        roofY: 1.705,
         roofW: 0.78,
-        wsBase: 1.18,
-        roofFront: 0.45,
-        roofBack: -1.9,
-        rearBase: -2.3,
-        sideRear: -1.95,
+        wsBase: 0.95,
+        roofFront: 0.2,
+        roofBack: -1.97,
+        rearBase: -2.24,
+        sideRear: -1.3,
       });
     case 'coupe':
       return spec({
