@@ -525,9 +525,16 @@ export class Director {
     const d = [eye[0] - P[0], eye[1] - P[1] - 0.8, eye[2] - P[2]];
     const f = d[0] * car.fwd[0] + d[2] * car.fwd[2];
     const l = d[0] * car.left[0] + d[2] * car.left[2];
-    const dist = Math.min(40, Math.max(2.5, Math.hypot(f, l, d[1])));
-    this.orbit.yaw = Math.atan2(l, f);
-    this.orbit.pitch = Math.max(-0.05, Math.min(1.45, Math.asin(d[1] / dist)));
+    // Pitch from the true offset (the distance is clamped to the orbit
+    // range: from a helicopter the height alone exceeds it, and
+    // asin(height / clamped) was NaN, which blacked out the view).
+    const len = Math.max(Math.hypot(f, l, d[1]), 1e-3);
+    const dist = Math.min(40, Math.max(2.5, len));
+    const pitch = Math.asin(Math.max(-1, Math.min(1, d[1] / len)));
+    this.orbit.yaw = Number.isFinite(Math.atan2(l, f))
+      ? Math.atan2(l, f)
+      : Math.PI;
+    this.orbit.pitch = Math.max(-0.05, Math.min(1.45, pitch));
     this.orbit.dist = dist;
     this.orbit.focus = [0, 0, 0.8];
   }

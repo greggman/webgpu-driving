@@ -66,6 +66,24 @@ const gnd = await get(
   `window.__dev.app.road.groundHeight(${cam.eye[0]}, ${cam.eye[2]})`,
 );
 expect('orbit eye above ground', cam.eye[1] > gnd, true);
+// Orbiting from a high helicopter view (the eye far above the orbit
+// range) must keep a valid camera (it used to go NaN: black screen).
+await page.evaluate(() => {
+  const a = window.__dev.app;
+  a.setCamera('helicopter');
+  a.director.orbitFrom(
+    [a.lastPose.pos[0] + 20, a.lastPose.pos[1] + 120, a.lastPose.pos[2]],
+    a.lastPose,
+  );
+  a.setCamera('orbit');
+});
+await new Promise(r => setTimeout(r, 300));
+const hc = await get('window.__dev.app.lastCamera');
+expect(
+  'orbit from helicopter stays finite',
+  [...hc.eye, ...hc.target].every(Number.isFinite),
+  true,
+);
 await browser.close();
 server.close();
 process.exit(fail ? 1 : 0);

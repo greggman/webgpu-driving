@@ -21,3 +21,5 @@
 [ ] We're using 1-9 for biome keys. There are 10 biome now. Should we use 1 to 0 across the keyboard?
 
 [ ] The hud message about 1-7 for biomes is out of date. 
+
+[ ] The helicopter camera slowly gets ahead of the vehicle and then it stays that way and the vehicle is off the screen. Can we fix that?
