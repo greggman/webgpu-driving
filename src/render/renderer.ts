@@ -1120,6 +1120,7 @@ export class Renderer {
         scene.frozen ? [0, 0, 0] : camVel,
         loc(scene.player.pos),
         scene.player.fwd,
+        scene.frozen ? 0 : Math.max(scene.dt, 1e-3),
       );
     }
     this.props.update(scene.playerS, ox, oz, planes, this.roadMesh!);

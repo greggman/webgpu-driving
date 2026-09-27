@@ -14,7 +14,7 @@ struct PP {
   life: f32,        // dust lifetime (s)
     histCount: u32,   // history samples per source
   sources: u32,     // dust sources (cars); 0 = player
-    camVel: vec4f,    // camera velocity (local, m/s)
+        camVel: vec4f,    // camera velocity (local, m/s), frame dt (s)
   color: vec4f,
   carPos: vec4f,    // player car position (local), half length
   carFwd: vec4f,    // player car forward, half width
@@ -28,7 +28,8 @@ struct POut {
   @location(0) uv: vec2f,
   @location(1) light: vec3f,
   @location(2) @interpolate(flat) alpha: f32,
-  @location(3) @interpolate(flat) kind: u32,
+    @location(3) @interpolate(flat) kind: u32,
+  @location(4) @interpolate(flat) vel: vec2f, // screen motion (uv / frame)
 };
 
 fn wrapAround(p: vec3f, center: vec3f, L: f32) -> vec3f {
@@ -134,8 +135,11 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
     var swirl = vec3f(sin(t * 0.7 + r1 * 30.0), 0.0, cos(t * 0.6 + r2 * 30.0)) * select(0.4, 0.8, P.kind == 1u);
     if (P.kind == 3u) { swirl = vec3f(0.0); }
     vel = wind + swirl + vec3f(0.0, -P.fall * (0.7 + 0.6 * r3), 0.0);
-    let base = vec3f(r1, r2, r3) * L * 7.0;
-    center = wrapAround(base + vel * t, F.cam.xyz + P.camVel.xyz * 0.25, L);
+        let base = vec3f(r1, r2, r3) * L * 7.0;
+    // World-anchored (the floating origin shifts local coordinates: flakes
+    // jumped together on every rebase).
+    let origin = vec3f(F.misc.x, 0.0, F.misc.y);
+    center = wrapAround(base + vel * t - origin, F.cam.xyz + P.camVel.xyz * 0.25, L);
         let dcam = distance(center, F.cam.xyz);
     // Flakes come right up to the camera (that's what sells the speed);
     // none inside the player's car (interior cameras).
@@ -180,7 +184,15 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
   }
   let maxStretch = select(12.0, 80.0, P.kind == 3u);
   let world = center + right * corner.x * size + up * corner.y * size * min(stretch, maxStretch);
-  o.pos = F.viewProj * vec4f(world, 1.0);
+    o.pos = F.viewProj * vec4f(world, 1.0);
+  // Its own screen motion (it moves through the world at vel): TAA and
+  // motion blur used the background's, so flakes smeared along with the
+  // scenery instead of streaming past.
+  {
+    let c0 = F.viewProjNJ * vec4f(center, 1.0);
+    let c1 = F.prevViewProj * vec4f(center - vel * P.camVel.w, 1.0);
+    o.vel = (c0.xy / max(c0.w, 1e-4) - c1.xy / max(c1.w, 1e-4)) * vec2f(0.5, -0.5);
+  }
   o.light = lightAt(center, toCam);
     o.alpha = alpha * P.color.a / sqrt(min(stretch, maxStretch));
   return o;
@@ -188,7 +200,8 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> POut 
 
 struct TOut {
   @location(0) color: vec4f,
-  @location(1) velocity: vec2f,
+  // (velocity, -, coverage): blended over the background's by coverage.
+  @location(1) velocity: vec4f,
   @location(2) normal: vec4f,
 };
 
@@ -217,7 +230,7 @@ fn fs(in: POut) -> TOut {
   var o: TOut;
   let c = finishColor(col * in.light, F.cam.xyz);
   o.color = vec4f(c * a, a);
-  o.velocity = vec2f(0.0);
+    o.velocity = vec4f(in.vel, 0.0, saturate(a * 2.0));
   o.normal = vec4f(0.0);
   return o;
 }

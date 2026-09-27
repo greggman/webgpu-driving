@@ -92,7 +92,17 @@ export class Particles {
           entryPoint: 'fs',
           targets: [
             {format: HDR_FORMAT, blend: premult},
-            {format: VELOCITY_FORMAT, writeMask: 0},
+            {
+              // The flakes' own motion, blended in by coverage.
+              format: VELOCITY_FORMAT,
+              blend: {
+                color: {
+                  srcFactor: 'src-alpha',
+                  dstFactor: 'one-minus-src-alpha',
+                },
+                alpha: {srcFactor: 'zero', dstFactor: 'one'},
+              },
+            },
             {format: NORMAL_FORMAT, writeMask: 0},
           ],
         },
@@ -167,6 +177,7 @@ export class Particles {
     camVel: number[],
     carPos: number[],
     carFwd: number[],
+    dt = 1 / 60,
   ) {
     this.sources = Math.min(sources.length, MAX_SRC);
     for (let k = 0; k < this.sources; ++k) {
@@ -193,7 +204,7 @@ export class Particles {
       f[5] = s.life;
       u[6] = HIST;
       u[7] = this.sources;
-      f.set([camVel[0], camVel[1], camVel[2], 0], 8);
+      f.set([camVel[0], camVel[1], camVel[2], dt], 8);
       f.set(s.color, 12);
       f.set([carPos[0], carPos[1], carPos[2], 2.9], 16);
       f.set([carFwd[0], carFwd[1], carFwd[2], 1.05], 20);
