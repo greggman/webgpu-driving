@@ -1039,7 +1039,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   if (c.roofRails) {
     const rr = c.roofRails;
     const z0 = cab.roofFront - 0.1,
-      z1 = cab.roofBack + 0.05;
+      z1 = cab.roofBack + 0.15; // (ends ahead of the spoiler)
     // Roof point (x, y) inboard of the rail line at z.
     const roofAt = (z: number) => {
       const {p} = sectionHalf(z);

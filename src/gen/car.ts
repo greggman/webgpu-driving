@@ -305,8 +305,8 @@ export function carSpec(kind: CarKind): CarSpec {
         roofW: 0.74,
         wsBase: 1.1,
         roofFront: 0.3,
-        roofBack: -2.06,
-        rearBase: -2.36,
+        roofBack: -2.1,
+        rearBase: -2.37,
         sideRear: -1.3,
       });
     case 'pickup':
