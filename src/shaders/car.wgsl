@@ -618,10 +618,12 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       // The trunk lid shuts just above the lamps.
       if (ax < 0.8) { seam = min(seam, abs(lp.y - (ty + 0.13))); }
       if (lp.y > ty + 0.13) { seam = min(seam, abs(ax - 0.8) * halfW); }
-      // Recessed plate pocket.
-      let pp = vec2f(abs(lp.x) - 0.3, abs(lp.y - (ty - 0.3)) - 0.09);
-      if (max(pp.x, pp.y) < 0.0) { s.ao = 0.55; }
-      seam = min(seam, abs(max(pp.x, pp.y)));
+            // Recessed plate pocket (modelled bodies have a real one).
+      if (decals) {
+        let pp = vec2f(abs(lp.x) - 0.3, abs(lp.y - (ty - 0.3)) - 0.09);
+        if (max(pp.x, pp.y) < 0.0) { s.ao = 0.55; }
+        seam = min(seam, abs(max(pp.x, pp.y)));
+      }
     }
     if (style == 5u) {
       // Gap between the cab and the bed.

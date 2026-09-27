@@ -422,7 +422,25 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   // Rows at the windscreen header / backlight frit edges.
   zs.push(cab.roofFront, cab.roofBack);
   if (fritW[0] > 0) zs.push(cab.roofFront + fritW[0], cab.roofBack - fritW[0]);
-  const Z = [...new Set(zs.map(z => Math.round(z * 1e4) / 1e4))]
+  // Where the plan curve turns in to close the ends it is nearly flat in
+  // z: add stations until neighbours differ by <= 1.5 cm of width, so the
+  // fascia faces are finely sampled across x too (else their quads span
+  // tens of cm, and openings cut large holes).
+  {
+    const sorted = [...zs].sort((a, b) => a - b);
+    for (let k = 0; k + 1 < sorted.length; ++k) {
+      const split = (a: number, b: number, depth: number) => {
+        if (depth > 10 || b - a < 1e-4) return;
+        if (Math.abs(width(b) - width(a)) <= 0.015) return;
+        const m = (a + b) / 2;
+        zs.push(m);
+        split(a, m, depth + 1);
+        split(m, b, depth + 1);
+      };
+      split(sorted[k], sorted[k + 1], 0);
+    }
+  }
+  const Z = [...new Set(zs.map(z => Math.round(z * 1e5) / 1e5))]
     .filter(z => z >= tail && z <= nose)
     .sort((a, b) => b - a);
 
@@ -1020,6 +1038,7 @@ function prepareOpenings(
             cc: number[],
             d: number[],
             m: number,
+            inward = false,
           ) => {
             const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
             const e2 = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
@@ -1030,8 +1049,21 @@ function prepareOpenings(
             ];
             const l = Math.hypot(n[0], n[1], n[2]) || 1;
             n = n.map(v => v / l);
+            // Housing walls face into the opening (their front side shows).
+            if (inward && n[0] * (ocx - a[0]) + n[1] * (ocy - a[1]) < 0)
+              n = n.map(v => -v);
+            // Faces across the opening (back plates, lenses) look out of
+            // the car at either end.
+            if (!inward && Math.abs(n[2]) > 0.7 && n[2] * dir < 0)
+              n = n.map(v => -v);
             for (const p of [a, b, cc, a, cc, d]) push(p, n, m);
           };
+          let ocx = 0,
+            ocy = 0;
+          for (const [x, y] of outline) {
+            ocx += x / outline.length;
+            ocy += y / outline.length;
+          }
           // Rim: a thin dark gap on the skin, then the housing wall down
           // to the back.
           const rimOut = offsetPoly(outline, 0.006);
@@ -1063,6 +1095,7 @@ function prepareOpenings(
               P(bx, by, depth + 0.01),
               P(ax, ay, depth + 0.01),
               wallMat,
+              pocket, // (convex outlines only)
             );
           }
           // Back plate and (lamps) a clear lens flush with the skin: filled
