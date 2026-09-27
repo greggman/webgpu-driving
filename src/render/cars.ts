@@ -139,7 +139,10 @@ export class CarRenderer {
 
   // Car meshes are built in a worker (meshWorker.ts) so generating them
   // never stalls the frame loop; a kind is drawn once its mesh arrives.
-  private worker: Worker | null = null;
+  // A small pool so several kinds build in parallel.
+  private workers: Worker[] = [];
+  private nextWorker = 0;
+  private workerFailed = false;
   private requested = new Set<CarKind>();
   private waiters = new Map<CarKind, Array<() => void>>();
 
@@ -181,7 +184,17 @@ export class CarRenderer {
   }
 
   private getWorker(): Worker | null {
-    if (this.worker) return this.worker;
+    if (this.workerFailed) return null;
+    const n = Math.min(
+      4,
+      Math.max(1, (navigator.hardwareConcurrency || 2) - 1),
+    );
+    if (this.workers.length < n) this.spawnWorker();
+    if (!this.workers.length) return null;
+    return this.workers[this.nextWorker++ % this.workers.length];
+  }
+
+  private spawnWorker() {
     try {
       const w = new Worker(new URL('meshWorker.js', import.meta.url), {
         type: 'module',
@@ -195,16 +208,17 @@ export class CarRenderer {
       w.onerror = e => {
         console.error(`[car-mesh-worker] ${e.message}`);
         // Fall back: build whatever is still missing here.
-        this.worker = null;
+        this.workerFailed = true;
+        for (const x of this.workers) x.terminate();
+        this.workers = [];
         for (const k of this.requested)
           if (!this.meshes.has(k)) this.buildNow(k);
       };
-      this.worker = w;
+      this.workers.push(w);
     } catch (e) {
       console.error(`[car-mesh-worker] ${(e as Error).message}`);
-      this.worker = null;
+      this.workerFailed = true;
     }
-    return this.worker;
   }
 
   // Starts building a kind's meshes (once).
@@ -216,15 +230,26 @@ export class CarRenderer {
     else this.buildNow(kind);
   }
 
-  // Resolves once all of these kinds have meshes.
-  ready(kinds: Iterable<CarKind>): Promise<void> {
+  // Resolves once all of these kinds have meshes; onProgress(done, total)
+  // reports each one as it arrives.
+  ready(
+    kinds: Iterable<CarKind>,
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<void> {
+    const want = [...new Set(kinds)];
+    const total = want.length;
+    let done = want.filter(k => this.meshes.has(k)).length;
+    onProgress?.(done, total);
     const waits: Array<Promise<void>> = [];
-    for (const k of new Set(kinds)) {
+    for (const k of want) {
       if (this.meshes.has(k)) continue;
       waits.push(
         new Promise(res => {
           const l = this.waiters.get(k) ?? [];
-          l.push(res);
+          l.push(() => {
+            onProgress?.(++done, total);
+            res();
+          });
           this.waiters.set(k, l);
         }),
       );

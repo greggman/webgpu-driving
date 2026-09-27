@@ -21,9 +21,9 @@ interface DevHooks {
 // exists), with an elapsed-time counter.
 const loadStart = performance.now();
 function status(label: string, frac: number) {
-  document.getElementById('loading-label')!.textContent = label;
-  document.getElementById('loading-bar')!.style.width =
-    `${Math.round(frac * 100)}%`;
+  const pct = Math.round(frac * 100);
+  document.getElementById('loading-label')!.textContent = `${pct}% · ${label}`;
+  document.getElementById('loading-bar')!.style.width = `${pct}%`;
 }
 const timer = setInterval(() => {
   const el = document.getElementById('loading')!;

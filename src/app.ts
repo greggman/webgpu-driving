@@ -189,8 +189,10 @@ export class App {
     this.loadingNote.textContent = note;
     this.loadingEl.classList.add('visible');
     this.showingProgress = true;
-    this.loadingLabel.textContent = label;
-    this.loadingBar.style.width = `${Math.round(Math.min(1, frac) * 100)}%`;
+    // One overall percentage for all the loading steps.
+    const pct = Math.round(Math.min(1, frac) * 100);
+    this.loadingLabel.textContent = `${pct}% · ${label.replace(/^\d+% · /, '')}`;
+    this.loadingBar.style.width = `${pct}%`;
   }
 
   // Let the browser paint the progress bar between generation stages.
@@ -460,7 +462,7 @@ export class App {
     for (let i = 0; i < 120; ++i) this.traffic.update(1 / 30);
     if (this.params.s !== null) this.traffic.player.s = this.params.s;
     if (this.params.showroom) this.setupShowroom();
-    this.setProgress(`${name}: growing trees and baking impostors`, 0.35);
+    this.setProgress(`${name}: growing trees and baking impostors`, 0.25);
     await this.yieldToPaint();
     this.mark('traffic done');
     this.mark('setWorld');
@@ -471,13 +473,20 @@ export class App {
       const kinds = new Set<CarKind>(this.traffic.vehicles.map(v => v.kind));
       kinds.add(this.traffic.player.kind);
       if (kinds.has('semi')) kinds.add('trailer');
-      this.setProgress(`${name}: building cars`, 0.45);
-      await this.renderer.cars.ready(kinds);
+      await this.renderer.cars.ready(kinds, (done, total) =>
+        this.setProgress(
+          `${name}: building cars ${done} / ${total}`,
+          0.4 + 0.1 * (done / Math.max(total, 1)),
+        ),
+      );
     }
     // Pipelines this biome needs for the first time (ocean, tyre tracks).
     if (pendingPipelines()) {
       await compileDeferred((done, total) =>
-        this.setProgress(`${name}: compiling shaders ${done} / ${total}`, 0.5),
+        this.setProgress(
+          `${name}: compiling shaders ${done} / ${total}`,
+          0.5 + 0.1 * (done / Math.max(total, 1)),
+        ),
       );
     }
     this.tumbleweeds =
