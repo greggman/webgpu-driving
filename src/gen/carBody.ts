@@ -164,6 +164,9 @@ export interface BodyCurves {
   tailgate?: {halfWidth: number; bottom: number};
   // Roof spoiler lip over the rear window: overhang and drop (m).
   spoiler?: {length: number; drop: number};
+  // Matte black plastic cladding (SUVs): everything below `top` (m above
+  // the ground) and a band `arch` wide beyond each wheel arch.
+  cladding?: {top: number; arch: number};
   // Roof rails (gloss black) along the roof edges: rail height above the
   // roof, width, and inset inboard of the roof rail line (m).
   roofRails?: {height: number; width: number; inset: number};
@@ -1666,4 +1669,11 @@ export function chinTrimParams(sp: CarSpec): [number, number] {
     g.bottom(sp.length / 2 - 0.15) + c.chinTrim,
     sp.wheelbase / 2 + sp.axleShift + sp.wheelR + (c.archGap ?? 0.02) + 0.05,
   ];
+}
+
+// Cladding for the shader: [top height, arch band outer radius] (0s none).
+export function claddingParams(sp: CarSpec): [number, number] {
+  const cl = sp.body?.cladding;
+  if (!cl) return [0, 0];
+  return [cl.top, sp.wheelR + (sp.body?.archGap ?? 0.02) + cl.arch];
 }

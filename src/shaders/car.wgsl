@@ -13,7 +13,8 @@ struct Car {
   p5: vec4f,      // steering wheel center xyz, tilt
   p6: vec4f,      // driver x, dash top y, style (kind index), -
         p7: vec4f,      // axle z shift, ground clearance, wheel width scale, third axle z (0 = none)
-    p8: vec4f,      // tailgate shut line: half width, bottom y (0 = trunk lid); chin trim top y, start z (0 = none)
+      p8: vec4f,      // tailgate shut line: half width, bottom y (0 = trunk lid); chin trim top y, start z (0 = none)
+  p9: vec4f,      // cladding: lower band top y, arch band outer radius (0 = none); -, -
 };
 
 @group(1) @binding(0) var<storage, read> cars: array<Car>;
@@ -684,6 +685,19 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       s.albedo = vec3f(0.018);
       s.metal = 0.0;
       s.rough = 0.25;
+    }
+        // Matte black plastic cladding: the lower body and a band around the
+    // wheel arches.
+    if (c.p9.x > 0.0) {
+      let R = c.p0.z;
+      let dF = length(vec2f(lp.z - (c.p7.x + c.p0.x * 0.5), lp.y - R));
+      let dR = length(vec2f(lp.z - (c.p7.x - c.p0.x * 0.5), lp.y - R));
+      if (lp.y < c.p9.x || (min(dF, dR) < c.p9.y && ax > 0.6)) {
+        s.albedo = vec3f(0.03, 0.03, 0.032) * (0.9 + 0.2 * vnoise(lp.xz * 300.0 + lp.y * 170.0));
+        s.metal = 0.0;
+        s.rough = 0.8;
+        coat = 0.15;
+      }
     }
     // Lower body AO: sills and bumper undersides stop mirroring the sky.
     s.ao = min(s.ao, 0.35 + 0.65 * saturate((lp.y - 0.15) / 0.35));

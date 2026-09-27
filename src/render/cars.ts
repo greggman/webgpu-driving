@@ -13,11 +13,11 @@ import {
 } from '../gen/car';
 import {RENDER_PRELUDE} from './shaders';
 import {buildInterior, Interior} from '../gen/interior';
-import {chinTrimParams} from '../gen/carBody';
+import {chinTrimParams, claddingParams} from '../gen/carBody';
 import carSrc from '../shaders/car.wgsl';
 import {GBUFFER_TARGETS, DEPTH_FORMAT, GLASS_FX_FORMAT} from './targets';
 
-export const CAR_FLOATS = 72; // 2 mat4 + 10 vec4
+export const CAR_FLOATS = 76; // 2 mat4 + 11 vec4
 export const NAV_POINTS = 32;
 const NAV_FLOATS = NAV_POINTS * 2 + 4;
 const MAX_CARS = 256;
@@ -411,6 +411,7 @@ export class CarRenderer {
         ],
         o + 68,
       );
+      this.data.set([...claddingParams(spec), 0, 0], o + 72);
       if (c.interior) this.interiorDraw = {kind: c.kind, index: i};
       const last = this.ranges[this.ranges.length - 1];
       if (last && last.kind === c.kind) last.count++;
