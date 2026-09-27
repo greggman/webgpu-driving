@@ -1,0 +1,98 @@
+[
+  {
+    "name": "wagon-side",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "wagon",
+      "paint": "red",
+      "view": "bp-side"
+    }
+  },
+  {
+    "name": "wagon-front",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "wagon",
+      "paint": "red",
+      "view": "bp-front"
+    }
+  },
+  {
+    "name": "wagon-rear",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "wagon",
+      "paint": "red",
+      "view": "bp-rear"
+    }
+  },
+  {
+    "name": "wagon-top",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "wagon",
+      "paint": "red",
+      "view": "bp-top"
+    }
+  },
+  {
+    "name": "wagon-front34",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "wagon",
+      "paint": "red",
+      "view": "front34"
+    }
+  },
+  {
+    "name": "wagon-rear34",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "wagon",
+      "paint": "red",
+      "view": "rear34"
+    }
+  },
+  {
+    "name": "wagon-wheel",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "wagon",
+      "paint": "red",
+      "view": "wheel"
+    }
+  },
+  {
+    "name": "wagon-corner",
+    "params": {
+      "biome": "country",
+      "showroom": "1",
+      "s": "1500",
+      "tod": "13",
+      "car": "wagon",
+      "paint": "red",
+      "view": "corner"
+    }
+  }
+]
