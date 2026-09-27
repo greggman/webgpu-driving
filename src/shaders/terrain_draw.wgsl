@@ -40,8 +40,19 @@ fn terrainVertex(vi: u32, ii: u32, eye: vec3f) -> vec3f {
   let frac = fract(gi * 0.5) * 2.0;
   let g = gi - frac * k;
   let p = vec2f(node.minX, node.minZ) + g * spacing;
-  let l = clipLevelFor(p, clamp(lod, 0, CLIP_LEVELS - 1));
-  let h = clipSampleLevel(p, l).x;
+    let l = clipLevelFor(p, clamp(lod, 0, CLIP_LEVELS - 1));
+  var h = clipSampleLevel(p, l).x;
+  // Coarse LODs: a triangle spanning the road and a cut slope beside it
+  // bulges above the road between its vertices (the distant road vanished
+  // under the terrain). Vertices within about a triangle of the road come
+  // down to just under its surface, so the coarse surface stays below it.
+  let span = spacing * select(1.0, 2.0, k > 0.0);
+  if (span > 0.9) {
+    let ri = roadInfo(p);
+    if (abs(ri.d) < F.road.w + 1.5 + span * 1.25 && ri.bridge < 0.5) {
+      h = min(h, ri.y - 0.15 - 0.03 * span);
+    }
+  }
   return vec3f(p.x, h, p.y);
 }
 
