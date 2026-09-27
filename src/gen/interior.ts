@@ -1,7 +1,33 @@
 // Procedural car cabin (dashboard, instrument binnacle with gauges, center
 // screen and console, steering wheel, seats, mirror, floor). Car-local frame:
 // +z forward, +y up, +x left (US left-hand drive: driver at x > 0).
-import {CarSpec, MeshData, driverZ} from './car';
+import {CarSpec, MeshData, P3, driverZ, emitGrid} from './car';
+
+// Catmull-Rom through pts (z, y), `per` samples per segment (+ the end).
+function crPath(pts: Array<[number, number]>, per: number) {
+  const out: Array<[number, number]> = [];
+  const n = pts.length;
+  for (let i = 0; i < n - 1; ++i) {
+    const p0 = pts[Math.max(i - 1, 0)],
+      p1 = pts[i],
+      p2 = pts[i + 1],
+      p3 = pts[Math.min(i + 2, n - 1)];
+    for (let k = 0; k < per; ++k) {
+      const t = k / per,
+        t2 = t * t,
+        t3 = t2 * t;
+      const f = (a: number, b: number, c: number, d: number) =>
+        0.5 *
+        (2 * b +
+          (-a + c) * t +
+          (2 * a - 5 * b + 4 * c - d) * t2 +
+          (-a + 3 * b - 3 * c + d) * t3);
+      out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  out.push(pts[n - 1]);
+  return out;
+}
 
 export const MI_DASH = 10;
 export const MI_GAUGE = 11;
@@ -167,31 +193,78 @@ export function buildInterior(spec: CarSpec): Interior {
   const belt = spec.belt;
   const ws = spec.wsBase;
   const dx = 0.37; // driver lateral position
-  // Dashboard: top slab sloping from the windshield base toward the driver.
+  // Dashboard: one lofted surface across the cabin (windscreen base ->
+  // top -> rounded lip -> face -> knee area), recessed behind the gauges
+  // in front of the driver, with a curved cowl over them.
   const dashFront = ws - 0.44;
   const dashTop = belt - 0.01;
-  quad(
-    [-hw, dashTop, ws - 0.02],
-    [hw, dashTop, ws - 0.02],
-    [hw, dashTop - 0.06, dashFront + 0.12],
-    [-hw, dashTop - 0.06, dashFront + 0.12],
-    MI_DASH,
-  );
-  // Rounded lip and front face toward the occupants.
-  quad(
-    [-hw, dashTop - 0.06, dashFront + 0.12],
-    [hw, dashTop - 0.06, dashFront + 0.12],
-    [hw, dashTop - 0.14, dashFront],
-    [-hw, dashTop - 0.14, dashFront],
-    MI_DASH,
-  );
-  quad(
-    [-hw, dashTop - 0.14, dashFront],
-    [hw, dashTop - 0.14, dashFront],
-    [hw, 0.55, dashFront + 0.05],
-    [-hw, 0.55, dashFront + 0.05],
-    MI_DASH,
-  );
+  const zf = dashFront,
+    dT = dashTop;
+  const bump = (x: number, c: number, r: number) => {
+    const u = Math.min(Math.abs(x - c) / r, 1);
+    return Math.pow(1 - u * u, 2);
+  };
+  {
+    const cols: number[] = [];
+    for (let k = 0; k <= 40; ++k) cols.push(-hw + (2 * hw * k) / 40);
+    const rows: P3[][] = [];
+    for (const x of cols) {
+      const bz = bump(x, dx, 0.26);
+      // The lip wraps back a little into the doors.
+      const wrap =
+        0.06 * Math.pow(Math.max(0, (Math.abs(x) - hw + 0.2) / 0.2), 2);
+      const prof = crPath(
+        [
+          [ws - 0.01, dT - 0.01],
+          [ws - 0.18, dT + 0.004],
+          [zf + 0.16 + wrap, dT],
+          [zf + 0.06 + 0.03 * bz + wrap, dT - 0.016 - 0.004 * bz],
+          [zf - 0.004 + 0.034 * bz + wrap, dT - 0.06 + 0.01 * bz],
+          [zf + 0.02 * bz + wrap, dT - 0.165],
+          [zf + 0.05 + wrap, dT - 0.3],
+          [zf + 0.2 + wrap, 0.55],
+        ],
+        5,
+      );
+      rows.push(prof.map(([z, y]) => [x, y, z] as P3));
+    }
+    emitGrid(
+      push,
+      rows,
+      () => MI_DASH,
+      p => [0, p[1] - 0.3, zf - p[2] - 0.3],
+      false,
+    );
+    // Cowl over the gauges: its profile collapses onto the dash top at
+    // its ends.
+    const cowl: P3[][] = [];
+    for (let k = 0; k <= 16; ++k) {
+      const x = dx - 0.25 + (0.5 * k) / 16;
+      const e = Math.pow(Math.sin((Math.PI * k) / 16), 0.6);
+      const base: [number, number] = [zf + 0.2, dT - 0.004];
+      const prof = crPath(
+        [
+          [zf + 0.2, dT - 0.004],
+          [zf + 0.11, dT + 0.038],
+          [zf + 0.02, dT + 0.034],
+          [zf - 0.026, dT - 0.004],
+          [zf - 0.012, dT - 0.022],
+        ],
+        4,
+      ).map(
+        ([z, y]) =>
+          [x, base[1] + (y - base[1]) * e, base[0] + (z - base[0]) * e] as P3,
+      );
+      cowl.push(prof);
+    }
+    emitGrid(
+      push,
+      cowl,
+      () => MI_DASH,
+      p => [0, 1, -0.4],
+      false,
+    );
+  }
   // Aluminium trim strip across the dash.
   quad(
     [-hw, dashTop - 0.16, dashFront - 0.005],
@@ -200,17 +273,22 @@ export function buildInterior(spec: CarSpec): Interior {
     [-hw, dashTop - 0.19, dashFront - 0.004],
     MI_ALU,
   );
-  // Instrument binnacle (hood) and gauge face in front of the driver.
-  box([dx, dashTop + 0.01, dashFront + 0.1], [0.2, 0.05, 0.1], MI_DASH);
+  // Gauge face in front of the driver, under the cowl.
   quad(
-    [dx + 0.19, dashTop - 0.13, dashFront - 0.004],
-    [dx - 0.19, dashTop - 0.13, dashFront - 0.004],
-    [dx - 0.19, dashTop - 0.0, dashFront + 0.02],
-    [dx + 0.19, dashTop - 0.0, dashFront + 0.02],
+    [dx + 0.19, dashTop - 0.155, dashFront - 0.004],
+    [dx - 0.19, dashTop - 0.155, dashFront - 0.004],
+    [dx - 0.19, dashTop - 0.025, dashFront + 0.008],
+    [dx + 0.19, dashTop - 0.025, dashFront + 0.008],
     MI_GAUGE,
     true,
   );
-  // Center screen.
+  // Center screen on a slim bezel.
+  box(
+    [0, dashTop + 0.025, dashFront + 0.054],
+    [0.152, 0.086, 0.01],
+    MI_DASH,
+    0.26,
+  );
   quad(
     [0.14, dashTop - 0.05, dashFront + 0.02],
     [-0.14, dashTop - 0.05, dashFront + 0.02],

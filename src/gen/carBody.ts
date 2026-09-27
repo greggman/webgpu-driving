@@ -792,8 +792,57 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       p => [p[0] - x0, p[1] - y, p[2] - z + 0.02],
       true,
     );
-    box(push, [x0, y, z - 0.028], [mw * 0.38, mh * 0.32, 0.003], MAT_TRIM);
-    box(push, [sx * (wz + 0.01), y - 0.06, z], [0.07, 0.03, 0.045], MAT_PAINT);
+    // Mirror glass across the back of the head (the driver sees it): a
+    // rounded rectangle fan, and a thin black frame around it.
+    {
+      const gz = z - 0.02 - 0.0135;
+      const ringAt = (k: number, sc2: number): P3 => {
+        const th = (k / 24) * Math.PI * 2;
+        const cx = Math.cos(th),
+          cy = Math.sin(th);
+        const ex = Math.sign(cx) * Math.pow(Math.abs(cx), 0.45),
+          ey = Math.sign(cy) * Math.pow(Math.abs(cy), 0.45);
+        return [x0 + ex * mw * 0.44 * sc2, y + ey * mh * 0.36 * sc2, gz];
+      };
+      for (let k = 0; k < 24; ++k) {
+        const tri = (a: P3, b: P3, cc: P3, m: number) => {
+          for (const p of [a, b, cc]) push(p, [0, 0, -1], m);
+        };
+        tri(
+          [x0, y, gz - 0.0005],
+          ringAt(k, 0.9),
+          ringAt(k + 1, 0.9),
+          MAT_CHROME,
+        );
+        const o0 = ringAt(k, 1),
+          o1 = ringAt(k + 1, 1),
+          i0 = ringAt(k, 0.9),
+          i1 = ringAt(k + 1, 0.9);
+        tri(o0, o1, i1, MAT_TRIM);
+        tri(o0, i1, i0, MAT_TRIM);
+      }
+    }
+    // Black triangular base (sail) in the window's front corner and a
+    // slim arm out to the head.
+    {
+      const bx = sx * (wz + 0.006);
+      const by = g.belt(z);
+      const zs0 = z - 0.06,
+        zs1 = z + 0.16;
+      const pts: P3[] = [
+        [bx, by + 0.005, zs0],
+        [bx, by + 0.005, zs1],
+        [bx - sx * 0.02, by + 0.13, zs1],
+      ];
+      for (const p of pts) push(p, [sx, 0, 0], MAT_TRIM);
+      for (const p of [pts[0], pts[2], pts[1]]) push(p, [-sx, 0, 0], MAT_TRIM);
+      box(
+        push,
+        [(bx + x0 - sx * mw * 0.35) / 2, y - 0.035, z - 0.01],
+        [Math.abs(x0 - sx * mw * 0.35 - bx) / 2 + 0.01, 0.012, 0.022],
+        MAT_PAINT,
+      );
+    }
   }
   // Door handles.
   const doorZ = [
@@ -802,11 +851,15 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   ];
   for (const sx of [-1, 1])
     for (const z of doorZ) {
+      // Body-colour grip with a chrome strip, over a dark recess.
       const y = g.belt(z) - 0.1;
+      const xs = width(z) * 0.985;
+      box(push, [sx * (xs + 0.001), y, z], [0.003, 0.024, 0.085], MAT_TRIM);
+      box(push, [sx * (xs + 0.009), y, z], [0.008, 0.012, 0.07], MAT_PAINT);
       box(
         push,
-        [sx * (width(z) * 0.985 + 0.004), y, z],
-        [0.008, 0.013, 0.07],
+        [sx * (xs + 0.012), y + 0.011, z],
+        [0.007, 0.0025, 0.066],
         MAT_CHROME,
       );
     }

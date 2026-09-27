@@ -1,0 +1,10 @@
+[
+  {
+    "name": "cabin-driver",
+    "params": {"biome": "country", "showroom": "1", "car": "sedan", "paint": "red", "view": "interior", "s": "1500", "tod": "13"}
+  },
+  {
+    "name": "cabin-passenger",
+    "params": {"biome": "country", "car": "sedan", "paint": "red", "cam": "passenger", "s": "1500", "tod": "13", "freeze": "1"}
+  }
+]
