@@ -127,6 +127,9 @@ export interface BodyCurves {
     pillars: number[]; // z of the B (and other) pillars
     pillarWidth: number;
     quarterLight?: [number, number]; // z range of a small window behind the C pillar
+    // z range of a small fixed window in the A-pillar sail (ahead of
+    // sideFront; a black divider fills the gap back to sideFront).
+    frontQuarter?: [number, number];
     // Painted A / C pillar band across the top of the windscreen and
     // backlight edges (m, measured inboard from the rail).
     aPillarWidth?: number;
@@ -423,7 +426,8 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       zs.push(az + (archR + 0.06) * ((q / 40) * 2 - 1));
   zs.push(nose, tail);
   // Rows at the windscreen header / backlight frit edges.
-  zs.push(cab.roofFront, cab.roofBack);
+  zs.push(cab.roofFront, cab.roofBack, cab.sideFront, cab.sideRear);
+  if (cab.frontQuarter) zs.push(...cab.frontQuarter);
   if (fritW[0] > 0) zs.push(cab.roofFront + fritW[0], cab.roofBack - fritW[0]);
   // Where the plan curve turns in to close the ends it is nearly flat in
   // z: add stations until neighbours differ by <= 1.5 cm of width, so the
@@ -620,6 +624,9 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       if (ql && z > ql[0] && z < ql[1]) return MAT_GLASS;
       // Divider between the rear door glass and the quarter light.
       if (ql && z <= cab.sideRear && z >= ql[1]) return MAT_TRIM;
+      const fq = cab.frontQuarter;
+      if (fq && z > fq[0] && z < fq[1]) return MAT_GLASS;
+      if (fq && z >= cab.sideFront && z <= fq[0]) return MAT_TRIM; // divider
       if (z > cab.sideFront || z < cab.sideRear) return MAT_PAINT; // A / C pillars
       for (const pz of cab.pillars)
         if (near(z, pz, cab.pillarWidth / 2)) return MAT_TRIM;
