@@ -158,6 +158,7 @@ export const WAGON_BODY: BodyCurves = {
     pillars: [-0.2],
     pillarWidth: 0.13,
     quarterLight: [-2.22, -1.42],
+    blackDPillar: true,
     aPillarWidth: 0.07,
     frit: [0.07, 0.02],
   },

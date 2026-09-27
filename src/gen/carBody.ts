@@ -135,6 +135,9 @@ export interface BodyCurves {
     pillars: number[]; // z of the B (and other) pillars
     pillarWidth: number;
     quarterLight?: [number, number]; // z range of a small window behind the C pillar
+    // D pillar (behind the quarter light / side glass) in gloss black, so
+    // the side glass reads as one band into the tailgate glass.
+    blackDPillar?: boolean;
     // z range of a small fixed window in the A-pillar sail (ahead of
     // sideFront; a black divider fills the gap back to sideFront).
     frontQuarter?: [number, number];
@@ -161,7 +164,7 @@ export interface BodyCurves {
   tailgate?: {halfWidth: number; bottom: number};
   // Roof spoiler lip over the rear window: overhang and drop (m).
   spoiler?: {length: number; drop: number};
-  // Roof rails (satin metal) along the roof edges: rail height above the
+  // Roof rails (gloss black) along the roof edges: rail height above the
   // roof, width, and inset inboard of the roof rail line (m).
   roofRails?: {height: number; width: number; inset: number};
 }
@@ -700,6 +703,11 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       const fq = cab.frontQuarter;
       if (fq && z > fq[0] && z < fq[1]) return MAT_GLASS;
       if (fq && z >= cab.sideFront && z <= fq[0]) return MAT_TRIM; // divider
+      if (
+        cab.blackDPillar &&
+        z < (ql ? Math.min(ql[0], cab.sideRear) : cab.sideRear)
+      )
+        return MAT_TRIM;
       if (z > cab.sideFront || z < cab.sideRear) return MAT_PAINT; // A / C pillars
       for (const pz of cab.pillars)
         if (near(z, pz, cab.pillarWidth / 2)) return MAT_TRIM;
@@ -1067,8 +1075,9 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         const h = Math.max(rr.height * e, 0.002);
         const yc = y - 0.004 + h * 0.5;
         const row: P3[] = [];
-        for (let k = 0; k <= 12; ++k) {
-          const th = (k / 12) * Math.PI * 2;
+        // (A closed ring: no duplicated seam vertex.)
+        for (let k = 0; k < 16; ++k) {
+          const th = (k / 16) * Math.PI * 2;
           const cx = Math.cos(th),
             cy = Math.sin(th);
           row.push([
@@ -1085,7 +1094,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       emitGrid(
         push,
         rows,
-        () => MAT_CHROME,
+        () => MAT_TRIM, // gloss black (a thin chrome bar aliases badly)
         q => {
           const [x, y] = roofAt(q[2]);
           return [q[0] - sx * x, q[1] - y - rr.height, 0];
