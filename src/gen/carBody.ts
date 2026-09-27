@@ -73,6 +73,9 @@ export interface Opening {
   // LED strip (DRL / tail light guide) along part of the outline: the
   // [start, end] fraction of the outline's length (from its first point).
   strip?: [number, number];
+  // Thin body-colour bars across the opening at these heights (m), e.g.
+  // the horizontal bar through a grille.
+  bars?: number[];
 }
 
 function sm(a: number, b: number, x: number) {
@@ -140,8 +143,12 @@ export interface BodyCurves {
   };
   chromeSill?: boolean; // thin chrome window seal
   // Gloss-black splitter band along the bottom of the front fascia: its
-  // height (m) above the body bottom.
+  // height (m) above the body bottom near the nose. Drawn per pixel at a
+  // constant height from just ahead of the front arches.
   chinTrim?: number;
+  // Tailgate bulge: pushes the rear face out by `depth` (m) around height
+  // `y`, falling off smoothly over `width` above and below.
+  tailBulge?: {y: number; depth: number; width?: number};
   // Licence plate centre heights (m); default from noseY / tailY.
   plateY?: {front?: number; rear?: number};
   // Hatch tailgate: half width of its shut line on the rear face and the
@@ -499,6 +506,14 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         (1 - sm(r.bumperY, r.bumperY + 0.1, y)) *
         e;
     }
+    if (c.tailBulge) {
+      const tb = c.tailBulge;
+      const wdt = tb.width ?? 0.12;
+      zz -=
+        tb.depth *
+        Math.exp(-Math.pow((y - tb.y) / wdt, 2)) *
+        sm(tail + 0.5, tail, z);
+    }
     if (c.tailRake) {
       const r = c.tailRake;
       const e = sm(tail + 0.5, tail, z);
@@ -558,7 +573,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     tail,
     skinXAt,
     rakeZ,
-    (y, z) => !!c.chinTrim && z > nose - 0.5 && y < g.bottom(z) + c.chinTrim,
+    () => false, // (the chin trim is drawn per pixel: see chinTrimParams)
   );
 
   const mat = (i: number, j: number): number => {
@@ -596,16 +611,6 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         if (cx > xIn && Math.hypot(cz - az, cy - R) < archR + 0.09) return -1;
     }
     if (s <= 1) return MAT_UNDER;
-    if (c.chinTrim && z > nose - 0.5) {
-      const q = [
-        grid[i][j],
-        grid[i + 1][j],
-        grid[i][j + 1],
-        grid[i + 1][j + 1],
-      ];
-      const cy = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4;
-      if (cy < g.bottom(z) + c.chinTrim && s <= 3) return MAT_TRIM;
-    }
     // The skin left inboard of a trimmed arch is the wheel well's wall.
     {
       const q = [
@@ -1366,6 +1371,40 @@ function prepareOpenings(
               }
             }
           // Projector lenses: chrome ring + dark glass disc, set in.
+          // Bars across the opening (body colour, on the skin surface).
+          for (const by of op.bars ?? []) {
+            let bx0 = 1e9,
+              bx1 = -1e9;
+            for (let i = 0; i < outline.length; ++i) {
+              const [ax, ay] = outline[i],
+                [cx2, cy2] = outline[(i + 1) % outline.length];
+              if ((ay - by) * (cy2 - by) <= 0 && ay !== cy2) {
+                const xx = ax + ((cx2 - ax) * (by - ay)) / (cy2 - ay);
+                bx0 = Math.min(bx0, xx);
+                bx1 = Math.max(bx1, xx);
+              }
+            }
+            if (bx0 > bx1) continue;
+            const hb = 0.007,
+              NB = 24;
+            for (let k = 0; k < NB; ++k) {
+              const u0 = bx0 - 0.01 + ((bx1 - bx0 + 0.02) * k) / NB,
+                u1 = bx0 - 0.01 + ((bx1 - bx0 + 0.02) * (k + 1)) / NB;
+              const pts = [
+                P(u0, by - hb, 0.002),
+                P(u1, by - hb, 0.002),
+                P(u1, by + hb, 0.002),
+                P(u0, by + hb, 0.002),
+              ];
+              const ns = [
+                surfN(u0, by),
+                surfN(u1, by),
+                surfN(u1, by),
+                surfN(u0, by),
+              ];
+              for (const q of [0, 1, 2, 0, 2, 3]) push(pts[q], ns[q], bodyMat);
+            }
+          }
           for (const [px0, py0, r] of op.projectors ?? []) {
             const cx = px0 * sx;
             const segs = 20;
@@ -1441,4 +1480,15 @@ function rotFromTo(a: number[], b: number[]): (p: number[]) => P3 {
       i => p[i] * cs + c[i] * sn + u[i] * d * (1 - cs),
     ) as P3;
   };
+}
+
+// Chin trim for the shader: [top height, start z] (0s when none).
+export function chinTrimParams(sp: CarSpec): [number, number] {
+  const c = sp.body;
+  if (!c?.chinTrim) return [0, 0];
+  const g = bodyGeom(c);
+  return [
+    g.bottom(sp.length / 2 - 0.15) + c.chinTrim,
+    sp.wheelbase / 2 + sp.axleShift + sp.wheelR + (c.archGap ?? 0.02) + 0.05,
+  ];
 }

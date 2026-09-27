@@ -13,7 +13,7 @@ struct Car {
   p5: vec4f,      // steering wheel center xyz, tilt
   p6: vec4f,      // driver x, dash top y, style (kind index), -
         p7: vec4f,      // axle z shift, ground clearance, wheel width scale, third axle z (0 = none)
-  p8: vec4f,      // tailgate shut line: half width, bottom y (0 = trunk lid), -, -
+    p8: vec4f,      // tailgate shut line: half width, bottom y (0 = trunk lid); chin trim top y, start z (0 = none)
 };
 
 @group(1) @binding(0) var<storage, read> cars: array<Car>;
@@ -678,6 +678,13 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     // read as a grey haze on the upward panels); only the flakes reflect.
     s.spec = 0.0;
     coat = 1.0;
+        // Gloss-black chin splitter band (constant height, from ahead of the
+    // front arches).
+    if (c.p8.z > 0.0 && lp.z > c.p8.w && lp.y < c.p8.z) {
+      s.albedo = vec3f(0.018);
+      s.metal = 0.0;
+      s.rough = 0.25;
+    }
     // Lower body AO: sills and bumper undersides stop mirroring the sky.
     s.ao = min(s.ao, 0.35 + 0.65 * saturate((lp.y - 0.15) / 0.35));
     // Road grime toward the bottom.

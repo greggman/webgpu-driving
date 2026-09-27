@@ -13,6 +13,7 @@ import {
 } from '../gen/car';
 import {RENDER_PRELUDE} from './shaders';
 import {buildInterior, Interior} from '../gen/interior';
+import {chinTrimParams} from '../gen/carBody';
 import carSrc from '../shaders/car.wgsl';
 import {GBUFFER_TARGETS, DEPTH_FORMAT, GLASS_FX_FORMAT} from './targets';
 
@@ -386,8 +387,7 @@ export class CarRenderer {
         [
           spec.body?.tailgate?.halfWidth ?? 0,
           spec.body?.tailgate?.bottom ?? 0,
-          0,
-          0,
+          ...chinTrimParams(spec),
         ],
         o + 68,
       );
