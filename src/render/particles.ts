@@ -153,8 +153,7 @@ export class Particles {
     // through them (no ambient falling leaves).
     if (biome.id === 'autumn')
       add(4, 9000, 160, 0.055, 0, 0, [0.6, 0.22, 0.04, 1]);
-    if (biome.id === 'forest')
-      add(1, 1800, 45, 0.045, 0.7, 0, [0.3, 0.26, 0.08, 1]);
+
     if (biome.weather.dust > 0 || biome.road.dirt)
       add(2, PLAYER_DUST + 1800, 0, 0.5, 0, 2.6, [0.62, 0.48, 0.34, 1]);
   }

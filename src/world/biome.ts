@@ -464,7 +464,14 @@ export const BIOMES: Record<BiomeId, Biome> = {
       flowers: 1,
       forestEdge: 9,
     },
-    sky: {...baseSky, timeOfDay: 16.4, sunAzimuth: 50, clouds: 0.3},
+    sky: {
+      ...baseSky,
+      timeOfDay: 16.4,
+      sunAzimuth: 50,
+      clouds: 0.3,
+      // Clear air under the canopy: a tenth of the usual haze.
+      fogDensity: baseSky.fogDensity * 0.1,
+    },
     weather: {...noWeather, wind: 0.3},
     ocean: false,
     headlights: false,
