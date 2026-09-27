@@ -1013,7 +1013,7 @@ export class Renderer {
         wheelDrop: c.pose.wheelDrop,
       });
     }
-    this.cars.setCars(carDraws, eye);
+    this.cars.setCars(carDraws, eye, planes);
     if (cam.interior) {
       // Dashboard map: the road ahead in the player's (flat) car frame.
       const pl = scene.cars.find(c => c.player);

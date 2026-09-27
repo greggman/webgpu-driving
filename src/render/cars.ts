@@ -12,8 +12,10 @@ import {
   CarSpec,
   MeshData,
   LOD_RES,
+  SHADOW_RES,
 } from '../gen/car';
 import {RENDER_PRELUDE} from './shaders';
+import {aabbInFrustum} from '../math/mat4';
 import {buildInterior, Interior} from '../gen/interior';
 import {chinTrimParams, claddingParams} from '../gen/carBody';
 import carSrc from '../shaders/car.wgsl';
@@ -43,12 +45,17 @@ export interface CarDraw {
 
 // Cars farther than this (m) are drawn with the coarse LOD body.
 const LOD_DIST = 35;
+// Out-of-view cars within this range (m) still cast shadows into the view
+// (shadow cascades 0-2 reach 160 m).
+const SHADOW_CAST_DIST = 175;
 
 interface KindMesh {
   buf: GPUBuffer;
   count: number;
   lodBuf: GPUBuffer; // (the full buffer when there is no LOD)
   lodCount: number;
+  shadowBuf: GPUBuffer; // shadow casters (else the LOD)
+  shadowCount: number;
   spec: CarSpec;
   interior: Interior;
   interiorBuf: GPUBuffer;
@@ -59,12 +66,18 @@ export class CarRenderer {
   private wheel: {buf: GPUBuffer; count: number};
   private instBuf: GPUBuffer;
   private data = new Float32Array(MAX_CARS * CAR_FLOATS);
+  // Instances are sorted by kind, then class: 0 in view (full mesh), 1 in
+  // view far (LOD), 2 out of view but near enough to cast into it
+  // (shadows only). Main-pass ranges cover classes 0-1, shadow ranges a
+  // kind's 0-2 (always with the LOD mesh).
   private ranges: Array<{
     kind: CarKind;
     lod: boolean;
     first: number;
     count: number;
   }> = [];
+  private shadowRanges: Array<{kind: CarKind; first: number; count: number}> =
+    [];
   private total = 0;
   private interiorDraw: {kind: CarKind; index: number} | null = null;
   private bg!: GPUBindGroup;
@@ -164,8 +177,18 @@ export class CarRenderer {
     body: MeshData,
     interior: Interior,
     lod: MeshData | null = null,
+    shadow: MeshData | null = null,
   ) {
     const device = this.device;
+    let shadowBuf: GPUBuffer | null = null;
+    if (shadow && shadow.vertices.byteLength) {
+      shadowBuf = device.createBuffer({
+        label: `car-body-shadow-${kind}`,
+        size: shadow.vertices.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+      });
+      device.queue.writeBuffer(shadowBuf, 0, shadow.vertices);
+    }
     let lodBuf: GPUBuffer | null = null;
     if (lod && lod.vertices.byteLength) {
       lodBuf = device.createBuffer({
@@ -194,6 +217,8 @@ export class CarRenderer {
       count: body.count,
       lodBuf: lodBuf ?? buf,
       lodCount: lodBuf ? lod!.count : body.count,
+      shadowBuf: shadowBuf ?? lodBuf ?? buf,
+      shadowCount: shadowBuf ? shadow!.count : lodBuf ? lod!.count : body.count,
       spec: carSpec(kind),
       interior,
       interiorBuf,
@@ -210,6 +235,7 @@ export class CarRenderer {
       kind === 'trailer' ? buildTrailer() : buildCarBody(spec),
       buildInterior(spec),
       spec.body ? buildCarBody(spec, LOD_RES) : null,
+      spec.body ? buildCarBody(spec, SHADOW_RES, true) : null,
     );
   }
 
@@ -234,11 +260,13 @@ export class CarRenderer {
           kind: CarKind;
           body: MeshData;
           lod: MeshData | null;
+          shadow: MeshData | null;
           interior: Interior;
         }>,
       ) => {
-        const {kind, body, lod, interior} = e.data;
-        if (!this.meshes.has(kind)) this.upload(kind, body, interior, lod);
+        const {kind, body, lod, shadow, interior} = e.data;
+        if (!this.meshes.has(kind))
+          this.upload(kind, body, interior, lod, shadow);
       };
       w.onerror = e => {
         console.error(`[car-mesh-worker] ${e.message}`);
@@ -470,19 +498,35 @@ export class CarRenderer {
     );
   }
 
-  // eye: camera position (same local frame as the models), for the LOD.
-  setCars(list: CarDraw[], eye: number[] = [0, 0, 0]) {
-    const far = (c: CarDraw) =>
-      !c.interior &&
-      Math.hypot(
-        c.model[12] - eye[0],
-        c.model[13] - eye[1],
-        c.model[14] - eye[2],
-      ) > LOD_DIST;
-    const key = (c: CarDraw) =>
-      MESH_KINDS.indexOf(c.kind) * 2 + (far(c) ? 1 : 0);
-    const sorted = [...list].sort((a, b) => key(a) - key(b));
+  // eye: camera position (same local frame as the models), for the LOD;
+  // planes: the view frustum, for culling.
+  setCars(
+    list: CarDraw[],
+    eye: number[] = [0, 0, 0],
+    planes: Float32Array | null = null,
+  ) {
+    const cls = (c: CarDraw) => {
+      const x = c.model[12],
+        y = c.model[13],
+        z = c.model[14];
+      const d = Math.hypot(x - eye[0], y - eye[1], z - eye[2]);
+      const r = carSpec(c.kind).length / 2 + 1.5;
+      const inView =
+        c.interior ||
+        !planes ||
+        aabbInFrustum(planes, x - r, y - r, z - r, x + r, y + r, z + r);
+      if (inView) return c.interior || d <= LOD_DIST ? 0 : 1;
+      return d < SHADOW_CAST_DIST ? 2 : 3;
+    };
+    const cl = new Map<CarDraw, number>();
+    for (const c of list) cl.set(c, cls(c));
+    const key = (c: CarDraw) => MESH_KINDS.indexOf(c.kind) * 4 + cl.get(c)!;
+    // (Class 3: neither seen nor casting a visible shadow: not drawn.)
+    const sorted = [...list]
+      .filter(c => cl.get(c)! < 3)
+      .sort((a, b) => key(a) - key(b));
     this.ranges = [];
+    this.shadowRanges = [];
     this.interiorDraw = null;
     let i = 0;
     for (const c of sorted.slice(0, MAX_CARS)) {
@@ -560,10 +604,22 @@ export class CarRenderer {
       this.data.set(claddingParams(spec), o + 72);
       this.data.set(c.wheelDrop ?? [0, 0, 0, 0], o + 76);
       if (c.interior) this.interiorDraw = {kind: c.kind, index: i};
-      const lod = far(c);
-      const last = this.ranges[this.ranges.length - 1];
-      if (last && last.kind === c.kind && last.lod === lod) last.count++;
-      else this.ranges.push({kind: c.kind, lod, first: i, count: 1});
+      const k = cl.get(c)!;
+      if (k < 2) {
+        const lod = k === 1;
+        const last = this.ranges[this.ranges.length - 1];
+        if (
+          last &&
+          last.kind === c.kind &&
+          last.lod === lod &&
+          last.first + last.count === i
+        )
+          last.count++;
+        else this.ranges.push({kind: c.kind, lod, first: i, count: 1});
+      }
+      const ls = this.shadowRanges[this.shadowRanges.length - 1];
+      if (ls && ls.kind === c.kind) ls.count++;
+      else this.shadowRanges.push({kind: c.kind, first: i, count: 1});
       i++;
     }
     this.total = i;
@@ -588,7 +644,7 @@ export class CarRenderer {
     pass.setBindGroup(1, this.bg);
     // Soft contact shadows (ambient occlusion) under each car.
     pass.setPipeline(this.blobPipe);
-    pass.draw(6, this.total);
+    for (const r of this.ranges) pass.draw(6, r.count, 0, r.first);
     pass.setPipeline(this.glassPipe);
     for (const r of this.ranges) {
       const m = this.meshes.get(r.kind)!;
@@ -609,8 +665,21 @@ export class CarRenderer {
     pass.draw(m.count, 1, 0, this.interiorDraw.index);
   }
 
+  // Shadow casters: everything in or near the view, with the coarse
+  // closed shadow mesh (a shadow texel is far coarser than the body's detail).
   drawShadow(pass: GPURenderPassEncoder) {
-    this.drawWith(pass, this.bodyShadowPipe, this.wheelShadowPipe);
+    if (!this.total) return;
+    pass.setBindGroup(1, this.bg);
+    pass.setPipeline(this.bodyShadowPipe);
+    for (const r of this.shadowRanges) {
+      const m = this.meshes.get(r.kind)!;
+      pass.setVertexBuffer(0, m.shadowBuf);
+      pass.draw(m.shadowCount, r.count, 0, r.first);
+    }
+    pass.setPipeline(this.wheelShadowPipe);
+    pass.setVertexBuffer(0, this.wheel.buf);
+    for (const r of this.shadowRanges)
+      pass.draw(this.wheel.count, r.count * 6, 0, r.first * 6);
   }
 
   private drawWith(
@@ -632,7 +701,8 @@ export class CarRenderer {
     pass.setPipeline(wheel);
     pass.setVertexBuffer(0, this.wheel.buf);
     // Up to three axles per vehicle (unused ones collapse in the shader).
-    pass.draw(this.wheel.count, this.total * 6, 0, 0);
+    for (const r of this.ranges)
+      pass.draw(this.wheel.count, r.count * 6, 0, r.first * 6);
     // Cabins (seen through the glass); not needed in the shadow maps.
     if (body === this.bodyPipe) {
       pass.setPipeline(body);

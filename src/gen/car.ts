@@ -521,10 +521,16 @@ export function emitGrid(
 
 // Resolution of the distant-car LOD mesh (about 1/6 of the vertices).
 export const LOD_RES = 0.5;
+// Resolution of the shadow-caster mesh (closed skin, no openings).
+export const SHADOW_RES = 0.25;
 
 // res < 1 builds a coarser mesh (distant-car LOD; curve bodies only).
-export function buildCarBody(sp: CarSpec, res = 1): MeshData {
-  if (sp.body) return buildCurveBody(sp, sp.body, res);
+export function buildCarBody(
+  sp: CarSpec,
+  res = 1,
+  shadowOnly = false,
+): MeshData {
+  if (sp.body) return buildCurveBody(sp, sp.body, res, shadowOnly);
   const verts: number[] = [];
   const push = (p: number[], n: number[], m: number) => {
     verts.push(p[0], p[1], p[2], n[0], n[1], n[2], m, 0);

@@ -302,6 +302,8 @@ const SPAN_COUNTS_FULL = [4, 4, 8, 9, 7, 12, 6, 12];
 // uses a coarser one). Set by buildCurveBody for the duration of a build.
 let RES = 1;
 let SPAN_COUNTS = SPAN_COUNTS_FULL;
+// Shadow-caster build: a closed skin, no lamp / grille openings.
+let SHADOW_ONLY = false;
 const SPAN_GLASS = 5;
 
 export interface BodyGeom {
@@ -336,8 +338,14 @@ export function bodyGeom(c: BodyCurves): BodyGeom {
   };
 }
 
-export function buildCurveBody(sp: CarSpec, c: BodyCurves, res = 1): MeshData {
+export function buildCurveBody(
+  sp: CarSpec,
+  c: BodyCurves,
+  res = 1,
+  shadowOnly = false,
+): MeshData {
   RES = res;
+  SHADOW_ONLY = shadowOnly;
   SPAN_COUNTS = SPAN_COUNTS_FULL.map(n =>
     Math.max(res < 1 ? 2 : n, Math.round(n * res)),
   );
@@ -348,6 +356,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves, res = 1): MeshData {
   } finally {
     RES = 1;
     SPAN_COUNTS = SPAN_COUNTS_FULL;
+    SHADOW_ONLY = false;
   }
 }
 
@@ -649,7 +658,7 @@ function buildCurveBodyAt(sp: CarSpec, c: BodyCurves): MeshData {
     return t[i0] * (1 - f) + t[Math.min(i0 + 1, ARCH_N)] * f;
   };
   const ops = prepareOpenings(
-    c.openings ?? [],
+    SHADOW_ONLY ? [] : (c.openings ?? []),
     nose,
     tail,
     skinXAt,
