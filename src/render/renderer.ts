@@ -53,6 +53,9 @@ export interface GraphicsSettings {
   renderScale: number; // 0.5 .. 1
   native: boolean; // render at device pixels (else CSS pixels)
   lowPower: boolean; // phones: DPR 1, sparser grass, shorter vegetation ranges
+  // Leaf-accurate tree shadows beyond the nearest cascade (dappled light
+  // under trees); off: those cascades draw leaf cards solid (much cheaper).
+  leafShadows: boolean;
 }
 
 export const DEFAULT_GRAPHICS: GraphicsSettings = {
@@ -67,6 +70,7 @@ export const DEFAULT_GRAPHICS: GraphicsSettings = {
   renderScale: 1,
   native: false,
   lowPower: false,
+  leafShadows: true,
 };
 
 // Preset applied when low-power mode is chosen (and by default on phones).
@@ -76,6 +80,7 @@ export const LOW_POWER_GRAPHICS: GraphicsSettings = {
   ssao: false,
   renderScale: 0.8,
   lowPower: true,
+  leafShadows: false,
 };
 
 export function isMobileDevice(): boolean {
@@ -100,7 +105,9 @@ const VOLUME: Record<string, [number, number, number]> = {
   desert: [0.0003, 0.7, 60],
   coast: [0.00025, 0.6, 40], // (clear coastal air: a saturated sea)
   bigsur: [0.00025, 0.6, 60],
-  forest: [0.00007, 0.72, 35], // (barely any: it washed the forest out)
+  // (None: even a faint haze washed the forest out, and the volume march
+  // still cost ~1.5 ms.)
+  forest: [0, 0.72, 35],
   snow: [0, 0.5, 50],
   lahonda: [0.0025, 0.65, 45],
   night: [0.0022, 0.5, 30],
@@ -1161,7 +1168,12 @@ export class Renderer {
       pass.setBindGroup(2, this.shadows.bindGroups[i]);
       this.terrain.drawShadow(pass);
       this.roadMesh!.drawShadow(pass, this.emptyBG);
-      this.vegetation.drawShadow(pass, i);
+      if (!DEBUG.has('novegshadow'))
+        this.vegetation.drawShadow(
+          pass,
+          i,
+          !this.graphics.leafShadows || DEBUG.has('fastleafshadow'),
+        );
       this.props.drawShadow(pass);
       if (i < 3) this.cars.drawShadow(pass);
       pass.end();

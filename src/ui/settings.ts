@@ -44,6 +44,7 @@ const GRAPHICS_LABELS: Array<[keyof GraphicsSettings, string]> = [
   ['ssao', 'Ambient occlusion'],
   ['bloom', 'Bloom & glow'],
   ['grass', 'Grass'],
+  ['leafShadows', 'Detailed leaf shadows (dappled light; slower)'],
   ['filmGrain', 'Film grain & vignette'],
   ['letterbox', 'Cinematic letterbox'],
   ['native', 'Native display resolution (Retina; slower)'],

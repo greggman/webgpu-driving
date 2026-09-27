@@ -70,6 +70,9 @@ interface MeshGPU {
   baseVertex: number[];
 }
 
+// Shadow cascades from this one on draw tree casters without alpha test.
+const OPAQUE_SHADOW_CASCADE = 1;
+
 export class Vegetation {
   readonly materialView: GPUTextureView;
   private meshes: MeshGPU[] = [];
@@ -92,6 +95,7 @@ export class Vegetation {
   private meshBG!: GPUBindGroup;
   private meshPipe!: GPURenderPipeline;
   private meshShadowPipe!: GPURenderPipeline;
+  private meshShadowOpaquePipe: GPURenderPipeline | null = null;
   private impPipe!: GPURenderPipeline;
   private impShadowPipe!: GPURenderPipeline;
   private bakePipe!: GPURenderPipeline;
@@ -386,6 +390,22 @@ export class Vegetation {
         depthStencil: shadowDepth,
       },
       p => (this.meshShadowPipe = p),
+    );
+    // Far cascades: depth only, no alpha test. A discard in the shadow pass
+    // turns off the GPU's early depth / hidden-surface removal, and the
+    // forest's leaf cards overlap many layers deep (about 5 ms of the
+    // forest's frame here); at those cascades' texel size the cards' exact
+    // outline barely shows.
+    deferRenderPipeline(
+      d,
+      {
+        label: 'veg-mesh-shadow-opaque',
+        layout: shadowPL,
+        vertex: {module: meshMod, entryPoint: 'vsShadow', buffers: vtx},
+        primitive: {topology: 'triangle-list', cullMode: 'none'},
+        depthStencil: shadowDepth,
+      },
+      p => (this.meshShadowOpaquePipe = p),
     );
     deferRenderPipeline(
       d,
@@ -1073,6 +1093,7 @@ export class Vegetation {
     pass: GPURenderPassEncoder,
     lods: number[],
     shadow: boolean,
+    opaqueShadow = false,
   ) {
     if (!this.vbuf || !this.meshes.length) return;
     pass.setBindGroup(1, this.meshBG);
@@ -1082,7 +1103,13 @@ export class Vegetation {
       if (lod === 2) {
         pass.setPipeline(shadow ? this.impShadowPipe : this.impPipe);
       } else {
-        pass.setPipeline(shadow ? this.meshShadowPipe : this.meshPipe);
+        pass.setPipeline(
+          shadow
+            ? opaqueShadow && this.meshShadowOpaquePipe
+              ? this.meshShadowOpaquePipe
+              : this.meshShadowPipe
+            : this.meshPipe,
+        );
       }
       for (let m = 0; m < this.meshes.length; ++m) {
         const di = m * 3 + lod;
@@ -1113,14 +1140,21 @@ export class Vegetation {
     }
   }
 
-  drawShadow(pass: GPURenderPassEncoder, cascade: number) {
+  // fastLeaves: cascades past the first draw leaf cards solid (no alpha
+  // test: a discard turns off the GPU's early depth / hidden-surface
+  // removal, and leaf cards overlap many layers deep).
+  drawShadow(pass: GPURenderPassEncoder, cascade: number, fastLeaves = false) {
     if (!this.enabled) return;
-    if (location.search.includes('novegshadow')) return;
+    const dbg = (new URLSearchParams(location.search).get('debug') ?? '').split(
+      ',',
+    );
+    if (dbg.includes(`novegshadow${cascade}`)) return;
     this.drawMeshes(
       pass,
       // Near cascades only need nearby (LOD0) casters.
       cascade < 2 ? [0] : cascade === 2 ? [0, 1] : [1, 2],
       true,
+      fastLeaves && cascade >= OPAQUE_SHADOW_CASCADE,
     );
   }
 }
