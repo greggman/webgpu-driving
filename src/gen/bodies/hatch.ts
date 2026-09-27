@@ -167,12 +167,13 @@ export const HATCH_BODY: BodyCurves = {
   },
   plateY: {front: 0.38, rear: 0.52},
   tailgate: {halfWidth: 0.52, bottom: 0.42},
+  tailBulge: {y: 0.85, depth: 0.05, width: 0.12},
   spoiler: {length: 0.09, drop: 0.015},
   chromeSill: false,
   chromeDLO: false,
   doorBow: 0.012,
   doorConcave: 0.01,
-  chinTrim: 0.07,
+  chinTrim: 0.11,
   archGap: 0.012,
   mirror: {w: 0.14, h: 0.085, out: 0.05},
   openings: [
@@ -201,8 +202,8 @@ export const HATCH_BODY: BodyCurves = {
       strip: [0.0, 0.5],
       depth: 0.05,
     },
-    // Grille: a large trapezoid split by a thin body-colour bar; the
-    // upper half's corners meet the lamps' inner ends.
+    // Grille: one large trapezoid split by a thin body-colour bar; its
+    // top corners meet the lamps' inner ends.
     {
       kind: 'grille',
       end: 'front',
@@ -211,22 +212,12 @@ export const HATCH_BODY: BodyCurves = {
         [0.0, 0.645],
         [0.33, 0.645],
         [0.355, 0.62],
-        [0.34, 0.575],
-        [0.0, 0.575],
-      ],
-      depth: 0.05,
-    },
-    {
-      kind: 'grille',
-      end: 'front',
-      mirror: 'merge',
-      outline: [
-        [0.0, 0.55],
         [0.335, 0.55],
         [0.32, 0.51],
         [0.29, 0.495],
         [0.0, 0.495],
       ],
+      bars: [0.565],
       depth: 0.05,
     },
     // Corner air curtains.
