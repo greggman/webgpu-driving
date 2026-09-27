@@ -160,6 +160,9 @@ export interface BodyCurves {
   tailgate?: {halfWidth: number; bottom: number};
   // Roof spoiler lip over the rear window: overhang and drop (m).
   spoiler?: {length: number; drop: number};
+  // Roof rails (satin metal) along the roof edges: rail height above the
+  // roof, width, and inset inboard of the roof rail line (m).
+  roofRails?: {height: number; width: number; inset: number};
 }
 
 // ---- Curves ----
@@ -1029,6 +1032,72 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       q => [0, q[1] - roofYAt(Math.abs(q[0])) + 0.006, q[2] - z0 + L * 0.3],
       false,
     );
+  }
+  // Roof rails: a rounded bar on each side following the roof, standing on
+  // a short foot at each end.
+  if (c.roofRails) {
+    const rr = c.roofRails;
+    const z0 = cab.roofFront - 0.1,
+      z1 = cab.roofBack + 0.05;
+    // Roof point (x, y) inboard of the rail line at z.
+    const roofAt = (z: number) => {
+      const {p} = sectionHalf(z);
+      const rail = p[spanStart[6]];
+      const x = rail[0] - rr.inset;
+      let y = rail[1];
+      for (let k = spanStart[6]; k + 1 < p.length; ++k) {
+        const a = p[k],
+          b = p[k + 1];
+        if ((a[0] - x) * (b[0] - x) <= 0 && a[0] !== b[0]) {
+          y = a[1] + ((b[1] - a[1]) * (x - a[0])) / (b[0] - a[0]);
+          break;
+        }
+      }
+      return [x, y];
+    };
+    const NZ = 40;
+    for (const sx of [-1, 1]) {
+      const rows: P3[][] = [];
+      for (let i = 0; i <= NZ; ++i) {
+        const z = z0 + ((z1 - z0) * i) / NZ;
+        const [x, y] = roofAt(z);
+        const yc = y + rr.height;
+        const row: P3[] = [];
+        for (let k = 0; k <= 12; ++k) {
+          const th = (k / 12) * Math.PI * 2;
+          const cx = Math.cos(th),
+            cy = Math.sin(th);
+          row.push([
+            sx *
+              (x +
+                Math.sign(cx) * Math.pow(Math.abs(cx), 0.6) * rr.width * 0.5),
+            yc + Math.sign(cy) * Math.pow(Math.abs(cy), 0.6) * rr.width * 0.35,
+            z,
+          ]);
+        }
+        rows.push(row);
+      }
+      emitGrid(
+        push,
+        rows,
+        () => MAT_CHROME,
+        q => {
+          const [x, y] = roofAt(q[2]);
+          return [q[0] - sx * x, q[1] - y - rr.height, 0];
+        },
+        true,
+      );
+      // Feet at both ends.
+      for (const z of [z0 + 0.04, z1 - 0.04]) {
+        const [x, y] = roofAt(z);
+        box(
+          push,
+          [sx * x, y + rr.height * 0.5, z],
+          [rr.width * 0.45, rr.height * 0.5 + 0.004, 0.05],
+          MAT_TRIM,
+        );
+      }
+    }
   }
   // Plates.
   // Plates sit on the skin at their height (the fascias may be raked).

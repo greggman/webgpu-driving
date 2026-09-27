@@ -163,6 +163,7 @@ export const WAGON_BODY: BodyCurves = {
   plateY: {front: 0.38, rear: 0.62},
   tailgate: {halfWidth: 0.58, bottom: 0.5},
   spoiler: {length: 0.06, drop: 0.015},
+  roofRails: {height: 0.035, width: 0.028, inset: 0.07},
   chromeSill: true,
   chromeDLO: true,
   doorBow: 0.015,
