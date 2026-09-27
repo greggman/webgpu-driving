@@ -297,7 +297,11 @@ function spline2(
 // Samples per span, bottom centre -> roof centre:
 // underside, sill, lower door, door->shoulder, shoulder->belt, side glass,
 // roof rail curve, roof.
-const SPAN_COUNTS = [4, 4, 8, 9, 7, 12, 6, 12];
+const SPAN_COUNTS_FULL = [4, 4, 8, 9, 7, 12, 6, 12];
+// Mesh resolution of the body being built (1 = full; the distant-car LOD
+// uses a coarser one). Set by buildCurveBody for the duration of a build.
+let RES = 1;
+let SPAN_COUNTS = SPAN_COUNTS_FULL;
 const SPAN_GLASS = 5;
 
 export interface BodyGeom {
@@ -332,7 +336,22 @@ export function bodyGeom(c: BodyCurves): BodyGeom {
   };
 }
 
-export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
+export function buildCurveBody(sp: CarSpec, c: BodyCurves, res = 1): MeshData {
+  RES = res;
+  SPAN_COUNTS = SPAN_COUNTS_FULL.map(n =>
+    Math.max(res < 1 ? 2 : n, Math.round(n * res)),
+  );
+  // (The pillar / frit rows in span 6 need at least 4 samples.)
+  SPAN_COUNTS[6] = Math.max(SPAN_COUNTS[6], 4);
+  try {
+    return buildCurveBodyAt(sp, c);
+  } finally {
+    RES = 1;
+    SPAN_COUNTS = SPAN_COUNTS_FULL;
+  }
+}
+
+function buildCurveBodyAt(sp: CarSpec, c: BodyCurves): MeshData {
   const verts: number[] = [];
   const push = (p: number[], n: number[], m: number) => {
     verts.push(p[0], p[1], p[2], n[0], n[1], n[2], m, 0);
@@ -467,15 +486,15 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   // turns in to form the fascias) and at the wheel arches.
   const archR = R + (c.archGap ?? 0.02);
   const zs: number[] = [];
-  for (let z = tail; z <= nose + 1e-6; z += 0.03) zs.push(z);
+  for (let z = tail; z <= nose + 1e-6; z += 0.03 / RES) zs.push(z);
   for (const [a, b] of [
     [nose - 0.45, nose],
     [tail, tail + 0.45],
   ])
-    for (let z = a; z <= b + 1e-6; z += 0.008) zs.push(z);
+    for (let z = a; z <= b + 1e-6; z += 0.008 / RES) zs.push(z);
   for (const az of axles)
-    for (let q = 0; q <= 40; ++q)
-      zs.push(az + (archR + 0.06) * ((q / 40) * 2 - 1));
+    for (let q = 0, nq = Math.round(40 * RES); q <= nq; ++q)
+      zs.push(az + (archR + 0.06) * ((q / nq) * 2 - 1));
   zs.push(nose, tail);
   // Rows at the windscreen header / backlight frit edges.
   zs.push(cab.roofFront, cab.roofBack, cab.sideFront, cab.sideRear);
@@ -490,7 +509,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     for (let k = 0; k + 1 < sorted.length; ++k) {
       const split = (a: number, b: number, depth: number) => {
         if (depth > 10 || b - a < 1e-4) return;
-        if (Math.abs(width(b) - width(a)) <= 0.015) return;
+        if (Math.abs(width(b) - width(a)) <= 0.015 / RES) return;
         const m = (a + b) / 2;
         zs.push(m);
         split(a, m, depth + 1);
@@ -777,8 +796,9 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       const x0 = sx * xIn,
         x1 = sx * width(az) * 0.995; // out to the lip (no gap to see through)
       const lg: P3[][] = [];
-      for (let a = 0; a <= 64; ++a) {
-        const th = ((-25 + (a / 64) * 230) * Math.PI) / 180;
+      const NL = Math.max(12, Math.round(64 * RES));
+      for (let a = 0; a <= NL; ++a) {
+        const th = ((-25 + (a / NL) * 230) * Math.PI) / 180;
         lg.push([
           [x0, R + Math.sin(th) * rad, az + Math.cos(th) * rad],
           [x1, R + Math.sin(th) * rad, az + Math.cos(th) * rad],
@@ -830,7 +850,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       th1 = Math.PI - angAt(az - archR);
     for (const sx of [-1, 1]) {
       const lg: P3[][] = [];
-      const N = 36;
+      const N = Math.max(10, Math.round(36 * RES));
       for (let a = 0; a <= N; ++a) {
         const th = th0 + ((th1 - th0) * a) / N;
         // The swell fades out at the ends of the arch (no flap).
@@ -1086,7 +1106,7 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       }
       return [x, y];
     };
-    const NZ = 40;
+    const NZ = Math.max(10, Math.round(40 * RES));
     for (const sx of [-1, 1]) {
       const rows: P3[][] = [];
       for (let i = 0; i <= NZ; ++i) {
@@ -1129,9 +1149,18 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
   // Plates sit on the skin at their height (the fascias may be raked).
   const faceZ = (y: number, front: boolean) => {
     let best = front ? -1e9 : 1e9;
+    // Only that end of the car (a coarse LOD grid may have no points at
+    // this height there: then the other end's won), with tolerances that
+    // grow with the grid spacing.
+    const tol = 1 / Math.min(RES, 1);
+    const end = front ? nose : tail;
     for (const ring of grid)
       for (const q of ring)
-        if (Math.abs(q[0]) < 0.12 && Math.abs(q[1] - y) < 0.04)
+        if (
+          Math.abs(q[2] - end) < 0.8 &&
+          Math.abs(q[0]) < 0.12 * tol &&
+          Math.abs(q[1] - y) < 0.04 * tol
+        )
           best = front ? Math.max(best, q[2]) : Math.min(best, q[2]);
     return Math.abs(best) > 1e8 ? (front ? nose : tail) : best;
   };
@@ -1369,7 +1398,10 @@ function prepareOpenings(
                 .map(([x, y]) => [-x, y] as [number, number]),
             ]
           : op.outline.map(([x, y]) => [x * sx, y] as [number, number]);
-      const outline = closedSpline(src, op.mirror === 'merge' ? 120 : 72);
+      const outline = closedSpline(
+        src,
+        Math.round((op.mirror === 'merge' ? 120 : 72) * Math.max(RES, 0.6)),
+      );
       // Skin surface z seen from the end at (x, y): the station where the
       // section just stops covering |x| (bisection), then the rake.
       const surfZExact = (x: number, y: number): number => {
@@ -1580,7 +1612,7 @@ function prepareOpenings(
             y0 = Math.min(y0, y);
             y1 = Math.max(y1, y);
           }
-          const st = 0.012;
+          const st = 0.012 / Math.max(RES, 0.6);
           const grow = offsetPoly(outline, st);
           for (let x = x0 - st; x < x1 + st; x += st)
             for (let y = y0 - st; y < y1 + st; y += st) {

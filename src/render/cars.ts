@@ -11,6 +11,7 @@ import {
   carSpec,
   CarSpec,
   MeshData,
+  LOD_RES,
 } from '../gen/car';
 import {RENDER_PRELUDE} from './shaders';
 import {buildInterior, Interior} from '../gen/interior';
@@ -40,9 +41,14 @@ export interface CarDraw {
   wheelDrop?: [number, number, number, number];
 }
 
+// Cars farther than this (m) are drawn with the coarse LOD body.
+const LOD_DIST = 35;
+
 interface KindMesh {
   buf: GPUBuffer;
   count: number;
+  lodBuf: GPUBuffer; // (the full buffer when there is no LOD)
+  lodCount: number;
   spec: CarSpec;
   interior: Interior;
   interiorBuf: GPUBuffer;
@@ -53,7 +59,12 @@ export class CarRenderer {
   private wheel: {buf: GPUBuffer; count: number};
   private instBuf: GPUBuffer;
   private data = new Float32Array(MAX_CARS * CAR_FLOATS);
-  private ranges: Array<{kind: CarKind; first: number; count: number}> = [];
+  private ranges: Array<{
+    kind: CarKind;
+    lod: boolean;
+    first: number;
+    count: number;
+  }> = [];
   private total = 0;
   private interiorDraw: {kind: CarKind; index: number} | null = null;
   private bg!: GPUBindGroup;
@@ -148,8 +159,22 @@ export class CarRenderer {
   private requested = new Set<CarKind>();
   private waiters = new Map<CarKind, Array<() => void>>();
 
-  private upload(kind: CarKind, body: MeshData, interior: Interior) {
+  private upload(
+    kind: CarKind,
+    body: MeshData,
+    interior: Interior,
+    lod: MeshData | null = null,
+  ) {
     const device = this.device;
+    let lodBuf: GPUBuffer | null = null;
+    if (lod && lod.vertices.byteLength) {
+      lodBuf = device.createBuffer({
+        label: `car-body-lod-${kind}`,
+        size: lod.vertices.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+      });
+      device.queue.writeBuffer(lodBuf, 0, lod.vertices);
+    }
     const buf = device.createBuffer({
       label: `car-body-${kind}`,
       size: Math.max(body.vertices.byteLength, 32),
@@ -167,6 +192,8 @@ export class CarRenderer {
     this.meshes.set(kind, {
       buf,
       count: body.count,
+      lodBuf: lodBuf ?? buf,
+      lodCount: lodBuf ? lod!.count : body.count,
       spec: carSpec(kind),
       interior,
       interiorBuf,
@@ -182,6 +209,7 @@ export class CarRenderer {
       kind,
       kind === 'trailer' ? buildTrailer() : buildCarBody(spec),
       buildInterior(spec),
+      spec.body ? buildCarBody(spec, LOD_RES) : null,
     );
   }
 
@@ -202,10 +230,15 @@ export class CarRenderer {
         type: 'module',
       });
       w.onmessage = (
-        e: MessageEvent<{kind: CarKind; body: MeshData; interior: Interior}>,
+        e: MessageEvent<{
+          kind: CarKind;
+          body: MeshData;
+          lod: MeshData | null;
+          interior: Interior;
+        }>,
       ) => {
-        const {kind, body, interior} = e.data;
-        if (!this.meshes.has(kind)) this.upload(kind, body, interior);
+        const {kind, body, lod, interior} = e.data;
+        if (!this.meshes.has(kind)) this.upload(kind, body, interior, lod);
       };
       w.onerror = e => {
         console.error(`[car-mesh-worker] ${e.message}`);
@@ -437,10 +470,18 @@ export class CarRenderer {
     );
   }
 
-  setCars(list: CarDraw[]) {
-    const sorted = [...list].sort(
-      (a, b) => MESH_KINDS.indexOf(a.kind) - MESH_KINDS.indexOf(b.kind),
-    );
+  // eye: camera position (same local frame as the models), for the LOD.
+  setCars(list: CarDraw[], eye: number[] = [0, 0, 0]) {
+    const far = (c: CarDraw) =>
+      !c.interior &&
+      Math.hypot(
+        c.model[12] - eye[0],
+        c.model[13] - eye[1],
+        c.model[14] - eye[2],
+      ) > LOD_DIST;
+    const key = (c: CarDraw) =>
+      MESH_KINDS.indexOf(c.kind) * 2 + (far(c) ? 1 : 0);
+    const sorted = [...list].sort((a, b) => key(a) - key(b));
     this.ranges = [];
     this.interiorDraw = null;
     let i = 0;
@@ -519,9 +560,10 @@ export class CarRenderer {
       this.data.set(claddingParams(spec), o + 72);
       this.data.set(c.wheelDrop ?? [0, 0, 0, 0], o + 76);
       if (c.interior) this.interiorDraw = {kind: c.kind, index: i};
+      const lod = far(c);
       const last = this.ranges[this.ranges.length - 1];
-      if (last && last.kind === c.kind) last.count++;
-      else this.ranges.push({kind: c.kind, first: i, count: 1});
+      if (last && last.kind === c.kind && last.lod === lod) last.count++;
+      else this.ranges.push({kind: c.kind, lod, first: i, count: 1});
       i++;
     }
     this.total = i;
@@ -550,8 +592,8 @@ export class CarRenderer {
     pass.setPipeline(this.glassPipe);
     for (const r of this.ranges) {
       const m = this.meshes.get(r.kind)!;
-      pass.setVertexBuffer(0, m.buf);
-      pass.draw(m.count, r.count, 0, r.first);
+      pass.setVertexBuffer(0, r.lod ? m.lodBuf : m.buf);
+      pass.draw(r.lod ? m.lodCount : m.count, r.count, 0, r.first);
     }
   }
 
@@ -584,8 +626,8 @@ export class CarRenderer {
       ?.includes('nobody');
     for (const r of skipBody ? [] : this.ranges) {
       const m = this.meshes.get(r.kind)!;
-      pass.setVertexBuffer(0, m.buf);
-      pass.draw(m.count, r.count, 0, r.first);
+      pass.setVertexBuffer(0, r.lod ? m.lodBuf : m.buf);
+      pass.draw(r.lod ? m.lodCount : m.count, r.count, 0, r.first);
     }
     pass.setPipeline(wheel);
     pass.setVertexBuffer(0, this.wheel.buf);
@@ -595,6 +637,8 @@ export class CarRenderer {
     if (body === this.bodyPipe) {
       pass.setPipeline(body);
       for (const r of this.ranges) {
+        // (Distant cabins are hidden behind the tinted glass.)
+        if (r.lod) continue;
         const m = this.meshes.get(r.kind)!;
         pass.setVertexBuffer(0, m.interiorBuf);
         pass.draw(m.interior.count, r.count, 0, r.first);
