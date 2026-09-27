@@ -577,7 +577,7 @@ export function buildInterior(spec: CarSpec): Interior {
     const eye = [dx, Math.min(belt + 0.27, spec.roofY - 0.14), driverZ(spec)];
     const e = [eye[0], eye[1] - my, eye[2] - mz];
     const el = Math.hypot(e[0], e[1], e[2]);
-    const back = [0, -0.08, -1];
+    const back = [0, 0.01, -1]; // horizon about mid-mirror
     const bl = Math.hypot(back[0], back[1], back[2]);
     const nv = [
       e[0] / el + back[0] / bl,
@@ -607,7 +607,9 @@ export function buildInterior(spec: CarSpec): Interior {
       const endK = Math.sqrt(Math.max(0, 1 - Math.pow(Math.abs(t * 2 - 1), 6)));
       const w = 0.86 * 0.125 * (1 - 0.1 * t) * endK;
       const y = (-0.038 + 0.076 * t) * 0.97;
-      const z = 0.012 * Math.max(endK, 0.3) * 0.97 + 0.0008;
+      // A flat pane (a curved one gave every strip its own normal: the
+      // reflection broke into bands).
+      const z = 0.0125;
       return {w, y, z};
     };
     const GN = 14;

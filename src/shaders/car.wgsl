@@ -218,22 +218,108 @@ const MIRROR_VEL = 64.0; // see post/taa.wgsl, post/motionblur.wgsl
 // texture, its painted lines from the road's own lateral offset, dashes
 // along it, the shoulder), else textured grass: the scene recedes and
 // scrolls as the car drives, and hills and curves show.
+// Other cars seen in a mirror: nearest hit of the ray with each car's box
+// (the car list ends at a sentinel with a negative half length). Returns
+// (t, car index) or t = 1e9.
+fn mirrorCarHit(ro: vec3f, rd: vec3f) -> vec2f {
+  var best = vec2f(1e9, 0.0);
+  for (var i = 0u; i < 64u; i++) {
+    let k = cars[i];
+    if (k.p2.x <= 0.0) { break; }
+    let m = k.model;
+    let pos = m[3].xyz;
+    let rel = ro - pos;
+    // Skip the car the mirror is on.
+    if (length(rel) < k.p2.x + 0.5) { continue; }
+    let o = vec3f(dot(rel, m[0].xyz), dot(rel, m[1].xyz), dot(rel, m[2].xyz));
+    let d = vec3f(dot(rd, m[0].xyz), dot(rd, m[1].xyz), dot(rd, m[2].xyz));
+    let bmin = vec3f(-k.p2.y, 0.15, -k.p2.x);
+    let bmax = vec3f(k.p2.y, k.p3.w + 0.45, k.p2.x);
+    let inv = 1.0 / select(d, vec3f(1e-6), abs(d) < vec3f(1e-6));
+    let t0 = (bmin - o) * inv;
+    let t1 = (bmax - o) * inv;
+    let tn = max(max(min(t0.x, t1.x), min(t0.y, t1.y)), min(t0.z, t1.z));
+    let tf = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z));
+    if (tn <= tf && tf > 0.0 && tn < best.x && tn > 0.0) { best = vec2f(tn, f32(i)); }
+  }
+  return best;
+}
+
+fn mirrorCarColor(i: u32, p: vec3f, rd: vec3f) -> vec3f {
+  let k = cars[i];
+  let m = k.model;
+  let rel = p - m[3].xyz;
+  let q = vec3f(dot(rel, m[0].xyz), dot(rel, m[1].xyz), dot(rel, m[2].xyz));
+  let amb = shIrradiance(vec3f(0.0, 1.0, 0.0));
+  let sun = F.sunColor.rgb * max(F.sun.y, 0.0) / PI;
+  var col = k.color.rgb * (amb + sun) * 0.9;
+  // Glass band above the belt, dark tyres / sills low down.
+  if (q.y > k.p3.w) { col = vec3f(0.02) + amb * 0.05; }
+  if (q.y < 0.35) { col *= 0.35; }
+  // Its front seen from behind us: headlights (and a lit grille area).
+  let dz = dot(rd, m[2].xyz);
+  if (q.z > k.p2.x - 0.05 && dz < 0.0) {
+    let lamp = step(abs(abs(q.x) - k.p2.y * 0.7), 0.16) * step(abs(q.y - (k.p2.z - 0.05)), 0.06);
+    col = mix(col, vec3f(1.0, 0.97, 0.9) * (0.4 + 25.0 * k.p1.z), lamp);
+  }
+  // Its back (a car ahead in the door mirror is rare): tail lamps.
+  if (q.z < -k.p2.x + 0.05 && dz > 0.0) {
+    let lamp = step(abs(abs(q.x) - k.p2.y * 0.75), 0.15) * step(abs(q.y - (k.p2.w - 0.16)), 0.05);
+    col = mix(col, vec3f(1.0, 0.05, 0.02) * (1.0 + 4.0 * k.p1.z), lamp);
+  }
+  return col;
+}
+
+// Tree canopies seen in a mirror: a procedural stand matching the biome's
+// tree density beyond its forest edge (one canopy per 9 m cell, jittered).
+fn mirrorTreeAt(p: vec3f, ground: f32, d: f32) -> bool {
+  let dens = F.palette[10].w;
+  if (dens <= 0.0 || abs(d) < F.road.w + F.palette[11].z) { return false; }
+  let w = p.xz + F.misc.xy;
+  let cell = floor(w / 9.0);
+  let h = hash01(i32(cell.x), i32(cell.y) + 5003);
+  if (h > min(dens * 1.4, 0.95)) { return false; }
+  let jitter = vec2f(hash01(i32(cell.x) + 11, i32(cell.y)), hash01(i32(cell.x), i32(cell.y) + 13));
+  let c = (cell + 0.2 + jitter * 0.6) * 9.0;
+  let r = 3.0 + 2.0 * hash01(i32(cell.x) + 7, i32(cell.y) + 3);
+  let cy = ground + r * 1.6;
+  let dh = p.y - cy;
+  let dxz = length(w - c);
+  return dxz * dxz + dh * dh * 0.45 < r * r || (dxz < 0.35 && p.y < cy);
+}
+
 fn mirrorView(rw: vec3f, wp: vec3f) -> vec3f {
   let sky = envRadiance(rw, 0.0);
-  if (rw.y > 0.03) { return sky; }
+  let carHit = mirrorCarHit(wp, rw);
   var t = 0.6;
-  var hit = false;
+  var hit = 0u; // 1 ground, 2 tree
   var prevT = 0.0;
-  for (var i = 0; i < 64; i++) {
+  for (var i = 0; i < 72; i++) {
+    if (t > carHit.x) { break; }
     let p = wp + rw * t;
     let lvl = clamp(i32(log2(max(t * 0.004, 0.5) / 0.5)), 0, CLIP_LEVELS - 1);
-    if (p.y < clipSample(p.xz, lvl).x) { hit = true; break; }
+    let g = clipSample(p.xz, lvl);
+    if (p.y < g.x) { hit = 1u; break; }
+    if (p.y < g.x + 20.0 && mirrorTreeAt(p, g.x, g.w)) { hit = 2u; break; }
     prevT = t;
-    t = t * 1.09 + 0.3;
+    t = t * 1.07 + 0.25;
     if (t > 900.0) { break; }
   }
-  if (!hit) { return sky; }
-  // Refine the crossing.
+  if (carHit.x < 1e8 && (hit == 0u || carHit.x <= t)) {
+    let p = wp + rw * carHit.x;
+    let col = mirrorCarColor(u32(carHit.y), p, rw);
+    return mix(fogColor(rw), col, fogTransmittance(p));
+  }
+  if (hit == 0u) { return sky; }
+  if (hit == 2u) {
+    let p = wp + rw * t;
+    let amb = shIrradiance(vec3f(0.0, 1.0, 0.0));
+    let sun = F.sunColor.rgb * max(F.sun.y, 0.0) / PI;
+    let n = vnoise((p.xz + F.misc.xy) * 0.7 + p.y * 0.5);
+    let col = pal(6) * (amb * 0.55 + sun * 0.35) * (0.45 + 0.55 * n);
+    return mix(fogColor(rw), col, fogTransmittance(p));
+  }
+  // Refine the ground crossing.
   var lo = prevT;
   var hi = t;
   for (var k = 0; k < 5; k++) {

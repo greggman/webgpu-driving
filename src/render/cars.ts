@@ -622,15 +622,17 @@ export class CarRenderer {
       else this.shadowRanges.push({kind: c.kind, first: i, count: 1});
       i++;
     }
+    // Sentinel after the last car (negative half length): the mirror trace
+    // (car.wgsl) loops over the cars until it.
+    if (i < MAX_CARS) this.data.set([-1, 0, 0, 0], i * CAR_FLOATS + 44);
     this.total = i;
-    if (i)
-      this.device.queue.writeBuffer(
-        this.instBuf,
-        0,
-        this.data,
-        0,
-        i * CAR_FLOATS,
-      );
+    this.device.queue.writeBuffer(
+      this.instBuf,
+      0,
+      this.data,
+      0,
+      Math.min(i + 1, MAX_CARS) * CAR_FLOATS,
+    );
   }
 
   draw(pass: GPURenderPassEncoder) {

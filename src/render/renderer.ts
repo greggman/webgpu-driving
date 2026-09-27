@@ -904,7 +904,7 @@ export class Renderer {
       S.trees,
       S.flowers, // palette[11].x: wildflowers / flowering plants (grass)
       P.scrub ?? 0, // palette[11].y: chaparral patches (terrain)
-      0,
+      S.forestEdge, // palette[11].z: trees start this far past the road edge
       0,
     ]);
     F.set('sky', [
