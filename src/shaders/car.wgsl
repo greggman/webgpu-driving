@@ -369,9 +369,9 @@ fn rainNormal(lp: vec3f, ln: vec3f, px: f32) -> vec3f {
   }
   // Fewer beads on steep faces (they run off).
   let dens = mix(0.22, 0.5, up);
-  var g = beadLayer(uv, 0.016, 0, dens, px);
+  var g = beadLayer(uv, 0.032, 0, dens, px);
   let rot = mat2x2f(0.8, 0.6, -0.6, 0.8);
-  let g2 = beadLayer(rot * uv + vec2f(3.7, 1.3), 0.009, 101, dens * 0.8, px);
+  let g2 = beadLayer(rot * uv + vec2f(3.7, 1.3), 0.018, 101, dens * 0.8, px);
   g += transpose(rot) * g2;
   return (a1 * g.x + a2 * g.y) * 0.35;
 }
