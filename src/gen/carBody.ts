@@ -547,8 +547,21 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
     return zz;
   };
   // Skin half width at height y of the (unraked) section at z.
+  // Sections cached at 1 mm steps along the car: the many surface searches
+  // (openings, arch fit, rails) then reuse a few hundred sections instead of
+  // rebuilding one per step.
+  const secCache = new Map<number, Array<[number, number]>>();
+  const sectionPts = (z: number) => {
+    const k = Math.round(z * 1000);
+    let p = secCache.get(k);
+    if (!p) {
+      p = sectionHalf(k / 1000).p;
+      secCache.set(k, p);
+    }
+    return p;
+  };
   const skinXAt = (z: number, y: number): number => {
-    const {p} = sectionHalf(z);
+    const p = sectionPts(z);
     let best = 0;
     for (let k = 0; k + 1 < p.length; ++k) {
       const a = p[k],
@@ -1359,7 +1372,7 @@ function prepareOpenings(
       const outline = closedSpline(src, op.mirror === 'merge' ? 120 : 72);
       // Skin surface z seen from the end at (x, y): the station where the
       // section just stops covering |x| (bisection), then the rake.
-      const surfZ = (x: number, y: number): number => {
+      const surfZExact = (x: number, y: number): number => {
         let a = endZ - dir * FASCIA_DEPTH,
           b = endZ;
         // Beyond the body's silhouette: clamp onto it (no spikes).
@@ -1371,12 +1384,50 @@ function prepareOpenings(
         }
         return rakeZ(a, x, y);
       };
+      // Every vertex of the opening sits on the skin, and each exact
+      // lookup is a bisection over whole body sections: tabulate the
+      // surface once over the opening's area (1 cm grid, bilinear) instead
+      // (this was most of a car's build time).
+      const G = 0.01;
+      let bx0 = 1e9,
+        bx1 = -1e9,
+        by0 = 1e9,
+        by1 = -1e9;
+      for (const [x, y] of offsetPoly(outline, 0.08)) {
+        bx0 = Math.min(bx0, x);
+        bx1 = Math.max(bx1, x);
+        by0 = Math.min(by0, y);
+        by1 = Math.max(by1, y);
+      }
+      const gw = Math.ceil((bx1 - bx0) / G) + 1,
+        gh = Math.ceil((by1 - by0) / G) + 1;
+      const table = new Float64Array(gw * gh);
+      for (let j = 0; j < gh; ++j)
+        for (let i = 0; i < gw; ++i)
+          table[j * gw + i] = surfZExact(bx0 + i * G, by0 + j * G);
+      const surfZ = (x: number, y: number): number => {
+        const u = (x - bx0) / G,
+          v = (y - by0) / G;
+        if (u < 0 || v < 0 || u > gw - 1 || v > gh - 1) return surfZExact(x, y);
+        const i = Math.min(Math.floor(u), gw - 2),
+          j = Math.min(Math.floor(v), gh - 2);
+        const fu = u - i,
+          fv = v - j;
+        const t00 = table[j * gw + i],
+          t10 = table[j * gw + i + 1],
+          t01 = table[(j + 1) * gw + i],
+          t11 = table[(j + 1) * gw + i + 1];
+        return (
+          (t00 * (1 - fu) + t10 * fu) * (1 - fv) +
+          (t01 * (1 - fu) + t11 * fu) * fv
+        );
+      };
       const depth = op.depth ?? 0.04;
       // The skin is removed a little beyond the outline; a body-colour
       // collar on the skin covers that (grid-shaped) cut edge.
       const cover = offsetPoly(outline, 0.02);
       const surfN = (x: number, y: number): number[] => {
-        const e = 0.004;
+        const e = G; // (one table cell: a smooth slope)
         const fx = (surfZ(x + e, y) - surfZ(x - e, y)) / (2 * e);
         const fy = (surfZ(x, y + e) - surfZ(x, y - e)) / (2 * e);
         const n = [-fx * dir, -fy * dir, dir];
