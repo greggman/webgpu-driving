@@ -76,6 +76,7 @@ export interface Opening {
   // Thin body-colour bars across the opening at these heights (m), e.g.
   // the horizontal bar through a grille.
   bars?: number[];
+  barMat?: 'body' | 'black' | 'chrome'; // default body colour
   // Gloss-black surround instead of the body-colour collar (grilles).
   blackSurround?: boolean;
 }
@@ -1033,8 +1034,8 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       false,
     );
   }
-  // Roof rails: a rounded bar on each side following the roof, standing on
-  // a short foot at each end.
+  // Roof rails: flush solid rails on the roof (no gap under them) that
+  // taper down into the roof at both ends.
   if (c.roofRails) {
     const rr = c.roofRails;
     const z0 = cab.roofFront - 0.1,
@@ -1061,7 +1062,10 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
       for (let i = 0; i <= NZ; ++i) {
         const z = z0 + ((z1 - z0) * i) / NZ;
         const [x, y] = roofAt(z);
-        const yc = y + rr.height;
+        const u = i / NZ;
+        const e = Math.sqrt(sm(0, 0.1, u) * sm(1, 0.9, u));
+        const h = Math.max(rr.height * e, 0.002);
+        const yc = y - 0.004 + h * 0.5;
         const row: P3[] = [];
         for (let k = 0; k <= 12; ++k) {
           const th = (k / 12) * Math.PI * 2;
@@ -1070,8 +1074,9 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
           row.push([
             sx *
               (x +
-                Math.sign(cx) * Math.pow(Math.abs(cx), 0.6) * rr.width * 0.5),
-            yc + Math.sign(cy) * Math.pow(Math.abs(cy), 0.6) * rr.width * 0.35,
+                Math.sign(cx) * Math.pow(Math.abs(cx), 0.5) * rr.width * 0.5),
+            yc +
+              Math.sign(cy) * Math.pow(Math.abs(cy), 0.4) * (h * 0.5 + 0.004),
             z,
           ]);
         }
@@ -1087,16 +1092,6 @@ export function buildCurveBody(sp: CarSpec, c: BodyCurves): MeshData {
         },
         true,
       );
-      // Feet at both ends.
-      for (const z of [z0 + 0.04, z1 - 0.04]) {
-        const [x, y] = roofAt(z);
-        box(
-          push,
-          [sx * x, y + rr.height * 0.5, z],
-          [rr.width * 0.45, rr.height * 0.5 + 0.004, 0.05],
-          MAT_TRIM,
-        );
-      }
     }
   }
   // Plates.
@@ -1567,7 +1562,13 @@ function prepareOpenings(
                 surfN(u1, by),
                 surfN(u0, by),
               ];
-              for (const q of [0, 1, 2, 0, 2, 3]) push(pts[q], ns[q], bodyMat);
+              const bm =
+                op.barMat === 'black'
+                  ? MAT_TRIM
+                  : op.barMat === 'chrome'
+                    ? MAT_CHROME
+                    : bodyMat;
+              for (const q of [0, 1, 2, 0, 2, 3]) push(pts[q], ns[q], bm);
             }
           }
           for (const [px0, py0, r] of op.projectors ?? []) {
