@@ -156,9 +156,10 @@ export class Renderer {
   readonly post: Post;
   readonly vegetation: Vegetation;
   readonly props: Props;
-  readonly water: Water;
+  // Ocean and tyre tracks exist only once a biome needs them (setWorld).
+  water: Water | null = null;
   readonly particles: Particles;
-  readonly tracks: TireTracks;
+  tracks: TireTracks | null = null;
   private glassFxOn = false;
   readonly glassWater: GlassWaterRenderer;
   private dustSlots = new Map<number, {index: number; fade: number}>();
@@ -378,9 +379,9 @@ export class Renderer {
     );
     this.ensureHzb(1, 1);
     this.props = new Props(d, this.frameLayout, this.shadows.layout);
-    this.water = new Water(d, this.frameLayout);
+
     this.particles = new Particles(d, this.frameLayout);
-    this.tracks = new TireTracks(d, this.frameLayout);
+
     this.createFrameBindGroups();
   }
 
@@ -639,11 +640,17 @@ export class Renderer {
       80;
     this.vegetation.setWorld(biome, road);
     this.props.setWorld(biome, road);
-    this.water.enabled = biome.ocean;
-    if (biome.ocean) this.water.setWind(biome.weather.wind);
+    if (biome.ocean && !this.water)
+      this.water = new Water(this.gpu.device, this.frameLayout);
+    if (this.water) this.water.enabled = biome.ocean;
+    if (biome.ocean) this.water!.setWind(biome.weather.wind);
     this.particles.setWorld(biome);
-    this.tracks.enabled = biome.road.dirt;
-    this.tracks.reset();
+    if (biome.road.dirt && !this.tracks)
+      this.tracks = new TireTracks(this.gpu.device, this.frameLayout);
+    if (this.tracks) {
+      this.tracks.enabled = biome.road.dirt;
+      this.tracks.reset();
+    }
   }
 
   private rebase(camX: number, camZ: number) {
@@ -1079,7 +1086,7 @@ export class Renderer {
         if (c)
           movers[slot.index] = {trail: trailOf(c), speed: c.speed * slot.fade};
       }
-      this.tracks.update(
+      this.tracks?.update(
         road,
         scene.cars.map(c => ({
           id: c.id,
@@ -1106,7 +1113,7 @@ export class Renderer {
     this.terrain.encodeClipmapUpdates(enc);
     if (DEBUG.has('probe')) this.terrain.probe(enc, eye[0], eye[2]);
     this.atmosphere.update(enc);
-    this.water.encode(enc, scene.time);
+    this.water?.encode(enc, scene.time);
     this.encodeEnvMap(enc);
     this.vegetation.encodeCompute(enc, this.frameBG);
 
@@ -1198,10 +1205,10 @@ export class Renderer {
     main.setBindGroup(2, this.emptyBG);
     this.vegetation.draw(main, this.emptyBG);
     if (!DEBUG.has('noterrain')) this.terrain.draw(main);
-    this.water.draw(main);
+    this.water?.draw(main);
     main.setPipeline(this.atmosphere.skyDrawPipe);
     main.draw(3);
-    this.tracks.draw(main);
+    this.tracks?.draw(main);
     this.particles.draw(main);
     this.cars.drawGlass(main);
     main.end();

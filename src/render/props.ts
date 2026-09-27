@@ -90,6 +90,65 @@ export class Props {
   private shadowLin: ChunkProps[] = [];
   // Per-frame dynamic props (tumbleweeds), world coordinates.
   dynamic: WorldInst[] = [];
+  // Built prop meshes (CPU copies, for regrowing the GPU buffers).
+  private built: Array<{
+    v: Float32Array;
+    i: Uint32Array;
+    vo: number;
+    io: number;
+  }> = [];
+  private vUsed = 0;
+  private iUsed = 0;
+
+  private makeVBuf(floats: number) {
+    return this.device.createBuffer({
+      label: 'prop-vertices',
+      size: floats * 4,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+  }
+  private makeIBuf(count: number) {
+    return this.device.createBuffer({
+      label: 'prop-indices',
+      size: count * 4,
+      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+    });
+  }
+
+  // Builds a prop kind's mesh the first time it is needed, appending it to
+  // the shared buffers (regrown and rewritten when full).
+  private ensureKind(kind: PropKind) {
+    if (this.kindMesh.has(kind)) return;
+    const m = buildProp(kind);
+    const q = this.device.queue;
+    const vNeed = this.vUsed + m.vertices.length,
+      iNeed = this.iUsed + m.indices.length;
+    if (vNeed * 4 > this.vbuf.size || iNeed * 4 > this.ibuf.size) {
+      this.vbuf.destroy();
+      this.ibuf.destroy();
+      this.vbuf = this.makeVBuf(Math.max(vNeed, (this.vbuf.size / 4) * 2));
+      this.ibuf = this.makeIBuf(Math.max(iNeed, (this.ibuf.size / 4) * 2));
+      for (const b of this.built) {
+        q.writeBuffer(this.vbuf, b.vo * 4, b.v);
+        q.writeBuffer(this.ibuf, b.io * 4, b.i);
+      }
+    }
+    q.writeBuffer(this.vbuf, this.vUsed * 4, m.vertices);
+    q.writeBuffer(this.ibuf, this.iUsed * 4, m.indices);
+    this.built.push({
+      v: m.vertices,
+      i: m.indices,
+      vo: this.vUsed,
+      io: this.iUsed,
+    });
+    this.kindMesh.set(kind, {
+      firstIndex: this.iUsed,
+      count: m.indices.length,
+      baseVertex: this.vUsed / VEG_FLOATS,
+    });
+    this.vUsed = vNeed;
+    this.iUsed = iNeed;
+  }
 
   constructor(
     private device: GPUDevice,
@@ -97,37 +156,10 @@ export class Props {
     shadowLayout: GPUBindGroupLayout,
   ) {
     const d = device;
-    // Static prop meshes.
-    const meshes = KINDS.map(k => buildProp(k));
-    let vc = 0,
-      ic = 0;
-    for (const m of meshes) {
-      vc += m.vertices.length;
-      ic += m.indices.length;
-    }
-    this.vbuf = d.createBuffer({
-      label: 'prop-vertices',
-      size: vc * 4,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-    this.ibuf = d.createBuffer({
-      label: 'prop-indices',
-      size: ic * 4,
-      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-    });
-    let vo = 0,
-      io = 0;
-    meshes.forEach((m, i) => {
-      d.queue.writeBuffer(this.vbuf, vo * 4, m.vertices);
-      d.queue.writeBuffer(this.ibuf, io * 4, m.indices);
-      this.kindMesh.set(KINDS[i], {
-        firstIndex: io,
-        count: m.indices.length,
-        baseVertex: vo / VEG_FLOATS,
-      });
-      vo += m.vertices.length;
-      io += m.indices.length;
-    });
+    // Static prop meshes are built on first use (see ensureKind): a biome
+    // only pays for the fences, poles and buildings it actually has.
+    this.vbuf = this.makeVBuf(4096 * VEG_FLOATS);
+    this.ibuf = this.makeIBuf(16384);
     this.instBuf = d.createBuffer({
       label: 'prop-instances',
       size: MAX_INST * 32,
@@ -556,6 +588,7 @@ export class Props {
     for (const kind of KINDS) {
       const l = byKind.get(kind);
       if (!l) continue;
+      this.ensureKind(kind);
       const first = n;
       for (const i of l) {
         if (n >= MAX_INST) break;

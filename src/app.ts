@@ -7,6 +7,7 @@ import {Road} from './world/road';
 import {Traffic, Vehicle} from './sim/traffic';
 import {vehiclePose, Pose} from './sim/pose';
 import {CameraState, Director, SHOT_KINDS, ShotKind} from './camera/director';
+import {compileDeferred, pendingPipelines} from './gpu/pipelines';
 import {computeSky} from './world/sky';
 import {CAR_KINDS, CarKind, carSpec, driverZ, semiLayout} from './gen/car';
 import {Tumbleweeds} from './sim/tumbleweeds';
@@ -459,6 +460,12 @@ export class App {
     this.mark('traffic done');
     this.mark('setWorld');
     this.renderer.setWorld(this.road, this.biome);
+    // Pipelines this biome needs for the first time (ocean, tyre tracks).
+    if (pendingPipelines()) {
+      await compileDeferred((done, total) =>
+        this.setProgress(`${name}: compiling shaders ${done} / ${total}`, 0.5),
+      );
+    }
     this.tumbleweeds =
       this.biome.scatter.tumbleweeds > 0
         ? new Tumbleweeds(this.road, this.params.seed, 7)
@@ -805,6 +812,10 @@ export class App {
     this.lastCamera = camera;
     this.frames++;
     if (this.frames % 10 === 0) this.updateHud(camera);
+    // Once running, build the remaining car kinds in the background (one
+    // every half second) so traffic that appears later doesn't hitch.
+    if (!this.showingProgress && this.frames % 30 === 0)
+      this.renderer.cars.buildIdle();
   }
 
   private updateHud(cam: CameraState) {

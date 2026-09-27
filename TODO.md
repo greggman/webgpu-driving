@@ -6,7 +6,7 @@
     as far as I can tell. What I imagined is the grass renderer
     rendering ~1 meter high billboard plants with flowers on top.
 
-[ ] Build assets as needed
+[x] Build assets as needed
 
     Currently, all shaders, pipelines, cars, and all biome assets are built at startup.
     Instead, we should build just the first car, and just the props etc

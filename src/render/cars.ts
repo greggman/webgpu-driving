@@ -76,24 +76,8 @@ export class CarRenderer {
       layout: this.emptyLayout,
       entries: [],
     });
-    for (const kind of MESH_KINDS) {
-      const spec = carSpec(kind);
-      const m = kind === 'trailer' ? buildTrailer() : buildCarBody(spec);
-      const buf = device.createBuffer({
-        label: `car-body-${kind}`,
-        size: m.vertices.byteLength,
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-      });
-      device.queue.writeBuffer(buf, 0, m.vertices);
-      const interior = buildInterior(spec);
-      const interiorBuf = device.createBuffer({
-        label: `car-interior-${kind}`,
-        size: interior.vertices.byteLength,
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-      });
-      device.queue.writeBuffer(interiorBuf, 0, interior.vertices);
-      this.meshes.set(kind, {buf, count: m.count, spec, interior, interiorBuf});
-    }
+    // Car body / interior meshes are built on first use (mesh()), so start-up
+    // only pays for the cars on screen; buildIdle() fills in the rest.
     const w = buildWheel();
     const wbuf = device.createBuffer({
       label: 'car-wheel',
@@ -149,7 +133,42 @@ export class CarRenderer {
   }
 
   spec(kind: CarKind): CarSpec {
-    return this.meshes.get(kind)!.spec;
+    return carSpec(kind);
+  }
+
+  // A kind's GPU meshes, built the first time they're needed.
+  private mesh(kind: CarKind) {
+    let m = this.meshes.get(kind);
+    if (m) return m;
+    const device = this.device;
+    const spec = carSpec(kind);
+    const body = kind === 'trailer' ? buildTrailer() : buildCarBody(spec);
+    const buf = device.createBuffer({
+      label: `car-body-${kind}`,
+      size: body.vertices.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(buf, 0, body.vertices);
+    const interior = buildInterior(spec);
+    const interiorBuf = device.createBuffer({
+      label: `car-interior-${kind}`,
+      size: Math.max(interior.vertices.byteLength, 32),
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    if (interior.vertices.byteLength)
+      device.queue.writeBuffer(interiorBuf, 0, interior.vertices);
+    m = {buf, count: body.count, spec, interior, interiorBuf};
+    this.meshes.set(kind, m);
+    return m;
+  }
+
+  // Builds one not-yet-built kind (call when idle, so a traffic kind that
+  // appears later doesn't cause a hitch). Returns false when all are built.
+  buildIdle(): boolean {
+    const kind = MESH_KINDS.find(k => !this.meshes.has(k));
+    if (!kind) return false;
+    this.mesh(kind);
+    return true;
   }
 
   createPipelines(
@@ -327,7 +346,7 @@ export class CarRenderer {
     this.interiorDraw = null;
     let i = 0;
     for (const c of sorted.slice(0, MAX_CARS)) {
-      const spec = this.meshes.get(c.kind)!.spec;
+      const spec = this.mesh(c.kind).spec;
       const o = i * CAR_FLOATS;
       this.data.set(c.model, o);
       this.data.set(c.prevModel, o + 16);
@@ -356,7 +375,7 @@ export class CarRenderer {
         ],
         o + 48,
       );
-      const km = this.meshes.get(c.kind)!;
+      const km = this.mesh(c.kind);
       const wheelAngle = -c.steer * 14; // steering ratio
       this.data.set(
         [c.interior ? 1 : 0, c.speed ?? 0, c.rpm ?? 0, wheelAngle],
@@ -423,7 +442,7 @@ export class CarRenderer {
     pass.draw(6, this.total);
     pass.setPipeline(this.glassPipe);
     for (const r of this.ranges) {
-      const m = this.meshes.get(r.kind)!;
+      const m = this.mesh(r.kind);
       pass.setVertexBuffer(0, m.buf);
       pass.draw(m.count, r.count, 0, r.first);
     }
@@ -432,7 +451,7 @@ export class CarRenderer {
   // The player's glass into the glass-FX target (see fsGlassFx).
   drawGlassFx(pass: GPURenderPassEncoder, water: GPUBindGroup) {
     if (!this.interiorDraw || !this.glassFxPipe) return;
-    const m = this.meshes.get(this.interiorDraw.kind)!;
+    const m = this.mesh(this.interiorDraw.kind);
     pass.setPipeline(this.glassFxPipe);
     pass.setBindGroup(1, this.bg);
     pass.setBindGroup(2, this.emptyGroup);
@@ -457,7 +476,7 @@ export class CarRenderer {
       .get('debug')
       ?.includes('nobody');
     for (const r of skipBody ? [] : this.ranges) {
-      const m = this.meshes.get(r.kind)!;
+      const m = this.mesh(r.kind);
       pass.setVertexBuffer(0, m.buf);
       pass.draw(m.count, r.count, 0, r.first);
     }
@@ -469,7 +488,7 @@ export class CarRenderer {
     if (body === this.bodyPipe) {
       pass.setPipeline(body);
       for (const r of this.ranges) {
-        const m = this.meshes.get(r.kind)!;
+        const m = this.mesh(r.kind);
         pass.setVertexBuffer(0, m.interiorBuf);
         pass.draw(m.interior.count, r.count, 0, r.first);
       }
