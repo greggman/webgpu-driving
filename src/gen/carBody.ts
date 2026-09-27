@@ -1212,17 +1212,32 @@ function offsetPoly(poly: Array<[number, number]>, d: number) {
     area += a[0] * b[1] - b[0] * a[1];
   }
   const sgn = area > 0 ? 1 : -1;
+  // Outward normal of edge p -> q of a CCW polygon is (dy, -dx).
+  const en = (p: [number, number], q: [number, number]) => {
+    const dx = q[0] - p[0],
+      dy = q[1] - p[1];
+    const l = Math.hypot(dx, dy) || 1;
+    return [(dy / l) * sgn, (-dx / l) * sgn];
+  };
   return poly.map((p, i) => {
     const a = poly[(i - 1 + n) % n],
       b = poly[(i + 1) % n];
-    const tx = b[0] - a[0],
-      ty = b[1] - a[1];
-    const l = Math.hypot(tx, ty) || 1;
-    // Outward normal of a CCW polygon is (ty, -tx).
-    return [p[0] + (ty / l) * d * sgn, p[1] + (-tx / l) * d * sgn] as [
-      number,
-      number,
-    ];
+    // Mitred: the full distance d from both adjacent edges (so sharp
+    // corners are covered), capped for very acute points.
+    const n1 = en(a, p),
+      n2 = en(p, b);
+    let bx = n1[0] + n2[0],
+      by = n1[1] + n2[1];
+    const bl = Math.hypot(bx, by);
+    if (bl < 1e-6) {
+      bx = n1[0];
+      by = n1[1];
+    } else {
+      bx /= bl;
+      by /= bl;
+    }
+    const m = d / Math.max(bx * n1[0] + by * n1[1], 0.4);
+    return [p[0] + bx * m, p[1] + by * m] as [number, number];
   });
 }
 
