@@ -1067,7 +1067,32 @@ function prepareOpenings(
           // Rim: a thin dark gap on the skin, then the housing wall down
           // to the back.
           const rimOut = offsetPoly(outline, 0.006);
-          const collar = offsetPoly(outline, 0.042);
+          // The collar stops at the body's silhouette seen from this end
+          // (past it, surfZ has no skin to land on and made loose flaps
+          // below the bumper).
+          const onBody = (x: number, y: number) =>
+            Math.max(
+              skinX(endZ - dir * 0.3, y),
+              skinX(endZ - dir * 0.6, y),
+              skinX(endZ - dir * 0.9, y),
+            ) >
+            Math.abs(x) + 0.004;
+          const collar = offsetPoly(outline, 0.042).map((c, i) => {
+            const r = rimOut[i];
+            if (onBody(c[0], c[1]) || !onBody(r[0], r[1])) return c;
+            let a = 0,
+              b = 1;
+            for (let it = 0; it < 12; ++it) {
+              const m = (a + b) / 2;
+              if (onBody(r[0] + (c[0] - r[0]) * m, r[1] + (c[1] - r[1]) * m))
+                a = m;
+              else b = m;
+            }
+            return [r[0] + (c[0] - r[0]) * a, r[1] + (c[1] - r[1]) * a] as [
+              number,
+              number,
+            ];
+          });
           const collarMat = front ? MAT_FRONT : MAT_REAR;
           const N = outline.length;
           for (let i = 0; i < N; ++i) {

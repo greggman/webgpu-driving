@@ -18,7 +18,10 @@ fn build(@builtin(global_invocation_id) id: vec3u) {
   let dir = octDecode((vec2f(id.xy) + 0.5) / vec2f(dims));
   let amb = shIrradiance(vec3f(0.0, 1.0, 0.0));
   let sunLit = F.sunColor.rgb * max(F.sun.y, 0.0) / PI;
-  var col: vec3f;
+    var col: vec3f;
+  // Distance for the fog: the sky is far, the treeline ~1.5 km, the ground
+  // where the ray meets it (else glossy paint mirrors a flat grey haze).
+  var dist = 5000.0;
   if (dir.y >= 0.0) {
     col = skyRadiance(normalize(vec3f(dir.x, max(dir.y, 0.005), dir.z)));
     let cl = cloudLayer(dir, col);
@@ -30,14 +33,19 @@ fn build(@builtin(global_invocation_id) id: vec3u) {
         // A crisp treeline edge: glossy paint mirrors it as a horizon line.
     let band = smoothstep(ridge, ridge * 0.8, dir.y);
     let hills = mix(pal(6) * (amb + sunLit) * 0.7, skyRadiance(normalize(vec3f(dir.x, 0.01, dir.z))), 0.35);
-    col = mix(col, hills, band);
+        col = mix(col, hills, band);
+    dist = mix(5000.0, 1500.0, band);
   } else {
+    dist = min(2.0 / max(-dir.y, 1e-3), 1500.0);
     let horizon = skyRadiance(normalize(vec3f(dir.x, 0.01, dir.z)));
-    let ground = mix(pal(0), vec3f(0.12), 0.35) * (amb + sunLit);
+        // Far ground is the biome's ground; steeply down (within a few metres,
+    // under whatever is being reflected) it is road surface.
+    let far = mix(pal(0), vec3f(0.12), 0.35);
+    let ground = mix(far, vec3f(0.07, 0.07, 0.075), smoothstep(0.08, 0.35, -dir.y)) * (amb + sunLit);
     col = mix(horizon * 0.6, ground, saturate(-dir.y * 6.0));
   }
   if (F.fog.x > 0.0) {
-    col = mix(fogColor(dir), col, fogTransmittance(F.cam.xyz + dir * 5000.0));
+    col = mix(fogColor(dir), col, fogTransmittance(F.cam.xyz + dir * dist));
   }
   textureStore(envOut, id.xy, vec4f(col, 1.0));
 }

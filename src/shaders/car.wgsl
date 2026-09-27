@@ -734,7 +734,9 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     let r = length(lp.yz);
     let ang = atan2(lp.z, lp.y);
     let slot = step(0.9, fract(ang * 6.0 / 6.2831853 * 1.0 + r * 1.5)) * step(0.3, r) * step(r, 0.52);
-        s.albedo = mix(vec3f(0.28), vec3f(0.04), slot);
+            // Dark hub hat inside a brighter machined friction ring.
+    let hat = 1.0 - step(0.33, r);
+    s.albedo = mix(mix(vec3f(0.3), vec3f(0.04), slot), vec3f(0.05), hat);
     s.metal = 1.0 - slot;
     s.rough = 0.35;
   } else if (mat == 22u) {
