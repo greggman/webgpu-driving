@@ -8,6 +8,11 @@ const watch = process.argv.includes('--watch');
 
 await fs.mkdir('dist', {recursive: true});
 await fs.copyFile('index.html', 'dist/index.html');
+// Social media preview image (see the og: / twitter: tags in index.html).
+await fs.copyFile(
+  'screenshots/webgpu-driving-country.jpg',
+  'dist/webgpu-driving-country.jpg',
+);
 
 const options = {
     // The car mesh worker is its own bundle (dist/meshWorker.js).
