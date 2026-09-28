@@ -577,7 +577,9 @@ export function buildInterior(spec: CarSpec): Interior {
     const eye = [dx, Math.min(belt + 0.27, spec.roofY - 0.14), driverZ(spec)];
     const e = [eye[0], eye[1] - my, eye[2] - mz];
     const el = Math.hypot(e[0], e[1], e[2]);
-    const back = [0, 0.01, -1]; // horizon about mid-mirror
+    // Aimed a little down, as drivers set them: the road from ~15 m back
+    // to the horizon near the top.
+    const back = [0, -0.03, -1];
     const bl = Math.hypot(back[0], back[1], back[2]);
     const nv = [
       e[0] / el + back[0] / bl,

@@ -10,11 +10,12 @@ import {
   perspectiveReverseZInfinite,
   fromBasis,
 } from '../math/mat4';
+import {Vec3} from '../math/vec3';
 import {Biome, packTerrain} from '../world/biome';
 import {Road, ROAD_DZ, ROAD_TEX_BEHIND, ROAD_TEX_SAMPLES} from '../world/road';
 import {SkyState} from '../world/sky';
 import {Atmosphere} from './atmosphere';
-import {CarDraw, CarRenderer, NAV_POINTS} from './cars';
+import {CarDraw, CarRenderer, MIRROR_H, MIRROR_W, NAV_POINTS} from './cars';
 import {FRAME_LAYOUT_ENTRIES, FrameData} from './frameData';
 import {Post} from './post';
 import {RoadMesh} from './roadMesh';
@@ -156,6 +157,17 @@ function halton(i: number, b: number): number {
 
 export class Renderer {
   readonly frame: FrameData;
+  private mirrorFrame!: FrameData;
+  private mirrorFrameBG!: GPUBindGroup;
+  // This frame's rear-view mirror camera (null: not rendered).
+  private mirrorVP: Float32Array | null = null;
+  private mirrorCam: {
+    vp: Float32Array;
+    view: Float32Array;
+    eye: number[];
+    right: number[];
+    up: number[];
+  } | null = null;
   readonly targets: Targets;
   readonly atmosphere: Atmosphere;
   readonly terrain: TerrainRenderer;
@@ -454,6 +466,19 @@ export class Renderer {
       label: 'frame-bg',
       layout: this.frameLayout,
       entries: entries(this.shadows.map.createView({dimension: '2d-array'})),
+    });
+    // The rear-view mirror pass: the same bindings with its own camera.
+    this.mirrorFrame = new FrameData(d);
+    this.mirrorFrameBG = d.createBindGroup({
+      label: 'mirror-frame-bg',
+      layout: this.frameLayout,
+      entries: entries(
+        this.shadows.map.createView({dimension: '2d-array'}),
+      ).map(e =>
+        e.binding === 0
+          ? {binding: 0, resource: {buffer: this.mirrorFrame.buffer}}
+          : e,
+      ),
     });
     this.clusterBG = d.createBindGroup({
       label: 'light-cluster-bg',
@@ -1021,6 +1046,51 @@ export class Renderer {
       });
     }
     this.cars.setCars(carDraws, eye, planes);
+    this.mirrorCam = null;
+    if (cam.interior && !DEBUG.has('nomirror')) {
+      // The rear-view mirror is rendered from a virtual camera: the eye
+      // reflected in the mirror plane, looking through the glass.
+      const g = this.cars.mirrorGlass();
+      const pl = scene.cars.find(c => c.player);
+      if (g && pl) {
+        const p = pl.pose;
+        const base = loc([0, 1, 2].map(k => p.pos[k] + p.up[k] * p.heave));
+        const tw = (v: number[]) =>
+          [0, 1, 2].map(
+            k => p.left[k] * v[0] + p.up[k] * v[1] + p.fwd[k] * v[2],
+          );
+        const mc = tw(g.c).map((x, k) => x + base[k]);
+        const mn = tw(g.n);
+        const d0 =
+          (eye[0] - mc[0]) * mn[0] +
+          (eye[1] - mc[1]) * mn[1] +
+          (eye[2] - mc[2]) * mn[2];
+        const ve = [0, 1, 2].map(k => eye[k] - 2 * d0 * mn[k]);
+        const dist = Math.hypot(mc[0] - ve[0], mc[1] - ve[1], mc[2] - ve[2]);
+        const aspect = MIRROR_W / MIRROR_H;
+        const tanY = Math.max(0.05 / dist, 0.14 / dist / aspect);
+        const proj = perspectiveReverseZInfinite(
+          2 * Math.atan(tanY),
+          aspect,
+          // (Clip what's between the virtual eye and the glass: the
+          // housing, windscreen, hood.)
+          dist + 0.05,
+        );
+        const mview = lookAt(ve as Vec3, mc as Vec3, p.up as Vec3);
+        const mvp = multiply(proj, mview);
+        this.mirrorCam = {
+          vp: mvp,
+          view: mview,
+          eye: ve,
+          right: [mview[0], mview[4], mview[8]],
+          up: [mview[1], mview[5], mview[9]],
+        };
+      }
+    }
+    this.cars.setMirror(this.mirrorCam?.vp ?? null);
+    this.vegetation.planes2 = this.mirrorCam
+      ? frustumPlanes(this.mirrorCam.vp)
+      : null;
     if (cam.interior) {
       // Dashboard map: the road ahead in the player's (flat) car frame.
       const pl = scene.cars.find(c => c.player);
@@ -1140,6 +1210,27 @@ export class Renderer {
     this.props.update(scene.playerS, ox, oz, planes, this.roadMesh!);
 
     F.upload();
+    if (this.mirrorCam) {
+      // Mirror pass frame: the main one with its camera; no clustered local
+      // lights (the clusters are the main view's) or volumetrics.
+      const M = this.mirrorFrame;
+      M.data.set(F.data);
+      const m = this.mirrorCam;
+      M.set('viewProj', m.vp);
+      M.set('viewProjNJ', m.vp);
+      M.set('prevViewProj', m.vp);
+      M.set('invViewProj', invert(m.vp));
+      M.set('view', m.view);
+      M.set('cam', [m.eye[0], m.eye[1], m.eye[2], scene.time]);
+      M.set('prevCam', m.eye);
+      M.set('camRight', [...m.right, 0]);
+      M.set('camUp', [...m.up, 0]);
+      const li = this.frame.offsetBytes('lights') / 4;
+      M.data[li] = 0;
+      const vi = this.frame.offsetBytes('volume') / 4;
+      M.data[vi + 3] = 0;
+      M.upload();
+    }
 
     const enc = d.createCommandEncoder({label: 'frame'});
     this.profiler.beginFrame();
@@ -1201,6 +1292,51 @@ export class Renderer {
       vp.setBindGroup(0, this.volBG);
       vp.dispatchWorkgroups(20, 12);
       vp.end();
+    }
+
+    // Rear-view mirror image (interior views).
+    if (this.mirrorCam) {
+      const cr = this.cars;
+      const mp = enc.beginRenderPass({
+        label: 'rear-view-mirror',
+        timestampWrites: ts('mirror'),
+        colorAttachments: [
+          {
+            view: cr.mirrorColor.createView(),
+            loadOp: 'clear',
+            storeOp: 'store',
+            clearValue: [0, 0, 0, 1],
+          },
+          {
+            view: cr.mirrorVel.createView(),
+            loadOp: 'clear',
+            storeOp: 'discard',
+            clearValue: [0, 0, 0, 0],
+          },
+          {
+            view: cr.mirrorNormal.createView(),
+            loadOp: 'clear',
+            storeOp: 'discard',
+            clearValue: [0, 0, 0, 0],
+          },
+        ],
+        depthStencilAttachment: {
+          view: cr.mirrorDepth.createView(),
+          depthClearValue: 0,
+          depthLoadOp: 'clear',
+          depthStoreOp: 'discard',
+        },
+      });
+      mp.setBindGroup(0, this.mirrorFrameBG);
+      mp.setBindGroup(2, this.emptyBG);
+      cr.drawMirror(mp);
+      mp.setBindGroup(2, this.emptyBG);
+      this.roadMesh!.drawAll(mp);
+      this.vegetation.drawTrees(mp, this.emptyBG);
+      if (!DEBUG.has('noterrain')) this.terrain.drawAround(mp);
+      mp.setPipeline(this.atmosphere.skyDrawPipe);
+      mp.draw(3);
+      mp.end();
     }
 
     // Main pass.

@@ -308,6 +308,12 @@ export class RoadMesh {
     this.drawChunks(pass, this.visible);
   }
 
+  // Every built chunk (for views other than the main camera's).
+  drawAll(pass: GPURenderPassEncoder) {
+    pass.setPipeline(RoadMesh.pipeline);
+    this.drawChunks(pass, this.allChunks());
+  }
+
   drawShadow(pass: GPURenderPassEncoder, emptyBG: GPUBindGroup) {
     pass.setPipeline(RoadMesh.shadowPipeline);
     pass.setBindGroup(1, emptyBG);

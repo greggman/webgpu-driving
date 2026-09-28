@@ -26,8 +26,23 @@ struct Car {
 struct Nav {
   pts: array<vec4f, 16>,
   misc: vec4f,
+  // Rear-view mirror: the virtual camera behind the glass (the driver's eye
+  // reflected in the mirror plane); on > 0.5 when its image was rendered.
+  mirrorVP: mat4x4f,
+  mirrorOn: vec4f,
 };
 @group(1) @binding(1) var<uniform> NAV: Nav;
+@group(1) @binding(2) var mirrorTex: texture_2d<f32>;
+@group(1) @binding(3) var mirrorSamp: sampler;
+
+// The rear-view mirror at world point wp: that point seen from the virtual
+// camera lies exactly along the reflected ray, so its projection is where
+// to read the rendered mirror image.
+fn mirrorImage(wp: vec3f) -> vec3f {
+  let c = NAV.mirrorVP * vec4f(wp, 1.0);
+  let uv = vec2f(c.x, -c.y) / c.w * 0.5 + 0.5;
+  return textureSampleLevel(mirrorTex, mirrorSamp, clamp(uv, vec2f(0.001), vec2f(0.999)), 0.0).rgb;
+}
 
 fn navPoint(i: u32) -> vec2f {
   let v = NAV.pts[i / 2u];
@@ -628,7 +643,11 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
       s.metal = 0.0;
       s.rough = 1.0;
       s.spec = 0.0;
-            emissive = rearViewMirror(reflect(-v, n), lp, wp, c) * 0.8;
+            if (NAV.mirrorOn.x > 0.5) {
+              emissive = mirrorImage(wp) * 0.85;
+            } else {
+              emissive = rearViewMirror(reflect(-v, n), lp, wp, c) * 0.8;
+            }
     }
     let sh = sunShadow(wp, n) * cloudShadow(wp);
     var col = shadeSurface(s, wp, sh) + emissive;

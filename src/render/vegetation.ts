@@ -936,6 +936,9 @@ export class Vegetation {
     d.queue.submit([enc.finish()]);
   }
 
+  // A second frustum to scatter for (the rear-view mirror), or null.
+  planes2: Float32Array | null = null;
+
   update(
     scene: SceneState,
     eye: number[],
@@ -980,7 +983,11 @@ export class Vegetation {
       u[96] = l.seed;
       u[97] = l.impostors ? 1 : 0;
       u[98] = this.hzbValid && !location.search.includes('nohzb') ? 1 : 0;
-      d.queue.writeBuffer(l.params, 0, buf, 0, 400);
+      if (this.planes2) {
+        f.set(this.planes2.subarray(0, 24), 100);
+        u[124] = 1;
+      }
+      d.queue.writeBuffer(l.params, 0, buf, 0, 512);
       (l as Layer & {dim: number}).dim = dim;
     }
     this.updateGrassTiles(eye, planes, ox, oz);
@@ -1143,6 +1150,13 @@ export class Vegetation {
   // fastLeaves: cascades past the first draw leaf cards solid (no alpha
   // test: a discard turns off the GPU's early depth / hidden-surface
   // removal, and leaf cards overlap many layers deep).
+  // Trees, bushes and rocks only (the rear-view mirror pass).
+  drawTrees(pass: GPURenderPassEncoder, emptyBG: GPUBindGroup) {
+    if (!this.enabled) return;
+    pass.setBindGroup(2, emptyBG);
+    this.drawMeshes(pass, [0, 1, 2], false);
+  }
+
   drawShadow(pass: GPURenderPassEncoder, cascade: number, fastLeaves = false) {
     if (!this.enabled) return;
     const dbg = (new URLSearchParams(location.search).get('debug') ?? '').split(

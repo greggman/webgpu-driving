@@ -26,8 +26,11 @@ struct ScatterParams {
   types: array<TypeInfo, 8>,
   seed: u32,
   impostors: u32,
-  pad0: u32,
+    pad0: u32,
   pad1: u32,
+  // A second view (the rear-view mirror): kept if in either frustum.
+  planes2: array<vec4f, 6>,
+  has2: vec4u,
 };
 
 @group(1) @binding(0) var<uniform> SP: ScatterParams;
@@ -86,6 +89,15 @@ fn fieldEdge(p: vec2f) -> vec2f {
 fn sphereVisible(c: vec3f, r: f32) -> bool {
   for (var i = 0; i < 6; i++) {
     let pl = SP.planes[i];
+    if (dot(pl.xyz, c) + pl.w < -r) { return false; }
+  }
+  return true;
+}
+
+fn sphereVisible2(c: vec3f, r: f32) -> bool {
+  if (SP.has2.x == 0u) { return false; }
+  for (var i = 0; i < 6; i++) {
+    let pl = SP.planes2[i];
     if (dot(pl.xyz, c) + pl.w < -r) { return false; }
   }
   return true;
@@ -167,9 +179,12 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
   let radius = mi.radius * scale;
   let d3 = distance(center, F.cam.xyz);
   // Near objects are kept even off-screen so they still cast shadows.
-  if (d3 > 70.0 + radius && !sphereVisible(center, radius)) { return; }
+    let inMain = sphereVisible(center, radius);
+  let inMirror = sphereVisible2(center, radius);
+  if (d3 > 70.0 + radius && !inMain && !inMirror) { return; }
   // Occlusion culling (beyond the shadow-casting near range).
-  if (d3 > 120.0 + radius && occluded(center, radius)) { return; }
+    // (The occlusion test is the main view's; mirror-only trees skip it.)
+  if (d3 > 120.0 + radius && !inMirror && occluded(center, radius)) { return; }
 
   var inst: Inst;
   inst.pos = pos;

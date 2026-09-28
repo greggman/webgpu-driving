@@ -19,11 +19,22 @@ import {aabbInFrustum} from '../math/mat4';
 import {buildInterior, Interior} from '../gen/interior';
 import {chinTrimParams, claddingParams} from '../gen/carBody';
 import carSrc from '../shaders/car.wgsl';
-import {GBUFFER_TARGETS, DEPTH_FORMAT, GLASS_FX_FORMAT} from './targets';
+import {
+  GBUFFER_TARGETS,
+  DEPTH_FORMAT,
+  GLASS_FX_FORMAT,
+  HDR_FORMAT,
+  VELOCITY_FORMAT,
+  NORMAL_FORMAT,
+} from './targets';
 
 export const CAR_FLOATS = 80; // 2 mat4 + 12 vec4
 export const NAV_POINTS = 32;
-const NAV_FLOATS = NAV_POINTS * 2 + 4;
+// + the rear-view mirror camera's view-projection (mat4) and a flag vec4.
+const NAV_FLOATS = NAV_POINTS * 2 + 4 + 20;
+// Rear-view mirror render target size (see Renderer.encodeMirror).
+export const MIRROR_W = 640,
+  MIRROR_H = 200;
 const MAX_CARS = 256;
 
 export interface CarDraw {
@@ -132,28 +143,147 @@ export class CarRenderer {
           visibility: GPUShaderStage.FRAGMENT,
           buffer: {type: 'uniform'},
         },
+        // Rear-view mirror image (rendered each frame in interior views).
+        {
+          binding: 2,
+          visibility: GPUShaderStage.FRAGMENT,
+          texture: {sampleType: 'float'},
+        },
+        {binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: {}},
       ],
+    });
+    const mt = (label: string, format: GPUTextureFormat, sampled = false) =>
+      device.createTexture({
+        label,
+        size: [MIRROR_W, MIRROR_H],
+        format,
+        usage:
+          GPUTextureUsage.RENDER_ATTACHMENT |
+          (sampled ? GPUTextureUsage.TEXTURE_BINDING : 0),
+      });
+    this.mirrorColor = mt('mirror-color', HDR_FORMAT, true);
+    this.mirrorVel = mt('mirror-velocity', VELOCITY_FORMAT);
+    this.mirrorNormal = mt('mirror-normal', NORMAL_FORMAT);
+    this.mirrorDepth = mt('mirror-depth', DEPTH_FORMAT);
+    const dummy = device.createTexture({
+      label: 'mirror-dummy',
+      size: [1, 1],
+      format: HDR_FORMAT,
+      usage: GPUTextureUsage.TEXTURE_BINDING,
+    });
+    const samp = device.createSampler({
+      label: 'mirror-sampler',
+      magFilter: 'linear',
+      minFilter: 'linear',
     });
     this.navBuf = device.createBuffer({
       label: 'car-nav-route',
       size: NAV_FLOATS * 4,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    this.bg = device.createBindGroup({
-      label: 'car-instances-bg',
-      layout: this.layout,
-      entries: [
-        {binding: 0, resource: {buffer: this.instBuf}},
-        {binding: 1, resource: {buffer: this.navBuf}},
-      ],
-    });
+    const bgWith = (label: string, tex: GPUTexture) =>
+      device.createBindGroup({
+        label,
+        layout: this.layout,
+        entries: [
+          {binding: 0, resource: {buffer: this.instBuf}},
+          {binding: 1, resource: {buffer: this.navBuf}},
+          {binding: 2, resource: tex.createView()},
+          {binding: 3, resource: samp},
+        ],
+      });
+    this.bg = bgWith('car-instances-bg', this.mirrorColor);
+    // For drawing into the mirror itself (its texture can't be sampled
+    // while it's the render target).
+    this.bgNoMirror = bgWith('car-instances-bg-nomirror', dummy);
+  }
+
+  readonly mirrorColor: GPUTexture;
+  readonly mirrorVel: GPUTexture;
+  readonly mirrorNormal: GPUTexture;
+  readonly mirrorDepth: GPUTexture;
+  private bgNoMirror: GPUBindGroup;
+
+  // Rear-view mirror camera for this frame (null: mirror not rendered).
+  setMirror(vp: Float32Array | null) {
+    const f = new Float32Array(20);
+    if (vp) {
+      f.set(vp, 0);
+      f[16] = 1;
+    }
+    this.device.queue.writeBuffer(this.navBuf, (NAV_POINTS * 2 + 4) * 4, f);
+  }
+
+  // The interior-view car's rear-view mirror glass in car-local space:
+  // centre, normal (toward the driver), half width, half height.
+  mirrorGlass(): {
+    kind: CarKind;
+    index: number;
+    c: number[];
+    n: number[];
+  } | null {
+    if (!this.interiorDraw) return null;
+    const m = this.meshes.get(this.interiorDraw.kind);
+    if (!m) return null;
+    let g = this.mirrorCache.get(this.interiorDraw.kind);
+    if (!g) {
+      const v = m.interior.vertices;
+      const c = [0, 0, 0],
+        n = [0, 0, 0];
+      let k = 0;
+      for (let i = 0; i < v.length; i += 8)
+        if (v[i + 6] === 16) {
+          for (let j = 0; j < 3; ++j) {
+            c[j] += v[i + j];
+            n[j] += v[i + 3 + j];
+          }
+          k++;
+        }
+      if (!k) return null;
+      const nl = Math.hypot(n[0], n[1], n[2]) || 1;
+      g = {c: c.map(x => x / k), n: n.map(x => x / nl)};
+      this.mirrorCache.set(this.interiorDraw.kind, g);
+    }
+    return {...this.interiorDraw, ...g};
+  }
+  private mirrorCache = new Map<CarKind, {c: number[]; n: number[]}>();
+
+  // Cars (bodies, wheels, cabins, glass) into the mirror pass: all nearby
+  // cars (the view culling was for the main camera).
+  drawMirror(pass: GPURenderPassEncoder) {
+    if (!this.total) return;
+    pass.setBindGroup(1, this.bgNoMirror);
+    pass.setPipeline(this.bodyPipe);
+    for (const r of this.shadowRanges) {
+      const m = this.meshes.get(r.kind)!;
+      pass.setVertexBuffer(0, m.lodBuf);
+      pass.draw(m.lodCount, r.count, 0, r.first);
+    }
+    pass.setPipeline(this.wheelPipe);
+    pass.setVertexBuffer(0, this.wheel.buf);
+    for (const r of this.shadowRanges)
+      pass.draw(this.wheel.count, r.count * 6, 0, r.first * 6);
+    // The player's own cabin frames the view (rear window, pillars).
+    if (this.interiorDraw) {
+      const m = this.meshes.get(this.interiorDraw.kind)!;
+      pass.setPipeline(this.bodyPipe);
+      pass.setVertexBuffer(0, m.interiorBuf);
+      pass.draw(m.interior.count, 1, 0, this.interiorDraw.index);
+    }
+    pass.setPipeline(this.glassPipe);
+    for (const r of this.shadowRanges) {
+      const m = this.meshes.get(r.kind)!;
+      pass.setVertexBuffer(0, m.lodBuf);
+      pass.draw(m.lodCount, r.count, 0, r.first);
+    }
   }
 
   // Route for the dashboard map: NAV_POINTS (left, forward) points in
   // metres relative to the player's car, plus the car's world position
   // (mod 1000, for the scrolling grid) and forward direction (x, z).
   setNav(route: number[], misc: number[]) {
-    const f = new Float32Array(NAV_FLOATS);
+    // (Only the route part: the mirror camera after it is set separately.)
+    const f = new Float32Array(NAV_POINTS * 2 + 4);
     f.set(route.slice(0, NAV_POINTS * 2));
     f.set(misc, NAV_POINTS * 2);
     this.device.queue.writeBuffer(this.navBuf, 0, f);

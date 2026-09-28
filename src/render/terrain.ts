@@ -474,6 +474,16 @@ export class TerrainRenderer {
     pass.drawIndexed(this.indexCount, this.nodeCount);
   }
 
+  // All around the camera (the shadow selection: no frustum culling), with
+  // the full shading pipeline (the rear-view mirror).
+  drawAround(pass: GPURenderPassEncoder) {
+    if (!this.shadowNodeCount) return;
+    pass.setPipeline(this.pipeline);
+    pass.setBindGroup(1, this.shadowNodeBG);
+    pass.setIndexBuffer(this.indexBuf, 'uint16');
+    pass.drawIndexed(this.indexCount, this.shadowNodeCount);
+  }
+
   drawShadow(pass: GPURenderPassEncoder) {
     if (!this.shadowNodeCount) return;
     pass.setPipeline(this.shadowPipeline);
