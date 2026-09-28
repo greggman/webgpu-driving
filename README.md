@@ -32,8 +32,8 @@ hillsides; fallen leaves on the road that the car blows away).
 ## Dev Notes
 
 This was inspired by a video I saw of cars going down a road. I don't know what the first game to do this is but the one
-I remember most is [Road Rage for the 3D0](https://youtu.be/Ec3fdE_KkrU?t=2076). Chaining road segments on a long road
-avoids the problem of trying to draw an entire world. You just draw forward or backward "strips".
+I remember most is [Road Rash for the Sega Gensis]([https://youtu.be/Ec3fdE_KkrU?t=2076](https://youtu.be/akApwANv-KM?t=295). 
+Chaining road segments on a long roadavoids the problem of trying to draw an entire world. You just draw forward or backward N "strips".
 
 I get that some people might see this as AI slop. That's fine. If it's not your thing then don't look?
 For me, I wrote [the prompt](DESIGN.md), and asked for plan. Then asked it to follow the plane.
