@@ -79,7 +79,7 @@ on coming cars and the lightning.
 | 1 – 9, 0 | switch environment |
 | B (or the globe button, top left) | next environment |
 | H | show / hide the HUD |
-| M | start / stop recording a video of the canvas (downloads an .mp4 when stopped) |
+| M (with `record=1`) | start / stop recording a video of the canvas (downloads an .mp4 when stopped) |
 
 ## URL parameters
 
@@ -97,7 +97,8 @@ Useful for sharing a view and for deterministic screenshots:
 - `freeze=1`: stop the simulation clock (the renderer keeps running so TAA converges)
 - `hud=0`: hide the HUD
 - `size=WxH`: render exactly W×H pixels whatever the window size (shown scaled to fit);
-  e.g. `size=1920x1080` with M to record a 1080p video
+    e.g. `size=1920x1080` for a 1080p screen capture
+- `record=1`: enable the M key to record the canvas to a video file
 - `speed=N`: simulation time scale (e.g. `speed=8` for soak testing)
 - `debug=noterrain,nodof,nomb,nobody,novegshadow,nograss,nolod0,probe`: debugging toggles
 

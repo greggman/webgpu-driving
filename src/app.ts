@@ -37,6 +37,7 @@ export interface Params {
   // Fixed render size (?size=1920x1080): the canvas renders exactly this
   // many pixels whatever the window size (shown scaled to fit).
   size: [number, number] | null;
+  record: boolean; // ?record=1 enables the M (record video) key
   timeScale: number;
   // Showroom: one parked car, no traffic, a fixed view (for judging cars).
   showroom: boolean;
@@ -101,6 +102,7 @@ export function parseParams(): Params {
     eye: vec3Param(q.get('eye')),
     look: vec3Param(q.get('look')),
     fov: num('fov'),
+    record: q.get('record') === '1',
     size: (() => {
       const m = /^(\d+)x(\d+)$/.exec(q.get('size') ?? '');
       return m ? ([Number(m[1]), Number(m[2])] as [number, number]) : null;
@@ -667,7 +669,8 @@ export class App {
           void this.regenerate();
           break;
         case 'm':
-          this.toggleRecording();
+          // Only with ?record=1 (so nobody records by accident).
+          if (this.params.record) this.toggleRecording();
           break;
         default: {
           // 1-9 then 0 across the top row: environments 1-10.
@@ -956,7 +959,7 @@ export class App {
     const st = this.renderer.stats;
     this.hudEl.textContent =
       `${this.biome.name}  ·  ${kmh} km/h  ·  ${cam.shot} cam  ·  ${this.fps.toFixed(0)} fps  ·  gpu ${(this.renderer.profiler.ms.span ?? 0).toFixed(1)} ms  ·  cpu ${this.cpuMs.toFixed(1)} ms\n` +
-      `←/→ lanes  ↑/↓ speed  C camera  V car  B environment  R new world  M record  P autopilot (${t.autopilot ? 'on' : 'off'})  ${envKeys()} environments  H HUD\n` +
+      `←/→ lanes  ↑/↓ speed  C camera  V car  B environment  R new world  P autopilot (${t.autopilot ? 'on' : 'off'})  ${envKeys()} environments  H HUD\n` +
       `terrain nodes ${st.terrainNodes}  road chunks ${st.roadChunks}  cars ${st.cars}`;
   }
 
