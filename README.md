@@ -76,15 +76,16 @@ on coming cars and the lightning.
 | R (or the ↻ button, top right) | generate a new world (new seed) |
 | P | toggle autopilot |
 | ⚙ (top left) | settings: environment, time of day, clouds, speed, camera, graphics toggles |
-| 1 – 9 | switch environment |
+| 1 – 9, 0 | switch environment |
 | B (or the globe button, top left) | next environment |
-| H | hide the HUD |
+| H | show / hide the HUD |
+| M | start / stop recording a video of the canvas (downloads an .mp4 when stopped) |
 
 ## URL parameters
 
 Useful for sharing a view and for deterministic screenshots:
 
-- `biome=country|desert|coast|forest|snow|lahonda|night|arizona|autumn` (without it, a random environment
+- `biome=country|desert|coast|bigsur|forest|snow|lahonda|night|arizona|autumn` (without it, a random environment
   and seed are chosen; the page never writes it into the URL, so shared links stay plain)
 - `seed=N`: world seed
 - `car=sedan|hatch|suv|coupe|wagon|pickup|semi|bus`: the player's vehicle
@@ -95,6 +96,8 @@ Useful for sharing a view and for deterministic screenshots:
 - `t=N`: time into the camera shot
 - `freeze=1`: stop the simulation clock (the renderer keeps running so TAA converges)
 - `hud=0`: hide the HUD
+- `size=WxH`: render exactly W×H pixels whatever the window size (shown scaled to fit);
+  e.g. `size=1920x1080` with M to record a 1080p video
 - `speed=N`: simulation time scale (e.g. `speed=8` for soak testing)
 - `debug=noterrain,nodof,nomb,nobody,novegshadow,nograss,nolod0,probe`: debugging toggles
 

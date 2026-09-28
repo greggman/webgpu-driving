@@ -34,6 +34,9 @@ export interface Params {
   eye: [number, number, number] | null;
   look: [number, number, number] | null;
   fov: number | null;
+  // Fixed render size (?size=1920x1080): the canvas renders exactly this
+  // many pixels whatever the window size (shown scaled to fit).
+  size: [number, number] | null;
   timeScale: number;
   // Showroom: one parked car, no traffic, a fixed view (for judging cars).
   showroom: boolean;
@@ -98,6 +101,10 @@ export function parseParams(): Params {
     eye: vec3Param(q.get('eye')),
     look: vec3Param(q.get('look')),
     fov: num('fov'),
+    size: (() => {
+      const m = /^(\d+)x(\d+)$/.exec(q.get('size') ?? '');
+      return m ? ([Number(m[1]), Number(m[2])] as [number, number]) : null;
+    })(),
     timeScale: num('speed') ?? 1,
     showroom: q.get('showroom') === '1',
     car: q.get('car'),
@@ -141,6 +148,22 @@ export class App {
     public params: Params,
   ) {
     this.renderer = new Renderer(gpu);
+    if (params.size) {
+      // Fixed render size: show it scaled to fit the window, centred.
+      this.renderer.fixedSize = params.size;
+      const [fw, fh] = params.size;
+      const cv = gpu.canvas;
+      const fit = () => {
+        const k = Math.min(window.innerWidth / fw, window.innerHeight / fh);
+        cv.style.width = `${Math.floor(fw * k)}px`;
+        cv.style.height = `${Math.floor(fh * k)}px`;
+        cv.style.margin = 'auto';
+        cv.style.position = 'absolute';
+        cv.style.inset = '0';
+      };
+      fit();
+      window.addEventListener('resize', fit);
+    }
     this.installInput();
     this.installOrbit();
     if (!params.hud) {
@@ -302,6 +325,53 @@ export class App {
       this.gaugeState[i] += (target[i] - this.gaugeState[i]) * k;
     if (dt === 0) return target;
     return [...this.gaugeState];
+  }
+
+  // Video capture of the canvas (M key): records exactly what's rendered
+  // (no HUD or buttons) and downloads it when stopped.
+  private recorder: MediaRecorder | null = null;
+  toggleRecording() {
+    if (this.recorder) {
+      this.recorder.stop();
+      return;
+    }
+    const canvas = this.gpu.canvas;
+    const types = [
+      'video/mp4;codecs=avc1.640033',
+      'video/mp4',
+      'video/webm;codecs=vp9',
+      'video/webm',
+    ];
+    const mimeType = types.find(t => MediaRecorder.isTypeSupported(t));
+    if (!mimeType) {
+      this.toast('Recording is not supported in this browser');
+      return;
+    }
+    const stream = canvas.captureStream(60);
+    const rec = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 25_000_000,
+    });
+    const chunks: Blob[] = [];
+    rec.ondataavailable = e => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    rec.onstop = () => {
+      this.recorder = null;
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(chunks, {type: mimeType});
+      const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `webgpu-driving-${stamp}.${ext}`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      this.toast(`Saved ${canvas.width}x${canvas.height} ${ext}`);
+    };
+    rec.start(1000);
+    this.recorder = rec;
+    this.toast(`Recording ${canvas.width}x${canvas.height}… (M to stop)`);
   }
 
   private toastTimer = 0;
@@ -596,6 +666,9 @@ export class App {
         case 'r':
           void this.regenerate();
           break;
+        case 'm':
+          this.toggleRecording();
+          break;
         default: {
           // 1-9 then 0 across the top row: environments 1-10.
           const n = e.key === '0' ? 10 : Number(e.key);
@@ -883,7 +956,7 @@ export class App {
     const st = this.renderer.stats;
     this.hudEl.textContent =
       `${this.biome.name}  ·  ${kmh} km/h  ·  ${cam.shot} cam  ·  ${this.fps.toFixed(0)} fps  ·  gpu ${(this.renderer.profiler.ms.span ?? 0).toFixed(1)} ms  ·  cpu ${this.cpuMs.toFixed(1)} ms\n` +
-      `←/→ lanes  ↑/↓ speed  C camera  V car  B environment  R new world  P autopilot (${t.autopilot ? 'on' : 'off'})  ${envKeys()} environments  H HUD\n` +
+      `←/→ lanes  ↑/↓ speed  C camera  V car  B environment  R new world  M record  P autopilot (${t.autopilot ? 'on' : 'off'})  ${envKeys()} environments  H HUD\n` +
       `terrain nodes ${st.terrainNodes}  road chunks ${st.roadChunks}  cars ${st.cars}`;
   }
 

@@ -221,6 +221,8 @@ export class Renderer {
   exposureBias = 1;
   private volumeOn = false;
   graphics: GraphicsSettings = {...DEFAULT_GRAPHICS};
+  // Exact render size (?size=WxH), else the canvas's displayed size.
+  fixedSize: [number, number] | null = null;
   stats = {terrainNodes: 0, roadChunks: 0, cars: 0};
   private camVelSmooth = [0, 0, 0];
   readonly profiler: Profiler;
@@ -755,8 +757,9 @@ export class Renderer {
     const dpr =
       (native ? Math.min(window.devicePixelRatio || 1, 2) : 1) *
       this.graphics.renderScale;
-    const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
-    const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+    let w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
+    let h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+    if (this.fixedSize) [w, h] = this.fixedSize;
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
