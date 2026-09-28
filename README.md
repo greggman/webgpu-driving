@@ -32,8 +32,8 @@ hillsides; fallen leaves on the road that the car blows away).
 ## Dev Notes
 
 This was inspired by a video I saw of cars going down a road. I don't know what the first game to do this is but the one
-I remember most is [Road Rash for the Sega Gensis]([https://youtu.be/Ec3fdE_KkrU?t=2076](https://youtu.be/akApwANv-KM?t=295). 
-Chaining road segments on a long roadavoids the problem of trying to draw an entire world. You just draw forward or backward N "strips".
+I remember most is [Road Rash for the Sega Gensis](https://youtu.be/akApwANv-KM?t=295). 
+Chaining road segments on a long road avoids the problem of trying to draw an entire world. You just draw forward or backward N "strips".
 Sure, games like Pole Position, Hang-On, OutRun also did this kind of but they weren't "3D". Neither is Road Rash on Gensis but,
 as the series progressed, it did eventually get to "real 3d" and for a 3d engine it benefits from being able to render strips
 and not have to come up with some more open world PVS system.
