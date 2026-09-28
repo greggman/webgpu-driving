@@ -96,8 +96,9 @@ Useful for sharing a view and for deterministic screenshots:
 - `t=N`: time into the camera shot
 - `freeze=1`: stop the simulation clock (the renderer keeps running so TAA converges)
 - `hud=0`: hide the HUD
-- `size=WxH`: render exactly W×H pixels whatever the window size (shown scaled to fit);
-    e.g. `size=1920x1080` for a 1080p screen capture
+- `size=WxH`: make the canvas exactly W×H CSS pixels (centred, not scaled) and render it at the
+  display's device pixel ratio, for screen capture: on a 2x (Retina) display `size=960x540` is a
+  1920×1080 image, on a 1x display use `size=1920x1080`
 - `record=1`: enable the M key to record the canvas to a video file
 - `speed=N`: simulation time scale (e.g. `speed=8` for soak testing)
 - `debug=noterrain,nodof,nomb,nobody,novegshadow,nograss,nolod0,probe`: debugging toggles

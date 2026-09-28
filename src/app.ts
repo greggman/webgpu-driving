@@ -34,8 +34,8 @@ export interface Params {
   eye: [number, number, number] | null;
   look: [number, number, number] | null;
   fov: number | null;
-  // Fixed render size (?size=1920x1080): the canvas renders exactly this
-  // many pixels whatever the window size (shown scaled to fit).
+  // Fixed canvas size in CSS pixels (?size=960x540), rendered at the
+  // device pixel ratio (for screen capture).
   size: [number, number] | null;
   record: boolean; // ?record=1 enables the M (record video) key
   timeScale: number;
@@ -151,20 +151,22 @@ export class App {
   ) {
     this.renderer = new Renderer(gpu);
     if (params.size) {
-      // Fixed render size: show it scaled to fit the window, centred.
-      this.renderer.fixedSize = params.size;
+      // Fixed canvas size in CSS pixels (not scaled to the window), centred,
+      // rendered at the display's device pixel ratio so it maps 1:1 onto
+      // screen pixels for screen capture (960x540 on a 2x display is a
+      // 1920x1080 image).
       const [fw, fh] = params.size;
       const cv = gpu.canvas;
-      const fit = () => {
-        const k = Math.min(window.innerWidth / fw, window.innerHeight / fh);
-        cv.style.width = `${Math.floor(fw * k)}px`;
-        cv.style.height = `${Math.floor(fh * k)}px`;
-        cv.style.margin = 'auto';
-        cv.style.position = 'absolute';
-        cv.style.inset = '0';
-      };
-      fit();
-      window.addEventListener('resize', fit);
+      cv.style.width = `${fw}px`;
+      cv.style.height = `${fh}px`;
+      cv.style.position = 'absolute';
+      cv.style.left = '50%';
+      cv.style.top = '50%';
+      cv.style.transform = 'translate(-50%, -50%)';
+      this.renderer.fixedSize = [
+        Math.round(fw * (window.devicePixelRatio || 1)),
+        Math.round(fh * (window.devicePixelRatio || 1)),
+      ];
     }
     this.installInput();
     this.installOrbit();

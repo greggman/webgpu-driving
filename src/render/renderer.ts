@@ -221,7 +221,8 @@ export class Renderer {
   exposureBias = 1;
   private volumeOn = false;
   graphics: GraphicsSettings = {...DEFAULT_GRAPHICS};
-  // Exact render size (?size=WxH), else the canvas's displayed size.
+  // Exact render size in device pixels (?size=WxH), else from the
+  // canvas's displayed size.
   fixedSize: [number, number] | null = null;
   stats = {terrainNodes: 0, roadChunks: 0, cars: 0};
   private camVelSmooth = [0, 0, 0];
