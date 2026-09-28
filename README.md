@@ -29,6 +29,37 @@ Nine environments: **country road**, **desert dirt road**, **ocean coastline**,
 from inside and the wipers clear it) and **New England autumn** (red / orange / gold
 hillsides; fallen leaves on the road that the car blows away).
 
+## Dev Notes
+
+This was inspired by a video I saw of cars going down a road. I don't know what the first game to do this is but the one
+I remember most is [Road Rage for the 3D0](https://youtu.be/Ec3fdE_KkrU?t=2076). Chaining road segments on a long road
+avoids the problem of trying to draw an entire world. You just draw forward or backward "strips".
+
+I get that some people might see this as AI slop. That's fine. If it's not your thing then don't look?
+For me, I wrote [the prompt](DESIGN.md), and asked for plan. Then asked it to follow the plane.
+2hrs later it was working with several biomes. I spent another 2 days working through smaller issues
+and asking for small tweaks. 
+
+Maybe the most interesting was trying to get better looking cars. I can't say the cars are great now
+but they are significantly better than when it started. It tried for a while and wasn't getting much
+better. Two things I asked which helped. One, I told it to use 2 more agents. So the main agent would
+provide the code, another agent would design the car, a 3rd agent would judge. 2nd, I suggested it
+use NURBS to model. Before that it was using polygons. Both of those helped get them to where they
+are now. Separate from the looks, there are still issues like the semi truck's cab and trailer are not
+connected correctly. Also, cameras don't take into account the semi and bus.
+
+Another big issue is perf. The forest looks pretty good because it has so many trees but it's also 3x
+slower to render. The New England autumn leaves biome has the same issue. We had some ideas and one
+is in the settings (Detailed Leaf Shadows - on on desktop, off on mobile). It doesn't help much.
+You can turn off all of the other post-processing type effects (bloom, TAA, DOF, etc) and it helps
+the frame rate but not enough to hit 60fps consistently on my M1 Mac. I don't think I'm going to
+spend any time fixing it though. It's still pleasent to look at.
+
+Overall, I'm really impressed. And of course things will only get better. Even though they are
+not perfect I'm particularly happy with the snow on the windows from the driver's POV in the snow biome.
+And, even more with the rain on the windows in the Arizona rain biome, as well as the lights from the
+on coming cars and the lightning.
+
 ## Controls
 
 | Key | Action |
