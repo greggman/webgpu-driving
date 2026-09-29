@@ -39,7 +39,7 @@ as the series progressed, it did eventually get to "real 3d" and for a 3d engine
 and not have to come up with some more open world PVS system.
 
 I get that some people might see this as AI slop. That's fine. If it's not your thing then don't look?
-For me, I wrote [the prompt](DESIGN.md), and asked for plan. Then asked it to follow the plane.
+For me, I wrote [the prompt](DESIGN.md), and asked for a plan. Then I asked it to follow the plan.
 2hrs later it was working with several biomes. I spent another 2 days working through smaller issues
 and asking for small tweaks. 
 
