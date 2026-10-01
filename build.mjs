@@ -3,6 +3,7 @@
 //   node build.mjs --watch  -> rebuild on change
 import * as esbuild from 'esbuild';
 import fs from 'node:fs/promises';
+import zlib from 'node:zlib';
 
 const watch = process.argv.includes('--watch');
 
@@ -75,4 +76,16 @@ if (watch) {
   await ctx.watch();
 } else {
   await esbuild.build(options);
+
+  // What a visitor downloads, gzipped (source maps and the social preview
+  // image aren't fetched by the page).
+  const kb = n => `${(n / 1024).toFixed(1)} KB`;
+  let total = 0;
+  for (const f of ['index.html', 'main.js', 'meshWorker.js']) {
+    const data = await fs.readFile(`dist/${f}`);
+    const size = zlib.gzipSync(data, {level: 9}).length;
+    total += size;
+    console.log(`  ${f.padEnd(16)} ${kb(size).padStart(10)} gzipped`);
+  }
+  console.log(`  ${'total'.padEnd(16)} ${kb(total).padStart(10)} gzipped`);
 }
