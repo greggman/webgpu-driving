@@ -1,4 +1,4 @@
-# WebGPU Driving
+# WebGPU Driving with 10 environments in 163k
 
 [Live](https://greggman.github.io/webgpu-driving)
 
@@ -39,7 +39,13 @@ as the series progressed, it did eventually get to "real 3d" and for a 3d engine
 and not have to come up with some more open world PVS system.
 
 I get that some people might see this as AI slop. That's fine. If it's not your thing then don't look?
-For me, I wrote [the prompt](DESIGN.md), and asked for a plan. Then I asked it to follow the plan.
+I think there's more here than just that. For example: One issue with 3D games on the Web is they
+usually need to download 100s of megs of data. This entire demo is 170k gzipped! All cars, all 10 environments,
+all skies, all trees, bushes, flowers, textures, etc....  It's effectively showing there's been
+a huge opportuntity for fast to download beautiful games that's entirely been ignored for the last
+15 years. I think that's valuable, regardless of how this was created.
+
+As for how, I wrote [the prompt](DESIGN.md), and asked for a plan. Then I asked it to follow the plan.
 2hrs later it was working with several biomes. I spent another 2 days working through smaller issues
 and asking for small tweaks. 
 
