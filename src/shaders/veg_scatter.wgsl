@@ -31,6 +31,10 @@ struct ScatterParams {
   // A second view (the rear-view mirror): kept if in either frustum.
   planes2: array<vec4f, 6>,
   has2: vec4u,
+  // Canopy sections: (share of the road, band inner and outer distance from
+  // the centerline, max lean), (per-tree-type weight in the band, seed, -, -).
+  canopy: vec4f,
+  canopy2: vec4f,
 };
 
 @group(1) @binding(0) var<uniform> SP: ScatterParams;
@@ -103,6 +107,17 @@ fn sphereVisible2(c: vec3f, r: f32) -> bool {
   return true;
 }
 
+// Canopy sections (0-1) at world z. The CPU twin is Road.canopyAt.
+fn canopyAt(z: f32) -> f32 {
+  let x = z / 400.0;
+  let i = floor(x);
+  let f = x - i;
+  let seed = i32(SP.canopy2.y);
+  let v = mix(hash01(i32(i), seed), hash01(i32(i) + 1, seed), f * f * (3.0 - 2.0 * f));
+  let thr = mix(0.75, 0.25, SP.canopy.x);
+  return smoothstep(thr - 0.04, thr + 0.04, v);
+}
+
 fn emit(drawIdx: u32, inst: Inst) {
   let cap = caps[drawIdx];
   let slot = atomicAdd(&args[drawIdx * 5u + 1u], 1u);
@@ -135,6 +150,22 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
   let world = p + F.misc.xy;
   if (g.x < 1.0 && F.palette[9].w > 0.5 && F.terrain[3].x != 0.0) { return; } // sea
 
+  // Canopy sections: trees crowd the shoulder and lean over the road.
+  var canopy = 0.0;
+  var ri: RoadInfo;
+  if (SP.canopy.x > 0.0 && roadD > SP.canopy.y && roadD < SP.canopy.z) {
+    ri = roadInfo(p);
+    canopy = canopyAt(ri.along + F.misc.y) *
+      (1.0 - smoothstep(SP.canopy.z - 4.0, SP.canopy.z, roadD));
+    // None near a bridge: from the ground below, they'd grow through the
+    // deck.
+    var bridge = ri.bridge;
+    for (var k = -2; k <= 2; k++) {
+      bridge = max(bridge, roadSample(ri.along + f32(k) * 15.0).w);
+    }
+    if (bridge > 0.0) { canopy = 0.0; }
+  }
+
   // Pick a type by cumulative masked probability.
   var acc = 0.0;
   var chosen = -1;
@@ -165,6 +196,9 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
       // Sparse, with gentle clumping.
       w *= 0.4 + 1.2 * fbm2(world * 0.01, 3);
     }
+    if (canopy > 0.0 && ti.cluster <= 1u && slope <= ti.maxSlope) {
+      w = max(w, SP.canopy2.x * canopy);
+    }
     acc += w;
     if (r0 < acc) { chosen = i32(t); break; }
   }
@@ -174,9 +208,25 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
   let mesh = ti.mesh + variant;
   let mi = meshes[mesh];
   let scale = mix(ti.scaleMin, ti.scaleMax, r4);
-  let pos = vec3f(p.x, g.x - 0.08 * scale, p.y);
-  let center = pos + vec3f(0.0, mi.centerY * scale, 0.0);
-  let radius = mi.radius * scale;
+  var pos = vec3f(p.x, g.x - 0.08 * scale, p.y);
+  var center = pos + vec3f(0.0, mi.centerY * scale, 0.0);
+  var radius = mi.radius * scale;
+  // Canopy trees lean toward the road, further the further out they stand
+  // (conifers only a little), so the crowns meet over it.
+  var leanBits = 0u;
+  if (canopy > 0.0 && ti.cluster <= 1u) {
+    let lean = min(SP.canopy.w, (roadD - 1.5) * 0.8) * canopy *
+      mix(0.25, 1.0, mi.kind) * (0.75 + 0.5 * rand01(pcg(h0 + 8u)));
+    let q = u32(clamp(lean * 20.0, 0.0, 255.0));
+    if (q > 0u) {
+      // Lateral direction (cos h, -sin h) points to the +d side.
+      let dir = -sign(ri.d) * vec2f(cos(ri.heading), -sin(ri.heading));
+      let a = u32(fract(atan2(dir.y, dir.x) / 6.2831853) * 256.0) & 0xffu;
+      leanBits = (q << 16u) | (a << 24u);
+      center += instLean(leanBits, mi.centerY * scale, mi.height * scale);
+      radius += f32(q) / 20.0 * 0.5;
+    }
+  }
   let d3 = distance(center, F.cam.xyz);
   // Near objects are kept even off-screen so they still cast shadows.
     let inMain = sphereVisible(center, radius);
@@ -186,12 +236,24 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
     // (The occlusion test is the main view's; mirror-only trees skip it.)
   if (d3 > 120.0 + radius && !inMirror && occluded(center, radius)) { return; }
 
+  // On a slope, or at the top of a cut, part of the trunk's base overhangs
+  // lower ground: sink the tree to the lowest ground under its base.
+  if (mi.baseR > 0.0 && d3 < 500.0) {
+    let r = mi.baseR * scale;
+    var lo = g.x;
+    for (var k = 0; k < 8; k++) {
+      let a = f32(k) * 0.7853982;
+      lo = min(lo, clipSample(p + vec2f(cos(a), sin(a)) * r, lvl).x);
+    }
+    pos.y -= g.x - lo;
+  }
+
   var inst: Inst;
   inst.pos = pos;
   inst.scale = scale;
   inst.rot = rand01(pcg(h0 + 5u)) * 6.2831853;
   inst.tint = rand01(pcg(h0 + 6u));
-  inst.mesh = mesh;
+  inst.mesh = mesh | leanBits;
   // LOD selection. Each instance switches at its own hashed distance (+-15%),
   // cross-fading over a short band (dithered, resolved by TAA), and LOD0
   // trees morph toward LOD1 (extra leaf cards dissolve) before the switch.
@@ -209,7 +271,7 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
   let b0 = clamp(l0 * 0.3, 8.0, 30.0);
   let b1 = clamp(l1 * 0.15, 12.0, 50.0);
   let morph = saturate((d3 - 0.45 * l0) / (0.55 * l0 - b0 * 0.5));
-  let meshIdx = mesh;
+  let meshIdx = mesh | leanBits;
   // LOD0 (with morph), fading out across [l0 - b0/2, l0 + b0/2].
   if (d3 < l0 + b0 * 0.5) {
     let t = saturate((d3 - (l0 - b0 * 0.5)) / b0);

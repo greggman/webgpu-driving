@@ -21,7 +21,10 @@ struct IOut {
 fn billboard(vi: u32, inst: Inst, eye: vec3f, o: ptr<function, IOut>) -> vec3f {
   let mi = meshes[instMesh(inst.mesh)];
   let R = mi.radius * inst.scale;
-  let center = inst.pos + vec3f(0.0, mi.centerY * inst.scale, 0.0);
+  var center = inst.pos + vec3f(0.0, mi.centerY * inst.scale, 0.0);
+  if (instLeaning(inst.mesh)) {
+    center += instLean(inst.mesh, mi.centerY * inst.scale, mi.height * inst.scale);
+  }
   let toEye = normalize(eye - center);
   var dir = toEye;
   var right = cross(vec3f(0.0, 1.0, 0.0), dir);

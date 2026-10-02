@@ -3,7 +3,7 @@
 // it, so x(z), y(z), heading(z) fully describe it and "nearest road point"
 // queries become cheap 1D lookups. Everything else in the world is placed
 // relative to this spine.
-import {noise1, clamp} from '../math/noise';
+import {noise1, clamp, hash01, mix, smoothstep} from '../math/noise';
 import {Biome, packTerrain} from './biome';
 import {naturalHeight, roadBlend} from './terrain';
 
@@ -200,6 +200,36 @@ export class Road {
 
   atS(s: number): RoadPoint {
     return this.atZ(this.zAtS(s));
+  }
+
+  // Canopy sections (0-1) at world z: where trees crowd the shoulder and
+  // lean over the road, on about biome.scatter.canopy of it, except near
+  // bridges. The GPU twin is
+  // canopyAt in veg_scatter.wgsl (seeded with canopySeed).
+  get canopySeed(): number {
+    return this.seed + 7;
+  }
+  canopyAt(z: number): number {
+    const share = this.biome.scatter.canopy;
+    if (share <= 0) return 0;
+    const x = z / 400;
+    const i = Math.floor(x);
+    const f = x - i;
+    const v = mix(
+      hash01(i, this.canopySeed),
+      hash01(i + 1, this.canopySeed),
+      f * f * (3 - 2 * f),
+    );
+    const thr = mix(0.75, 0.25, share);
+    const c = smoothstep(thr - 0.04, thr + 0.04, v);
+    // None near a bridge (trees from the ground below would grow through
+    // the deck).
+    if (c > 0) {
+      for (let k = -2; k <= 2; ++k) {
+        if (this.atZ(z + k * 15).bridge > 0) return 0;
+      }
+    }
+    return c;
   }
 
   // Position of a point at arc length s and lateral offset d (+ = +x side),

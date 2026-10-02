@@ -141,7 +141,12 @@ export class Director {
           ? bridgeS + this.rng.range(-10, 25)
           : sCar + this.rng.range(60, 130);
       const side = this.rng.next() < 0.5 ? 1 : -1;
-      const off = hw + this.rng.range(1.8, 9);
+      // In canopy sections the trees start just past the shoulder (see
+      // veg_scatter.wgsl), so stand on the verge in front of them.
+      const canopy = road.canopyAt(road.atS(s).z) > 0;
+      const off = canopy
+        ? hw + this.rng.range(0.6, 1.4)
+        : hw + this.rng.range(1.8, 9);
       const p = road.pointAt(s, side * off);
       const g = road.terrainHeight(p.pos[0], p.pos[2]);
       // Outside the fence / guardrail line the lens has to clear it.
@@ -150,7 +155,7 @@ export class Director {
         h = Math.max(h, this.fence.top + 0.5);
       // Above the grass / flowers (else they hide most of the car) and
       // never below the road surface.
-      h = Math.max(h, this.vegTop + 0.5);
+      h = Math.max(h, this.vegTop + (canopy ? 1 : 0.5));
       const roadY = road.atS(s).y;
       const eye: [number, number, number] = [
         p.pos[0],
@@ -161,7 +166,9 @@ export class Director {
       if (road.groundHeight(eye[0], eye[2]) > eye[1] - 0.3) continue;
       if (
         this.sees(eye, s, s) &&
-        this.sees(eye, Math.max(sCar + 10, s - 90), s + 40)
+        this.sees(eye, Math.max(sCar + 10, s - 90), s + 40) &&
+        // The car where the shot starts, too.
+        this.sees(eye, sCar, sCar)
       )
         return {eye, s};
     }
@@ -169,9 +176,11 @@ export class Director {
   }
 
   // Fraction of sample points on the car's path [s0, s1] visible from eye
-  // (terrain + road deck heightfield) must be high.
+  // (terrain + road deck heightfield, plus the grass off the pavement) must
+  // be high.
   private sees(eye: [number, number, number], s0: number, s1: number) {
     const road = this.road;
+    const verge = road.halfWidth + 0.8;
     const N = s1 > s0 ? 9 : 1,
       STEPS = 32;
     let visible = 0;
@@ -184,7 +193,8 @@ export class Director {
         const x = eye[0] + (tgt[0] - eye[0]) * t,
           y = eye[1] + (tgt[1] - eye[1]) * t,
           z = eye[2] + (tgt[2] - eye[2]) * t;
-        if (road.groundHeight(x, z) > y + 0.05) ok = false;
+        const grass = Math.abs(road.info(x, z).d) > verge ? this.vegTop : 0;
+        if (road.groundHeight(x, z) + grass > y + 0.05) ok = false;
       }
       if (ok) visible++;
     }
@@ -206,9 +216,23 @@ export class Director {
     }
     const h0 = this.road.atS(sCar).heading,
       h1 = this.road.atS(sCar + 300).heading;
-    if (Math.abs(h1 - h0) < 0.08 && this.rng.next() < 0.5) return 'helicopter';
+    if (
+      Math.abs(h1 - h0) < 0.08 &&
+      !this.canopyAhead(sCar) &&
+      this.rng.next() < 0.5
+    )
+      return 'helicopter';
     if (Math.abs(h1 - h0) > 0.6 && this.rng.next() < 0.5) return 'chase';
     return null;
+  }
+
+  // Whether the next stretch of road runs under a tree canopy, which hides
+  // the car from overhead shots.
+  private canopyAhead(sCar: number) {
+    for (let s = sCar; s < sCar + 320; s += 20) {
+      if (this.road.canopyAt(this.road.atS(s).z) > 0.1) return true;
+    }
+    return false;
   }
 
   private pickShot(sCar = 0): ShotKind {
@@ -230,6 +254,11 @@ export class Director {
       orbit: 0,
       custom: 0,
     };
+    if (this.canopyAhead(sCar)) {
+      base.helicopter = 0;
+      base.drone = 0;
+      base.topdown = 0;
+    }
     let total = 0;
     const w = SHOT_KINDS.map(k => {
       const v = k === this.shot.kind ? 0 : base[k] * (this.weights[k] ?? 1);

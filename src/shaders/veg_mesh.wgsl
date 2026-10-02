@@ -30,6 +30,9 @@ struct VOut {
 fn instWorld(v: VIn, inst: Inst) -> vec3f {
   let lp = rotY(v.pos * inst.scale, inst.rot);
   var w = inst.pos + lp;
+  if (instLeaning(inst.mesh)) {
+    w += instLean(inst.mesh, lp.y, meshes[instMesh(inst.mesh)].height * inst.scale);
+  }
   w += windOffset(w, windWeight(v.wind) * (0.4 + 0.6 * inst.scale), inst.tint);
   return w;
 }

@@ -14,6 +14,10 @@ struct MeshInfo {
   centerY: f32,
   height: f32,
   kind: f32,
+  baseR: f32, // trunk radius at the ground (trees only, else 0)
+  pad0: f32,
+  pad1: f32,
+  pad2: f32,
 };
 
 struct DrawInfo {
@@ -177,7 +181,19 @@ fn cardRand(w: f32) -> f32 {
 
 // Instance mesh index (low 8 bits) and LOD0 morph amount (high bits).
 fn instMesh(m: u32) -> u32 { return m & 0xffu; }
-fn instMorph(m: u32) -> f32 { return f32(m >> 8u) / 255.0; }
+fn instMorph(m: u32) -> f32 { return f32((m >> 8u) & 0xffu) / 255.0; }
+
+// Canopy lean (see veg_scatter): bits 16-23 of Inst.mesh are the lean at the
+// top of the tree in 1/20 m, bits 24-31 its direction. Returns the
+// horizontal offset of a point at height y on a tree of height h (the trunk
+// stays put at the base and curves over).
+fn instLeaning(m: u32) -> bool { return (m >> 16u) != 0u; }
+fn instLean(m: u32, y: f32, h: f32) -> vec3f {
+  let amt = f32((m >> 16u) & 0xffu) / 20.0;
+  let a = f32(m >> 24u) / 256.0 * 6.2831853;
+  let t = saturate(y / max(h, 0.01));
+  return vec3f(cos(a), 0.0, sin(a)) * amt * t * t;
+}
 
 // Alpha erosion for LOD morphing: cards beyond the simpler LOD's card count
 // dissolve as the tree approaches its switch distance.

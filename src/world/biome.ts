@@ -89,6 +89,10 @@ export interface Scatter {
   tumbleweeds: number;
   buildings: number;
   forestEdge: number; // how far from the road trees start
+  // Canopy sections: the share of the road (0-1) where trees crowd the
+  // shoulder and lean their crowns over it, and the most a crown leans (m).
+  canopy: number;
+  canopyLean: number;
 }
 
 export type TreeKind =
@@ -191,6 +195,8 @@ const baseScatter: Scatter = {
   tumbleweeds: 0,
   buildings: 0,
   forestEdge: 12,
+  canopy: 0,
+  canopyLean: 0,
 };
 
 const baseSky: Sky = {
@@ -604,6 +610,8 @@ export const BIOMES: Record<BiomeId, Biome> = {
       bushes: 0.45,
       buildings: 0.12,
       forestEdge: 10,
+      canopy: 0.45,
+      canopyLean: 8,
     },
     sky: {
       ...baseSky,
@@ -699,6 +707,8 @@ export const BIOMES: Record<BiomeId, Biome> = {
       trees: 0.08,
       treeKinds: ['oak', 'redwood', 'oak'],
       bushes: 0.3,
+      canopy: 0.35,
+      canopyLean: 4,
     },
     sky: {...baseSky, timeOfDay: 16.8, sunAzimuth: -40, fogDensity: 0.00006},
     weather: {...noWeather},

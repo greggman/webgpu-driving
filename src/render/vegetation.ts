@@ -40,6 +40,27 @@ const TREE_SCALE: Record<string, number> = {
   cactus: 1.0,
 };
 
+// veg_common.wgsl MeshInfo.
+const MESH_INFO_FLOATS = 8;
+
+// Trunk radius at the ground (trees only): the scatter sinks the tree to the
+// lowest ground within it so the downhill side of the trunk doesn't float.
+// Leaf cards (materials 1, 2, 7) don't count.
+function baseRadius(m: VegMesh): number {
+  if (m.kind === 'bush' || m.kind === 'rock' || m.kind === 'hedge') return 0;
+  const v = m.lods[0].vertices;
+  let r = 0;
+  for (let i = 0; i < v.length; i += VEG_FLOATS) {
+    const mat = Math.round(v[i + 8]);
+    if (v[i + 1] < 0.3 && mat !== 1 && mat !== 2 && mat !== 7)
+      r = Math.max(r, Math.hypot(v[i], v[i + 2]));
+  }
+  return r;
+}
+
+// veg_scatter.wgsl ScatterParams.
+const SCATTER_PARAMS_SIZE = 544;
+
 interface TypeDef {
   mesh: number;
   variants: number;
@@ -146,7 +167,7 @@ export class Vegetation {
     });
     this.meshInfoBuf = d.createBuffer({
       label: 'veg-mesh-info',
-      size: MAX_MESHES * 16,
+      size: MAX_MESHES * MESH_INFO_FLOATS * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     const perMesh = CAPS.reduce((a, b) => a + b, 0);
@@ -742,6 +763,22 @@ export class Vegetation {
         scaleMax: biome.id === 'desert' || biome.id === 'arizona' ? 2.2 : 1.3,
       });
     }
+    // Canopy sections (veg_scatter.wgsl SP.canopy): a band from just past
+    // the shoulder where trees crowd in, filled with ~85% of its cells.
+    const nTrees = treeTypes.filter(t => t.cluster <= 1).length;
+    this.canopy =
+      S.canopy > 0 && nTrees > 0
+        ? new Float32Array([
+            S.canopy,
+            road.halfWidth + 1.8,
+            road.halfWidth + 13,
+            S.canopyLean,
+            0.85 / nTrees,
+            road.canopySeed,
+            0,
+            0,
+          ])
+        : null;
     // Build and upload meshes.
     const built = list.map(e => buildVeg(e.kind, e.seed));
     let vCount = 0,
@@ -766,7 +803,7 @@ export class Vegetation {
     this.meshes = [];
     let vo = 0,
       io = 0;
-    const info = new Float32Array(MAX_MESHES * 4);
+    const info = new Float32Array(MAX_MESHES * MESH_INFO_FLOATS);
     this.argsTemplate.fill(0);
     built.forEach((m, mi) => {
       const g: MeshGPU = {
@@ -787,7 +824,10 @@ export class Vegetation {
       this.meshes.push(g);
       // kind 1: broadleaf (autumn colours apply to its foliage).
       const broadleaf = ['oak', 'birch', 'bush', 'hedge'].includes(m.kind);
-      info.set([m.radius, m.center[1], m.height, broadleaf ? 1 : 0], mi * 4);
+      info.set(
+        [m.radius, m.center[1], m.height, broadleaf ? 1 : 0, baseRadius(m)],
+        mi * MESH_INFO_FLOATS,
+      );
       for (let l = 0; l < 2; ++l) {
         this.argsTemplate.set(
           [g.indexCount[l], 0, g.firstIndex[l], g.baseVertex[l], 0],
@@ -812,7 +852,7 @@ export class Vegetation {
     ): Layer => {
       const params = d.createBuffer({
         label: `veg-scatter-params-${seed}`,
-        size: 512,
+        size: SCATTER_PARAMS_SIZE,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       });
       const layer: Layer = {
@@ -871,14 +911,12 @@ export class Vegetation {
     built.forEach((m, mi) => {
       const ub = d.createBuffer({
         label: `impostor-bake-mesh-${mi}`,
-        size: 16,
+        size: MESH_INFO_FLOATS * 4,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       });
-      d.queue.writeBuffer(
-        ub,
-        0,
-        new Float32Array([m.radius, m.center[1], m.height, 0]),
-      );
+      const bakeInfo = new Float32Array(MESH_INFO_FLOATS);
+      bakeInfo.set([m.radius, m.center[1], m.height]);
+      d.queue.writeBuffer(ub, 0, bakeInfo);
       const bg1 = d.createBindGroup({
         label: `impostor-bake-bg1-${mi}`,
         layout: this.bakePipe.getBindGroupLayout(1),
@@ -938,6 +976,7 @@ export class Vegetation {
 
   // A second frustum to scatter for (the rear-view mirror), or null.
   planes2: Float32Array | null = null;
+  private canopy: Float32Array | null = null;
 
   update(
     scene: SceneState,
@@ -956,7 +995,7 @@ export class Vegetation {
       const wx0 = Math.floor((eye[0] + ox - R) / cellW) * cellW;
       const wz0 = Math.floor((eye[2] + oz - R) / cellW) * cellW;
       const dim = Math.ceil((2 * R) / cellW) + 1;
-      const buf = new ArrayBuffer(512);
+      const buf = new ArrayBuffer(SCATTER_PARAMS_SIZE);
       const f = new Float32Array(buf);
       const u = new Uint32Array(buf);
       f[0] = wx0 - ox;
@@ -987,7 +1026,8 @@ export class Vegetation {
         f.set(this.planes2.subarray(0, 24), 100);
         u[124] = 1;
       }
-      d.queue.writeBuffer(l.params, 0, buf, 0, 512);
+      if (this.canopy) f.set(this.canopy, 128);
+      d.queue.writeBuffer(l.params, 0, buf, 0, SCATTER_PARAMS_SIZE);
       (l as Layer & {dim: number}).dim = dim;
     }
     this.updateGrassTiles(eye, planes, ox, oz);
