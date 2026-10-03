@@ -107,7 +107,7 @@ Useful for sharing a view and for deterministic screenshots:
   1920×1080 image, on a 1x display use `size=1920x1080`
 - `record=1`: enable the M key to record the canvas to a video file
 - `speed=N`: simulation time scale (e.g. `speed=8` for soak testing)
-- `debug=noterrain,nodof,nomb,nobody,novegshadow,nograss,nolod0,probe`: debugging toggles
+- `debug=noterrain,nodof,nomb,nobody,novegshadow,nograss,nolod0,noprepass,probe`: debugging toggles
 
 ## Development
 

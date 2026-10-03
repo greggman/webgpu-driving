@@ -80,7 +80,9 @@ export class MeshBuilder {
     }
   }
 
-  // Double-sided card (two quads back to back so normals face both ways).
+  // Leaf / needle card: one quad, drawn without culling (seen from behind it
+  // keeps its normal, which points out of the crown). A second, back-facing
+  // quad never won the depth test but still cost its shading.
   card(
     center: number[],
     right: number[],
@@ -95,7 +97,6 @@ export class MeshBuilder {
       c[1] + right[1] * a + up[1] * b,
       c[2] + right[2] * a + up[2] * b,
     ];
-    const n2 = normal.map(x => -x);
     // Cards encode a per-card random value in the wind slot:
     // 2 + windLevel (0..15) + rand in [0, 0.99). Used for LOD morphing.
     const h =
@@ -107,11 +108,6 @@ export class MeshBuilder {
     const cc = this.vert(p(1, 1), normal, 1, 1, mat, wind);
     const d = this.vert(p(-1, 1), normal, 0, 1, mat, wind);
     this.quad(a, b, cc, d);
-    const a2 = this.vert(p(-1, -1), n2, 0, 0, mat, wind);
-    const b2 = this.vert(p(1, -1), n2, 1, 0, mat, wind);
-    const c2 = this.vert(p(1, 1), n2, 1, 1, mat, wind);
-    const d2 = this.vert(p(-1, 1), n2, 0, 1, mat, wind);
-    this.quad(a2, d2, c2, b2);
   }
 
   build(): {vertices: Float32Array; indices: Uint32Array} {

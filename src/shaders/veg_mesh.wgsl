@@ -17,7 +17,8 @@ struct VIn {
 };
 
 struct VOut {
-  @builtin(position) pos: vec4f,
+  // (Invariant: the depth pre-pass and the shading pass must agree exactly.)
+  @builtin(position) @invariant pos: vec4f,
   @location(0) world: vec3f,
   @location(1) normal: vec3f,
   @location(2) uv: vec2f,
@@ -58,19 +59,48 @@ fn isCard(mat: u32) -> bool {
   return mat == 1u || mat == 2u || mat == 7u;
 }
 
+// Leaf card cutout at this fragment: (alpha, per-leaf shade); opaque parts
+// (1, 1).
+fn cutout(in: VOut, inst: Inst, duv: vec2f) -> vec2f {
+  if (!isCard(in.mat)) { return vec2f(1.0); }
+  return leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv,
+    cardErode(in.cardRand, instMorph(inst.mesh)));
+}
+
+// Single pass: alpha test and shade (the rear-view mirror).
 @fragment
 fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   let duv = fwidth(in.uv);
   let inst = insts[in.inst];
   if (fadeDiscard(inst.fade, in.pos.xy)) { discard; }
+  let la = cutout(in, inst, duv);
+  if (la.x < 0.5) { discard; }
+  return shadeVeg(in, ff, inst, la.y);
+}
+
+// Depth pre-pass: only the alpha test (color writes are masked off). The
+// shading pass then runs with depth test `equal` and no discard, so the GPU
+// can reject hidden fragments before shading them; with a discard it can't
+// (overlapping leaf cards are many layers deep).
+@fragment
+fn fsPrepass(in: VOut) -> GBufferOut {
+  let duv = fwidth(in.uv);
+  let inst = insts[in.inst];
+  if (fadeDiscard(inst.fade, in.pos.xy)) { discard; }
+  if (cutout(in, inst, duv).x < 0.5) { discard; }
+  return GBufferOut();
+}
+
+// Shading after the pre-pass (no discard).
+@fragment
+fn fsShade(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
+  let duv = fwidth(in.uv);
+  let inst = insts[in.inst];
+  return shadeVeg(in, ff, inst, cutout(in, inst, duv).y);
+}
+
+fn shadeVeg(in: VOut, ff: bool, inst: Inst, leafShade: f32) -> GBufferOut {
   let card = isCard(in.mat);
-  var leafShade = 1.0;
-  if (card) {
-    let la = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv,
-      cardErode(in.cardRand, instMorph(inst.mesh)));
-    if (la.x < 0.5) { discard; }
-    leafShade = la.y;
-  }
   var m = vegMaterial(in.mat, in.uv, inst.tint, in.local);
   m.albedo *= leafShade;
   var n = normalize(in.normal);

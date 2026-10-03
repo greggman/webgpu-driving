@@ -115,6 +115,9 @@ export class Vegetation {
   private meshLayout: GPUBindGroupLayout;
   private meshBG!: GPUBindGroup;
   private meshPipe!: GPURenderPipeline;
+  // Main view: depth pre-pass, then shading with depth test `equal`.
+  private meshPrepassPipe!: GPURenderPipeline;
+  private meshShadePipe!: GPURenderPipeline;
   private meshShadowPipe!: GPURenderPipeline;
   private meshShadowOpaquePipe: GPURenderPipeline | null = null;
   private impPipe!: GPURenderPipeline;
@@ -399,6 +402,42 @@ export class Vegetation {
         depthStencil: depth,
       },
       p => (this.meshPipe = p),
+    );
+    deferRenderPipeline(
+      d,
+      {
+        label: 'veg-mesh-prepass',
+        layout: mainPL,
+        vertex: {module: meshMod, entryPoint: 'vs', buffers: vtx},
+        fragment: {
+          module: meshMod,
+          entryPoint: 'fsPrepass',
+          targets: GBUFFER_TARGETS.map(t => ({...t, writeMask: 0})),
+        },
+        primitive: {topology: 'triangle-list', cullMode: 'none'},
+        depthStencil: depth,
+      },
+      p => (this.meshPrepassPipe = p),
+    );
+    deferRenderPipeline(
+      d,
+      {
+        label: 'veg-mesh-shade',
+        layout: mainPL,
+        vertex: {module: meshMod, entryPoint: 'vs', buffers: vtx},
+        fragment: {
+          module: meshMod,
+          entryPoint: 'fsShade',
+          targets: GBUFFER_TARGETS,
+        },
+        primitive: {topology: 'triangle-list', cullMode: 'none'},
+        depthStencil: {
+          ...depth,
+          depthWriteEnabled: false,
+          depthCompare: 'equal',
+        },
+      },
+      p => (this.meshShadePipe = p),
     );
     deferRenderPipeline(
       d,
@@ -1141,6 +1180,7 @@ export class Vegetation {
     lods: number[],
     shadow: boolean,
     opaqueShadow = false,
+    meshPipe = this.meshPipe,
   ) {
     if (!this.vbuf || !this.meshes.length) return;
     pass.setBindGroup(1, this.meshBG);
@@ -1155,7 +1195,7 @@ export class Vegetation {
             ? opaqueShadow && this.meshShadowOpaquePipe
               ? this.meshShadowOpaquePipe
               : this.meshShadowPipe
-            : this.meshPipe,
+            : meshPipe,
         );
       }
       for (let m = 0; m < this.meshes.length; ++m) {
@@ -1171,11 +1211,16 @@ export class Vegetation {
     if (!this.enabled) return;
     pass.setBindGroup(2, emptyBG);
     const dbg = new URLSearchParams(location.search).get('debug') ?? '';
-    this.drawMeshes(
-      pass,
-      [0, 1, 2].filter(l => !dbg.includes(`nolod${l}`)),
-      false,
-    );
+    const lods = [0, 1, 2].filter(l => !dbg.includes(`nolod${l}`));
+    if (dbg.includes('noprepass')) {
+      this.drawMeshes(pass, lods, false);
+    } else {
+      // Tree meshes: depth pre-pass, then shading (see fsPrepass).
+      const meshLods = lods.filter(l => l < 2);
+      this.drawMeshes(pass, meshLods, false, false, this.meshPrepassPipe);
+      this.drawMeshes(pass, meshLods, false, false, this.meshShadePipe);
+      if (lods.includes(2)) this.drawMeshes(pass, [2], false);
+    }
     if (dbg.includes('nograss') || !this.grassEnabled) return;
     if (this.tileCount > 0 && this.biome!.scatter.grass > 0) {
       pass.setPipeline(this.grassNearPipe);
