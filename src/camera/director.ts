@@ -537,7 +537,7 @@ export class Director {
       const clear = aerial ? this.canopy : offRoad ? 1.0 : 0.5;
       if (eye[1] < g + clear) eye = [eye[0], g + clear, eye[2]];
     }
-    eye = this.insideBore(eye);
+    eye = this.insideBore(eye, P);
     if (smooth > 0 && this.smoothEye && this.smoothTarget) {
       const k = 1 - Math.exp(-smooth * dt);
       // Smooth relative to the car so the shot follows at speed.
@@ -580,11 +580,22 @@ export class Director {
     return {eye, target, up, fov, focus, aperture, interior, shot: s.kind};
   }
 
-  // An eye in (or by) a tunnel's bore stays inside its lining.
-  private insideBore(eye: [number, number, number]): [number, number, number] {
+  // An eye over a tunnel's bore stays inside its lining while the car is in
+  // the tunnel (however high the shot, e.g. an orbit, puts it), or when it
+  // would be in the rock. Only the returned eye moves: the shot (and the
+  // user's orbit) is unchanged, so the view returns once the car is out.
+  private insideBore(
+    eye: [number, number, number],
+    car: number[],
+  ): [number, number, number] {
     const road = this.road;
     const ri = road.info(eye[0], eye[2]);
-    if (ri.tunnel < 1 || eye[1] > ri.y + TUNNEL_H + 3) return eye;
+    if (ri.tunnel < 1) return eye;
+    const carIn = road.info(car[0], car[2]).tunnel >= 1;
+    const inRock =
+      eye[1] > ri.y + TUNNEL_H - 0.4 &&
+      eye[1] < road.terrainHeight(eye[0], eye[2]) + 0.5;
+    if (!carIn && !inRock && eye[1] > ri.y + TUNNEL_H + 3) return eye;
     const lim = road.boreHalfWidth - 0.5;
     const d = Math.max(-lim, Math.min(lim, ri.d));
     const h = Math.max(0.3, Math.min(road.tunnelRoof(d) - 0.4, eye[1] - ri.y));

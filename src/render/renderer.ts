@@ -106,7 +106,7 @@ export const DEBUG = new Set(
 );
 const MAX_LIGHTS = 64;
 // Intensity of each tunnel lamp (tunnelLamps in lighting.wgsl).
-const TUNNEL_LAMP = 7;
+const TUNNEL_LAMP = 3;
 const ENV_SIZE = 256;
 const ENV_MIPS = 8;
 // Volumetric fog per environment: density (1/m), anisotropy, height falloff.

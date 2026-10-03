@@ -23,7 +23,7 @@ import {
 } from './render/renderer';
 
 // Headlight level by day in a tunnel (see `lightLevel`).
-const TUNNEL_HEADLIGHTS = 0.03;
+const TUNNEL_HEADLIGHTS = 0.07;
 
 export interface Params {
   biome: BiomeId;
