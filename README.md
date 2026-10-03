@@ -1,4 +1,4 @@
-# WebGPU Driving with 10 environments in 163k
+# WebGPU Driving with 10 environments in 170k gzipped
 
 [Live](https://greggman.github.io/webgpu-driving)
 
