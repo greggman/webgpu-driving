@@ -131,6 +131,7 @@ export function roadBlend(
   d: number,
   roadY: number,
   bridge: number,
+  tunnel: number,
 ): number {
   const target = roadY - 0.12;
   const excess = Math.max(Math.abs(d) - P[20], 0);
@@ -141,5 +142,16 @@ export function roadBlend(
   // zero inside the corridor so the terrain sits exactly under the road.
   const k = Math.min(Math.max(excess * 0.5, 0.001), 2);
   const c = smin(delta, cutLim, k);
-  return target - smin(-c, fillLim, k);
+  const h = target - smin(-c, fillLim, k);
+  // Over a tunnel the hill stands untouched, rising back from the cut over
+  // the first TUNNEL_RAMP m past the portal (the bore and the portal's
+  // headwall hide that face).
+  return tunnel > 0 ? mix(h, natural, clamp01((tunnel - 1) / TUNNEL_RAMP)) : h;
+}
+
+// Must match TUNNEL_RAMP in terrain.wgsl.
+const TUNNEL_RAMP = 8;
+
+function clamp01(x: number): number {
+  return Math.min(Math.max(x, 0), 1);
 }

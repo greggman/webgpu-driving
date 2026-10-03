@@ -109,6 +109,8 @@ fn spawn(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) li: 
     let roadD = abs(g.w);
     if (roadD < halfW + 0.4) { continue; }
     if (nrm.y < 0.72) { continue; }
+    // None in a tunnel's bore (where the hill rises back from the cut).
+    if (boreDepth(vec3f(p.x, g.x, p.y), 1.0) >= 1.0) { continue; }
     if (F.palette[9].w > 0.5 && g.x < 3.0 && F.terrain[3].x != 0.0) { continue; }
     // Patchiness.
     let patchN = fbm2(world * 0.05, 3);

@@ -22,6 +22,9 @@ import {
   isMobileDevice,
 } from './render/renderer';
 
+// Headlight level by day in a tunnel (see `lightLevel`).
+const TUNNEL_HEADLIGHTS = 0.03;
+
 export interface Params {
   biome: BiomeId;
   seed: number;
@@ -863,10 +866,17 @@ export class App {
     const cars: WorldCar[] = [];
     const player = this.traffic.player;
     let playerPose: Pose | null = null;
-    const lights =
+    // Headlights: full strength in the dark; drivers switch them on for
+    // tunnels too, where by day they're only a little brighter than the
+    // tunnel's lamps (the light levels are scaled for night scenes).
+    const dark =
       this.biome.headlights ||
       this.biome.sky.timeOfDay > 19.5 ||
       this.biome.sky.timeOfDay < 5.5;
+    const tunnel =
+      this.road.tunnelsBetween(player.s - 150, player.s + 250).length > 0;
+    const lightLevel = dark ? 1 : tunnel ? TUNNEL_HEADLIGHTS : 0;
+    const lights = lightLevel > 0;
     const semi = semiLayout();
     for (const v of this.traffic.vehicles) {
       const spec = carSpec(v.kind);
@@ -942,7 +952,7 @@ export class App {
       playerS: player.s,
       playerD: player.d,
       player: pp,
-      headlights: lights,
+      headlights: lightLevel,
       frozen: this.params.freeze,
     });
     this.prevCam = camera;

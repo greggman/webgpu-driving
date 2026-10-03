@@ -34,6 +34,8 @@ struct Frame {
     post: vec4f,            // bloom strength, terrain debug bits (1 no rock, 2 no detail), -, -
   weather2: vec4f,        // rain 0..1, lightning flash, strike direction xz
   glass: vec4f,           // player speed (m/s), glass FX on, wipers on, -
+  tunnel: vec4f,          // tunnels in tunnels[], camera sky visibility, lamp intensity, -
+  tunnels: array<vec4f, 4>, // nearby tunnels: z range (local), top of their bores (y), -
 };
 
 @group(0) @binding(0) var<uniform> F: Frame;

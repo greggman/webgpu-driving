@@ -3,7 +3,7 @@
 // the director cuts between shots with weights per environment and uses the
 // road ahead (s look-ahead) to place roadside cameras.
 import {Pose} from '../sim/pose';
-import {Road} from '../world/road';
+import {Road, TUNNEL_H} from '../world/road';
 import {Rng} from '../math/noise';
 
 export type ShotKind =
@@ -140,6 +140,8 @@ export class Director {
         bridgeS > 0 && attempt < 4
           ? bridgeS + this.rng.range(-10, 25)
           : sCar + this.rng.range(60, 130);
+      // The car would vanish into (or be hidden in) a tunnel.
+      if (road.tunnelsBetween(Math.max(sCar, s - 100), s + 50).length) continue;
       const side = this.rng.next() < 0.5 ? 1 : -1;
       // In canopy sections the trees start just past the shoulder (see
       // veg_scatter.wgsl), so stand on the verge in front of them.
@@ -218,7 +220,7 @@ export class Director {
       h1 = this.road.atS(sCar + 300).heading;
     if (
       Math.abs(h1 - h0) < 0.08 &&
-      !this.canopyAhead(sCar) &&
+      !this.overheadBlocked(sCar) &&
       this.rng.next() < 0.5
     )
       return 'helicopter';
@@ -226,13 +228,19 @@ export class Director {
     return null;
   }
 
-  // Whether the next stretch of road runs under a tree canopy, which hides
-  // the car from overhead shots.
-  private canopyAhead(sCar: number) {
+  // Whether the next stretch of road runs under a tree canopy or through
+  // a tunnel, which hide the car from overhead shots.
+  private overheadBlocked(sCar: number) {
+    if (this.tunnelNear(sCar, 400)) return true;
     for (let s = sCar; s < sCar + 320; s += 20) {
       if (this.road.canopyAt(this.road.atS(s).z) > 0.1) return true;
     }
     return false;
+  }
+
+  // Whether a tunnel lies on [sCar - 20, sCar + ahead].
+  private tunnelNear(sCar: number, ahead: number) {
+    return this.road.tunnelsBetween(sCar - 20, sCar + ahead).length > 0;
   }
 
   private pickShot(sCar = 0): ShotKind {
@@ -254,10 +262,17 @@ export class Director {
       orbit: 0,
       custom: 0,
     };
-    if (this.canopyAhead(sCar)) {
+    if (this.overheadBlocked(sCar)) {
       base.helicopter = 0;
       base.drone = 0;
       base.topdown = 0;
+    }
+    if (this.tunnelNear(sCar, 400)) {
+      // Through a tunnel: from the cabin, or close behind and ahead.
+      base.roadside = 0;
+      base.dolly = 0;
+      base.interior *= 2;
+      base.hood *= 2;
     }
     let total = 0;
     const w = SHOT_KINDS.map(k => {
@@ -282,7 +297,19 @@ export class Director {
         sh.kind === 'roadside' &&
         sh.anchorS !== undefined &&
         sCar > sh.anchorS + 45;
-      if (sh.t > sh.duration || passed) this.cut(sCar);
+      // Shots that can't follow the car into a tunnel cut away as it nears.
+      const outside =
+        sh.kind === 'helicopter' ||
+        sh.kind === 'drone' ||
+        sh.kind === 'topdown' ||
+        sh.kind === 'roadside' ||
+        sh.kind === 'dolly';
+      if (
+        sh.t > sh.duration ||
+        passed ||
+        (outside && this.tunnelNear(sCar, 60))
+      )
+        this.cut(sCar);
     } else if (sh.kind !== this.forced) {
       this.cut(sCar, this.forced);
     } else if (
@@ -510,6 +537,7 @@ export class Director {
       const clear = aerial ? this.canopy : offRoad ? 1.0 : 0.5;
       if (eye[1] < g + clear) eye = [eye[0], g + clear, eye[2]];
     }
+    eye = this.insideBore(eye);
     if (smooth > 0 && this.smoothEye && this.smoothTarget) {
       const k = 1 - Math.exp(-smooth * dt);
       // Smooth relative to the car so the shot follows at speed.
@@ -550,6 +578,23 @@ export class Director {
     if (s.kind === 'wheel') aperture = 0.06;
 
     return {eye, target, up, fov, focus, aperture, interior, shot: s.kind};
+  }
+
+  // An eye in (or by) a tunnel's bore stays inside its lining.
+  private insideBore(eye: [number, number, number]): [number, number, number] {
+    const road = this.road;
+    const ri = road.info(eye[0], eye[2]);
+    if (ri.tunnel < 1 || eye[1] > ri.y + TUNNEL_H + 3) return eye;
+    const lim = road.boreHalfWidth - 0.5;
+    const d = Math.max(-lim, Math.min(lim, ri.d));
+    const h = Math.max(0.3, Math.min(road.tunnelRoof(d) - 0.4, eye[1] - ri.y));
+    if (d === ri.d && h === eye[1] - ri.y) return eye;
+    const c = road.atZ(ri.along);
+    return [
+      c.x + Math.cos(c.heading) * d,
+      ri.y + h,
+      ri.along - Math.sin(c.heading) * d,
+    ];
   }
 
   // Start the orbit camera from a world-space eye (keeps the current view).

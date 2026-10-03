@@ -168,5 +168,23 @@
       "s": "1500",
       "t": "3"
     }
+  },
+  {
+    "name": "bigsur-tunnel",
+    "params": {
+      "biome": "bigsur",
+      "seed": "1",
+      "cam": "chase",
+      "s": "7860"
+    }
+  },
+  {
+    "name": "bigsur-portal",
+    "params": {
+      "biome": "bigsur",
+      "seed": "1",
+      "cam": "chase",
+      "s": "7680"
+    }
   }
 ]

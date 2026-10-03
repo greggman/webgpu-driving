@@ -91,6 +91,10 @@ struct VIn {
   @location(2) mat: f32,
 };
 
+// How much of the sky the fragment sees (dims the sky's light and
+// reflections inside a tunnel; see tunnelSkyVis). Set by each entry point.
+var<private> carSky: f32 = 1.0;
+
 struct VOut {
   @builtin(position) pos: vec4f,
   @location(0) world: vec3f,
@@ -265,8 +269,8 @@ fn mirrorCarColor(i: u32, p: vec3f, rd: vec3f) -> vec3f {
   let m = k.model;
   let rel = p - m[3].xyz;
   let q = vec3f(dot(rel, m[0].xyz), dot(rel, m[1].xyz), dot(rel, m[2].xyz));
-  let amb = shIrradiance(vec3f(0.0, 1.0, 0.0));
-  let sun = F.sunColor.rgb * max(F.sun.y, 0.0) / PI;
+  let amb = carSky * shIrradiance(vec3f(0.0, 1.0, 0.0));
+  let sun = carSky * F.sunColor.rgb * max(F.sun.y, 0.0) / PI;
   var col = k.color.rgb * (amb + sun) * 0.9;
   // Glass band above the belt, dark tyres / sills low down.
   if (q.y > k.p3.w) { col = vec3f(0.02) + amb * 0.05; }
@@ -286,7 +290,7 @@ fn mirrorCarColor(i: u32, p: vec3f, rd: vec3f) -> vec3f {
 }
 
 fn mirrorView(rw: vec3f, wp: vec3f) -> vec3f {
-  let sky = envRadiance(rw, 0.0);
+  let sky = carSky * envRadiance(rw, 0.0);
   let carHit = mirrorCarHit(wp, rw);
   var t = 0.6;
   var hit = 0u; // 1 ground
@@ -324,7 +328,7 @@ fn mirrorView(rw: vec3f, wp: vec3f) -> vec3f {
   // Lit as flat ground: the clipmap's small slope variations, seen this
   // flat, stretched into streaks.
   let upN = normalize(mix(vec3f(0.0, 1.0, 0.0), nrm, 0.25));
-  let light = F.sunColor.rgb * saturate(dot(upN, F.sun.xyz)) / PI + shIrradiance(upN);
+  let light = carSky * F.sunColor.rgb * saturate(dot(upN, F.sun.xyz)) / PI + carSky * shIrradiance(upN);
     let d = g.w;
   let ad = abs(d);
   let halfW = F.road.w;
@@ -384,7 +388,7 @@ fn rearViewMirror(rw: vec3f, lp: vec3f, wp: vec3f, c: Car) -> vec3f {
   let m = c.model;
   let rl = vec3f(dot(m[0].xyz, rw), dot(m[1].xyz, rw), dot(m[2].xyz, rw));
   let belt = c.p3.w;
-    let inside = vec3f(dot(shIrradiance(vec3f(0.0, 1.0, 0.0)), vec3f(0.3, 0.55, 0.15))) * 0.35;
+    let inside = vec3f(dot(carSky * shIrradiance(vec3f(0.0, 1.0, 0.0)), vec3f(0.3, 0.55, 0.15))) * 0.35;
   if (rl.z > -0.05) { return vec3f(0.18, 0.17, 0.15) * inside; }
   // Rear bench top.
   let zb = c.p3.z + 0.3;
@@ -484,7 +488,7 @@ fn carSnow(lp: vec3f, ln: vec3f, seed: f32, halfL: f32) -> vec2f {
 }
 
 fn carEnv(r: vec3f, rough: f32) -> vec3f {
-  return envRadiance(r, rough);
+  return carSky * envRadiance(r, rough);
 }
 
 fn clearcoatShade(base: Surface, wp: vec3f, sh: f32, coat: f32) -> vec3f {
@@ -505,7 +509,7 @@ fn clearcoatShade(base: Surface, wp: vec3f, sh: f32, coat: f32) -> vec3f {
     // Reflection occlusion: surfaces facing the ground mirror the road, not
   // the sky (and occluded ones mirror little).
   let envOcc = mix(0.15, 1.0, smoothstep(-0.2, 0.08, r.y)) * base.ao;
-  col = col * (1.0 - fc * coat) + (carEnv(r, 0.03) * envOcc * fc + spec * F.sunColor.rgb * sh * nl) * coat;
+  col = col * (1.0 - fc * coat) + (carEnv(r, 0.03) * envOcc * fc + spec * carSky * F.sunColor.rgb * sh * nl) * coat;
   return col;
 }
 
@@ -577,6 +581,7 @@ fn interiorShade(mat: u32, lp: vec3f, c: Car, ln: vec3f) -> vec4f {
 
 @fragment
 fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
+  carSky = tunnelSkyVis(in.world);
   let c = cars[in.car];
   var n = normalize(in.normal);
   let wp = in.world;
@@ -1258,6 +1263,7 @@ fn sinceWiped(uv: vec2f, t: f32) -> f32 {
 
 @fragment
 fn fsGlass(in: VOut) -> GlassOut {
+  carSky = tunnelSkyVis(in.world);
     let c = cars[in.car];
   if (in.mat != 1u && in.mat != 26u) { discard; }
   let lp = in.local;
@@ -1275,7 +1281,7 @@ fn fsGlass(in: VOut) -> GlassOut {
     let l = F.sun.xyz;
     let h = normalize(v + l);
     let spec = D_GGX(saturate(dot(nn, h)), 0.0004) * V_SmithGGX(max(nv, 1e-3), saturate(dot(nn, l)), 0.0004) * fres;
-    let refl = envRadiance(r, 0.02) * fres + F.sunColor.rgb * min(spec, 200.0) * sunShadow(in.world, nn) * saturate(dot(nn, l));
+    let refl = carSky * envRadiance(r, 0.02) * fres + carSky * F.sunColor.rgb * min(spec, 200.0) * sunShadow(in.world, nn) * saturate(dot(nn, l));
     o.color = vec4f(refl, 1.0 - 0.92 * (1.0 - fres));
     return o;
   }
@@ -1301,7 +1307,7 @@ fn fsGlass(in: VOut) -> GlassOut {
     let h = normalize(v + l);
     let sh = sunShadow(in.world, nn);
     let spec = D_GGX(saturate(dot(nn, h)), 0.0004) * V_SmithGGX(max(nv, 1e-3), saturate(dot(nn, l)), 0.0004) * fres;
-    let refl = envRadiance(r, 0.02) * fres + F.sunColor.rgb * min(spec, 200.0) * sh * saturate(dot(nn, l));
+    let refl = carSky * envRadiance(r, 0.02) * fres + carSky * F.sunColor.rgb * min(spec, 200.0) * sh * saturate(dot(nn, l));
     // Traffic glass is darker (privacy glass) than windscreens.
         let tint = select(0.86, 0.8, lp.z > c.p3.x - 0.9 && nn.y > 0.2);
         var a = 1.0 - (1.0 - tint) * (1.0 - fres);
@@ -1317,7 +1323,7 @@ fn fsGlass(in: VOut) -> GlassOut {
         let wiped = smoothstep(0.75, 0.55, abs(lp.x) / c.p2.y) * smoothstep(c.p3.x - 0.05, c.p3.x - 0.2, lp.z);
         sn *= 1.0 - wiped;
       }
-      let lit = shIrradiance(nn) + F.sunColor.rgb * sh * saturate(dot(nn, l)) / PI;
+      let lit = carSky * shIrradiance(nn) + carSky * F.sunColor.rgb * sh * saturate(dot(nn, l)) / PI;
       gcol = mix(gcol, vec3f(0.86, 0.88, 0.92) * lit, sn);
       a = mix(a, 1.0, sn);
     }
@@ -1376,6 +1382,7 @@ fn waterRect(p: u32) -> vec4f {
 
 @fragment
 fn fsGlassFx(in: VOut) -> @location(0) vec4f {
+  carSky = tunnelSkyVis(in.world);
   let c = cars[in.car];
   let g = glassCoord(in.local, normalize(in.lnormal), c);
   // Derivatives first (uniform control flow): glass metres per pixel.

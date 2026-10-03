@@ -12,13 +12,20 @@ import {
 } from '../math/mat4';
 import {Vec3} from '../math/vec3';
 import {Biome, packTerrain} from '../world/biome';
-import {Road, ROAD_DZ, ROAD_TEX_BEHIND, ROAD_TEX_SAMPLES} from '../world/road';
+import {
+  Road,
+  ROAD_DZ,
+  ROAD_TEX_BEHIND,
+  ROAD_TEX_SAMPLES,
+  TUNNEL_H,
+} from '../world/road';
 import {SkyState} from '../world/sky';
 import {Atmosphere} from './atmosphere';
 import {CarDraw, CarRenderer, MIRROR_H, MIRROR_W, NAV_POINTS} from './cars';
 import {FRAME_LAYOUT_ENTRIES, FrameData} from './frameData';
 import {Post} from './post';
 import {RoadMesh} from './roadMesh';
+import {TunnelMesh} from './tunnelMesh';
 import {CASCADE_SPLITS, CASCADES, Shadows} from './shadows';
 import {Targets} from './targets';
 import {TerrainRenderer} from './terrain';
@@ -98,6 +105,8 @@ export const DEBUG = new Set(
   (new URLSearchParams(location.search).get('debug') ?? '').split(','),
 );
 const MAX_LIGHTS = 64;
+// Intensity of each tunnel lamp (tunnelLamps in lighting.wgsl).
+const TUNNEL_LAMP = 7;
 const ENV_SIZE = 256;
 const ENV_MIPS = 8;
 // Volumetric fog per environment: density (1/m), anisotropy, height falloff.
@@ -139,7 +148,7 @@ export interface SceneState {
   playerS: number;
   playerD: number;
   player: Pose;
-  headlights: boolean;
+  headlights: number; // local light level (0 = off, 1 = night strength)
   frozen: boolean;
 }
 
@@ -184,6 +193,7 @@ export class Renderer {
   readonly glassWater: GlassWaterRenderer;
   private dustSlots = new Map<number, {index: number; fade: number}>();
   roadMesh: RoadMesh | null = null;
+  tunnelMesh: TunnelMesh | null = null;
   private road: Road | null = null;
   private biome: Biome | null = null;
   readonly frameLayout: GPUBindGroupLayout;
@@ -389,6 +399,7 @@ export class Renderer {
     );
     this.terrain.createPipelines(this.frameLayout, this.shadows.layout);
     RoadMesh.createPipelines(d, this.frameLayout, this.shadows.layout);
+    TunnelMesh.createPipelines(d, this.frameLayout, this.shadows.layout);
     this.glassWater = new GlassWaterRenderer(d);
     this.cars.createPipelines(
       this.frameLayout,
@@ -659,6 +670,8 @@ export class Renderer {
     this.road = road;
     this.biome = biome;
     this.roadMesh = new RoadMesh(this.gpu.device, road);
+    this.tunnelMesh?.destroy();
+    this.tunnelMesh = new TunnelMesh(this.gpu.device, road);
     this.terrain.invalidate();
     this.roadBase = -1e9;
     this.post.resetHistory = true;
@@ -728,6 +741,35 @@ export class Renderer {
       ROAD_DZ,
       ROAD_TEX_SAMPLES,
       road.halfWidth,
+    ]);
+  }
+
+  // Tunnels near the camera for the shaders (see nearTunnel in
+  // terrain.wgsl), and how much of the sky the camera sees from inside one
+  // (dims the haze in front of everything; see finishColor).
+  private updateTunnels(sCam: number, eye: number[], oz: number) {
+    const road = this.road!;
+    const list = road
+      .tunnelsBetween(sCam - 1500, sCam + 4000)
+      .map(t => ({t, dist: Math.max(t.s0 - sCam, sCam - t.s1, 0)}))
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 4);
+    const data = new Float32Array(16);
+    list.forEach(({t}, i) => {
+      let top = -Infinity;
+      for (let s = t.s0; s <= t.s1 + 20; s += 20)
+        top = Math.max(top, road.atS(Math.min(s, t.s1)).y);
+      data.set(
+        [road.atS(t.s0).z - oz, road.atS(t.s1).z - oz, top + TUNNEL_H + 1, 0],
+        i * 4,
+      );
+    });
+    this.frame.set('tunnels', data);
+    this.frame.set('tunnel', [
+      list.length,
+      road.skyVisibility(eye[0], eye[1], eye[2]),
+      TUNNEL_LAMP,
+      0,
     ]);
   }
 
@@ -980,13 +1022,14 @@ export class Renderer {
     const nLights = this.updateLights(scene, loc);
     F.set('lights', [
       nLights,
-      scene.headlights ? 1 : 0,
+      scene.headlights > 0 ? 1 : 0,
       biome.road.laneWidth,
       biome.road.lanesPerDir,
     ]);
 
     // Streaming.
     this.updateRoadTexture(cam.eye[2]);
+    this.updateTunnels(scene.playerS, cam.eye, oz);
     this.terrain.updateClipmap(
       cam.eye[0],
       cam.eye[2],
@@ -999,6 +1042,8 @@ export class Renderer {
     this.terrain.select(eye, null);
     this.roadMesh!.setOrigin(ox, oz);
     this.roadMesh!.update(scene.playerS, planes);
+    this.tunnelMesh!.setOrigin(ox, oz);
+    this.tunnelMesh!.update(scene.playerS, planes);
 
     // Shadows.
     // Cached far cascades are invalid after an origin rebase, a camera cut
@@ -1263,6 +1308,7 @@ export class Renderer {
       pass.setBindGroup(2, this.shadows.bindGroups[i]);
       this.terrain.drawShadow(pass);
       this.roadMesh!.drawShadow(pass, this.emptyBG);
+      this.tunnelMesh!.drawShadow(pass, this.emptyBG);
       if (!DEBUG.has('novegshadow'))
         this.vegetation.drawShadow(
           pass,
@@ -1336,6 +1382,7 @@ export class Renderer {
       cr.drawMirror(mp);
       mp.setBindGroup(2, this.emptyBG);
       this.roadMesh!.drawAll(mp);
+      this.tunnelMesh!.drawAll(mp);
       this.vegetation.drawTrees(mp, this.emptyBG);
       if (!DEBUG.has('noterrain')) this.terrain.drawAround(mp);
       mp.setPipeline(this.atmosphere.skyDrawPipe);
@@ -1379,6 +1426,7 @@ export class Renderer {
     main.setBindGroup(2, this.emptyBG);
     this.cars.draw(main);
     this.roadMesh!.draw(main);
+    this.tunnelMesh!.draw(main);
     this.props.draw(main);
     main.setBindGroup(2, this.emptyBG);
     this.vegetation.draw(main, this.emptyBG);
@@ -1456,7 +1504,8 @@ export class Renderer {
     let n = 0;
     const L = this.lightsData;
     L.fill(0);
-    if (!scene.headlights) {
+    const level = scene.headlights;
+    if (level <= 0) {
       this.gpu.device.queue.writeBuffer(this.lightsBuf, 0, L, 0, 12);
       return 0;
     }
@@ -1482,7 +1531,7 @@ export class Renderer {
         );
         const dir = [0, 1, 2].map(k => p.fwd[k] - p.up[k] * 0.06);
         const hl = loc(hp);
-        const intensity = c.player ? 2400 : 1500;
+        const intensity = (c.player ? 2400 : 1500) * level;
         L.set(
           [
             hl[0],
@@ -1511,7 +1560,7 @@ export class Renderer {
             p.up[k] * 0.8,
         );
         const tl = loc(tp);
-        const tb = 1.2 + c.draw.brake * 5;
+        const tb = (1.2 + c.draw.brake * 5) * level;
         L.set(
           [tl[0], tl[1], tl[2], 5, 0, 0, 0, -2, tb, tb * 0.03, tb * 0.02, 0],
           n * 12,

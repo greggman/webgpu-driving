@@ -293,7 +293,7 @@ export class Props {
         let prev: number[] | null = null;
         for (let s = s0; s < s1 + 0.01; s += step) {
           const c = road.atS(s);
-          if (c.bridge > 0.5) {
+          if (c.bridge > 0.5 || c.tunnel > 0) {
             prev = null;
             continue;
           }
@@ -349,6 +349,8 @@ export class Props {
       const d = -(hw + 5.5);
       const first = Math.ceil(s0 / spacing) * spacing;
       for (let s = first - spacing; s < s1; s += spacing) {
+        // The line goes over the hill around a tunnel (out of view).
+        if (road.tunnelsBetween(s - 10, s + spacing + 10).length) continue;
         const pa = road.pointAt(s, d),
           pb = road.pointAt(s + spacing, d);
         const ga = road.terrainHeight(pa.pos[0], pa.pos[2]);
@@ -387,6 +389,7 @@ export class Props {
     // Delineators at night.
     if (biome.id === 'night' || biome.id === 'arizona') {
       for (let s = Math.ceil(s0 / 40) * 40; s < s1; s += 40) {
+        if (road.atS(s).tunnel > 0) continue;
         for (const side of sides) {
           const p = road.pointAt(s, side * (hw + 1.1));
           const g = road.terrainHeight(p.pos[0], p.pos[2]);
@@ -408,7 +411,11 @@ export class Props {
       const s = s0 + 20;
       const h0 = road.atS(s).heading,
         h1 = road.atS(s + 160).heading;
-      if (Math.abs(h1 - h0) > 0.45 && rng.next() < 0.5) {
+      if (
+        Math.abs(h1 - h0) > 0.45 &&
+        rng.next() < 0.5 &&
+        road.atS(s).tunnel === 0
+      ) {
         const p = road.pointAt(s, -(hw + 1.6));
         const g = road.terrainHeight(p.pos[0], p.pos[2]);
         insts.push({
@@ -434,7 +441,8 @@ export class Props {
       const gAlt = road.terrainHeight(p.pos[0] + 8, p.pos[2] + 8);
       if (
         Math.abs(gAlt - g) < 3 &&
-        !(biome.ocean && side * biome.terrain.coastSide > 0)
+        !(biome.ocean && side * biome.terrain.coastSide > 0) &&
+        road.tunnelsBetween(s - 10, s + 40).length === 0
       ) {
         const yaw =
           p.heading +

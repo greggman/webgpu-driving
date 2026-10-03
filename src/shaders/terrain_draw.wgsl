@@ -127,6 +127,8 @@ fn fieldCell(p: vec2f) -> Field {
 @fragment
 fn fs(in: VOut) -> GBufferOut {
   let wp = in.world;
+  // The bore through the hill (the tunnel lining draws its inside).
+  if (boreDepth(wp, 0.3) >= 1.0) { discard; }
   let dist = in.viewDist;
   let minL = clamp(i32(floor(log2(max(dist * 0.004, 0.5) / 0.5))), 0, CLIP_LEVELS - 1);
   let g = clipSample(wp.xz, minL);

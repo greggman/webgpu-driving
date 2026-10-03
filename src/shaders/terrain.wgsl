@@ -95,7 +95,24 @@ fn sminf(a: f32, b: f32, k: f32) -> f32 {
   return min(a, b) - h * h * k * 0.25;
 }
 
-fn roadBlend(natural: f32, d: f32, roadY: f32, bridge: f32) -> f32 {
+// Tunnel bore (CPU twins in road.ts): walls TUNNEL_SIDE beyond the paved
+// half width, TUNNEL_WALL high, under an elliptical vault with its crown
+// TUNNEL_H above the road. Past a portal the hill rises back from the cut
+// over TUNNEL_RAMP m (CPU twin in terrain.ts).
+const TUNNEL_SIDE = 1.2;
+const TUNNEL_WALL = 3.5;
+const TUNNEL_H = 7.0;
+const TUNNEL_RAMP = 8.0;
+
+fn boreHalfWidth() -> f32 { return F.road.w + TUNNEL_SIDE; }
+
+// Height of the bore's lining above the road at lateral offset d.
+fn tunnelRoof(d: f32) -> f32 {
+  let u = min(abs(d) / boreHalfWidth(), 1.0);
+  return TUNNEL_WALL + (TUNNEL_H - TUNNEL_WALL) * sqrt(1.0 - u * u);
+}
+
+fn roadBlend(natural: f32, d: f32, roadY: f32, bridge: f32, tunnel: f32) -> f32 {
   let tgt = roadY - 0.12;
   let excess = max(abs(d) - tp(20), 0.0);
   let delta = natural - tgt;
@@ -103,11 +120,13 @@ fn roadBlend(natural: f32, d: f32, roadY: f32, bridge: f32) -> f32 {
   let fillLim = mix(excess * tp(22), 1e5, bridge);
   let k = clamp(excess * 0.5, 0.001, 2.0);
   let c = sminf(delta, cutLim, k);
-  return tgt - sminf(-c, fillLim, k);
+  let h = tgt - sminf(-c, fillLim, k);
+  return select(h, mix(h, natural, saturate((tunnel - 1.0) / TUNNEL_RAMP)), tunnel > 0.0);
 }
 
-// Road samples: texture row of (x_local, y, heading, bridge) every F.road.y
-// meters starting at local z = F.road.x.
+// Road samples: texture row of (x_local, y, heading, bridge - tunnel) every
+// F.road.y meters starting at local z = F.road.x. w > 0 on a bridge; w < 0
+// in a tunnel, where -w = 1 + distance (m) from the nearer portal.
 fn roadSample(zLocal: f32) -> vec4f {
   let fi = clamp((zLocal - F.road.x) / F.road.y, 0.0, F.road.z - 1.001);
   let i0 = i32(floor(fi));
@@ -121,6 +140,7 @@ struct RoadInfo {
   d: f32, // signed lateral distance (+ = +x side, i.e. left when driving toward +z)
   y: f32, // road surface height
   bridge: f32,
+  tunnel: f32, // > 0 in a tunnel: 1 + distance (m) from the nearer portal
   heading: f32,
   along: f32, // local z of nearest centerline point
 };
@@ -142,10 +162,38 @@ fn roadInfo(p: vec2f) -> RoadInfo {
   // Lateral vector for heading h (direction (sin h, cos h)) is (cos h, -sin h).
   o.d = (p.x - r.x) * c - (p.y - z1) * s;
   o.y = r.y;
-  o.bridge = r.w;
+  o.bridge = max(r.w, 0.0);
+  o.tunnel = max(-r.w, 0.0);
   o.heading = r.z;
   o.along = z1;
   return o;
+}
+
+// Whether p may be inside one of the tunnels near the camera (a cheap test
+// before the road lookup).
+fn nearTunnel(p: vec3f) -> bool {
+  for (var i = 0; i < i32(F.tunnel.x); i++) {
+    let t = F.tunnels[i];
+    if (p.z > t.x - 4.0 && p.z < t.y + 4.0 && p.y < t.z) { return true; }
+  }
+  return false;
+}
+
+// Inside a tunnel's bore (or within `margin` outside its lining): the
+// tunnel depth there (1 + m from the nearer portal), else 0. ri is the
+// road info at p.
+fn boreDepthAt(p: vec3f, ri: RoadInfo, margin: f32) -> f32 {
+  if (ri.tunnel < 1.0) { return 0.0; }
+  let h = p.y - ri.y;
+  if (abs(ri.d) > boreHalfWidth() + margin || h > tunnelRoof(ri.d) + margin || h < -3.0) {
+    return 0.0;
+  }
+  return ri.tunnel;
+}
+
+fn boreDepth(p: vec3f, margin: f32) -> f32 {
+  if (!nearTunnel(p)) { return 0.0; }
+  return boreDepthAt(p, roadInfo(p.xz), margin);
 }
 
 // Full terrain height at a local-space xz position.
@@ -154,5 +202,5 @@ fn terrainHeightLocal(p: vec2f) -> f32 {
   let wx = p.x + F.misc.x;
   let wz = p.y + F.misc.y;
   let n = naturalHeight(wx, wz, ri.d);
-  return roadBlend(n, ri.d, ri.y, ri.bridge);
+  return roadBlend(n, ri.d, ri.y, ri.bridge, ri.tunnel);
 }

@@ -190,8 +190,69 @@ struct Surface {
   sss: f32,      // thin-foliage transmission
 };
 
+// ---- Tunnels ----
+// Inside a bore the sky (sun, ambient, reflections) fades out with the
+// distance from the portal (CPU twin: Road.skyVisibility), and two rows of
+// lamps along the vault light it instead.
+const TUNNEL_SKY_FALLOFF = 8.0;
+const TUNNEL_LAMP_SPACING = 6.0;
+const TUNNEL_LAMP_COLOR = vec3f(1.0, 0.68, 0.36); // sodium
+// Lamp rows at this fraction of the bore half width (tunnel.wgsl twin).
+const TUNNEL_LAMP_D = 0.62;
+
+fn tunnelSkyVisFor(depth: f32) -> f32 {
+  return select(1.0, exp(-(depth - 1.0) / TUNNEL_SKY_FALLOFF), depth >= 1.0);
+}
+
+fn tunnelSkyVis(p: vec3f) -> f32 {
+  return tunnelSkyVisFor(boreDepth(p, 0.5));
+}
+
+// Direct light from a source of radiance `rad` in direction l (unit).
+fn directLight(s: Surface, v: vec3f, l: vec3f, rad: vec3f) -> vec3f {
+  let nl = saturate(dot(s.n, l));
+  if (nl <= 0.0) { return vec3f(0.0); }
+  let h = normalize(v + l);
+  let a = max(s.rough * s.rough, 0.02);
+  let f0 = mix(vec3f(0.04 * s.spec), s.albedo, s.metal);
+  let fr = F_Schlick(f0, saturate(dot(v, h)));
+  let spec = D_GGX(saturate(dot(s.n, h)), a) * V_SmithGGX(max(dot(s.n, v), 1e-3), nl, a) * fr;
+  return (s.albedo * (1.0 - s.metal) / PI + spec) * rad * nl;
+}
+
+// The three nearest lamps of each row (ri: road info at p).
+fn tunnelLamps(s: Surface, p: vec3f, v: vec3f, ri: RoadInfo) -> vec3f {
+  let dl = boreHalfWidth() * TUNNEL_LAMP_D;
+  let hl = tunnelRoof(dl) - 0.2;
+  let base = round((ri.along + F.misc.y) / TUNNEL_LAMP_SPACING);
+  let I = F.tunnel.z * TUNNEL_LAMP_COLOR;
+  var col = vec3f(0.0);
+  for (var k = -1; k <= 1; k++) {
+    let zl = (base + f32(k)) * TUNNEL_LAMP_SPACING - F.misc.y;
+    let r = roadSample(zl);
+    if (r.w > -1.0) { continue; }
+    let lat = vec3f(cos(r.z), 0.0, -sin(r.z));
+    for (var side = -1.0; side <= 1.0; side += 2.0) {
+      let d = vec3f(r.x, r.y + hl, zl) + lat * dl * side - p;
+      let dist2 = max(dot(d, d), 0.25);
+      col += directLight(s, v, d * inverseSqrt(dist2), I / dist2);
+    }
+  }
+  return col;
+}
+
 fn shadeSurface(s: Surface, worldPos: vec3f, shadowIn: f32) -> vec3f {
   let v = normalize(F.cam.xyz - worldPos);
+  var skyVis = 1.0;
+  var lamps = vec3f(0.0);
+  if (nearTunnel(worldPos)) {
+    let ri = roadInfo(worldPos.xz);
+    let depth = boreDepthAt(worldPos, ri, 0.5);
+    if (depth >= 1.0) {
+      skyVis = tunnelSkyVisFor(depth);
+      lamps = tunnelLamps(s, worldPos, v, ri);
+    }
+  }
   let n = s.n;
   let l = F.sun.xyz;
   let h = normalize(v + l);
@@ -204,7 +265,7 @@ fn shadeSurface(s: Surface, worldPos: vec3f, shadowIn: f32) -> vec3f {
   let diffCol = s.albedo * (1.0 - s.metal);
   let fr = F_Schlick(f0, vh);
   let spec = D_GGX(nh, a) * V_SmithGGX(nv, nl, a) * fr;
-  let sunCol = F.sunColor.rgb * shadowIn;
+  let sunCol = F.sunColor.rgb * shadowIn * skyVis;
   var col = (diffCol / PI * (vec3f(1.0) - fr) + spec) * sunCol * nl;
   // Thin translucency for foliage/grass.
   if (s.sss > 0.0) {
@@ -216,10 +277,10 @@ fn shadeSurface(s: Surface, worldPos: vec3f, shadowIn: f32) -> vec3f {
   // own either; only its metallic part reflects.
   let graze = select(1.0, s.metal, s.spec <= 0.0);
   let fAmb = f0 + (max(vec3f(1.0 - s.rough), f0) - f0) * pow(1.0 - nv, 5.0) * graze;
-  col += diffCol * shIrradiance(n) * s.ao;
+  col += diffCol * shIrradiance(n) * s.ao * skyVis;
   let r = reflect(-v, n);
-  col += envSpecular(r, s.rough, n) * fAmb * s.ao * (1.0 - s.rough * 0.7);
-  col += localLights(s, worldPos, v);
+  col += envSpecular(r, s.rough, n) * fAmb * s.ao * (1.0 - s.rough * 0.7) * skyVis;
+  col += localLights(s, worldPos, v) + lamps;
   return col;
 }
 
@@ -269,11 +330,19 @@ fn localLights(s: Surface, worldPos: vec3f, v: vec3f) -> vec3f {
   return col;
 }
 
+// How much of the sky-lit haze lies in front of a point: from inside a
+// tunnel little, unless the point is out in daylight (or near the portal).
+fn hazeVis(worldPos: vec3f) -> f32 {
+  if (F.tunnel.y >= 1.0) { return 1.0; }
+  return max(F.tunnel.y, tunnelSkyVis(worldPos));
+}
+
 // Final composition of a lit surface: aerial perspective + height fog.
 fn finishColor(col: vec3f, worldPos: vec3f) -> vec3f {
   let ap = aerialPerspective(worldPos);
-  let c = col * ap.a + ap.rgb;
-  return applyVolumetric(worldPos, applyFog(worldPos, c));
+  let k = hazeVis(worldPos);
+  let c = col * ap.a + ap.rgb * k;
+  return mix(c, applyVolumetric(worldPos, applyFog(worldPos, c)), k);
 }
 
 // Motion vector (current - previous, in UV units) for a world position.

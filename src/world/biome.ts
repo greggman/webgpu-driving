@@ -52,6 +52,8 @@ export interface RoadStyle {
   maxHeading: number; // radians
   wiggle: number; // 0..1 how twisty
   smoothing: number; // elevation smoothing half-window (m)
+  // Tunnels where the hills stand this many m above the road (0 = none).
+  tunnelCover: number;
   centerLine: 'double-yellow' | 'dashed-yellow' | 'dashed-white' | 'none';
   edgeLine: boolean;
   fence: 'none' | 'wood' | 'split-rail' | 'barbed' | 'guardrail';
@@ -172,6 +174,7 @@ const baseRoad: RoadStyle = {
   maxHeading: 0.9,
   wiggle: 0.6,
   smoothing: 70,
+  tunnelCover: 0,
   centerLine: 'double-yellow',
   edgeLine: true,
   fence: 'none',
@@ -493,6 +496,7 @@ export const BIOMES: Record<BiomeId, Biome> = {
       smoothing: 90,
       fence: 'guardrail',
       cruise: 20,
+      tunnelCover: 22,
     },
     palette: {
       ...basePalette,
@@ -544,7 +548,14 @@ export const BIOMES: Record<BiomeId, Biome> = {
       valleyDepth: 30,
       valleyWidth: 260,
     },
-    road: {...baseRoad, flowers: 1, maxHeading: 0.8, wiggle: 0.7, cruise: 18},
+    road: {
+      ...baseRoad,
+      flowers: 1,
+      maxHeading: 0.8,
+      wiggle: 0.7,
+      cruise: 18,
+      tunnelCover: 12,
+    },
     palette: {
       ...basePalette,
       grassA: [0.1, 0.24, 0.05],

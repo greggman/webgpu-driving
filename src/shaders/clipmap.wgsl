@@ -17,7 +17,7 @@ fn heights(@builtin(global_invocation_id) id: vec3u) {
   let p = c.xy + vec2f(id.xy) * c.z;
   let ri = roadInfo(p);
   let n = naturalHeight(p.x + F.misc.x, p.y + F.misc.y, ri.d);
-  let h = roadBlend(n, ri.d, ri.y, ri.bridge);
+  let h = roadBlend(n, ri.d, ri.y, ri.bridge, ri.tunnel);
   textureStore(heightTmp, id.xy, vec4f(h, ri.d, 0.0, 0.0));
 }
 
@@ -47,5 +47,5 @@ fn probeHeight() {
   let p = probe[0].xy;
   let ri = roadInfo(p);
   let n = naturalHeight(p.x + F.misc.x, p.y + F.misc.y, ri.d);
-  probe[1] = vec4f(roadBlend(n, ri.d, ri.y, ri.bridge), ri.d, ri.y, n);
+  probe[1] = vec4f(roadBlend(n, ri.d, ri.y, ri.bridge, ri.tunnel), ri.d, ri.y, n);
 }

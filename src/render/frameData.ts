@@ -35,6 +35,8 @@ const FRAME_FIELDS: Array<[string, number]> = [
   ['post', 4],
   ['weather2', 4],
   ['glass', 4],
+  ['tunnel', 4],
+  ['tunnels', 16],
 ];
 
 export type FrameField =
@@ -70,7 +72,9 @@ export type FrameField =
   | 'volume'
   | 'post'
   | 'weather2'
-  | 'glass';
+  | 'glass'
+  | 'tunnel'
+  | 'tunnels';
 
 const OFFSETS = new Map<string, number>();
 let total = 0;

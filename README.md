@@ -148,6 +148,9 @@ every push to `main`.
 - The elevation is a grade-limited, twice box-filtered copy of the terrain along the
   centerline.
 - Bridges appear where the ground falls well below the deck.
+- Tunnels (Big Sur, Forest) bore through where the hills stand well above the road. The
+  terrain keeps the hill and cuts the bore out of it, a swept lining and portal headwalls
+  close it, and inside it the sky's light fades out for a row of sodium lamps.
 
 **Streaming along the road.** Content only exists in a 1D window along the road:
 - road chunks: 400 m behind, 4.2 km ahead;
