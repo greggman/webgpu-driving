@@ -49,7 +49,7 @@ heat), so single runs mislead. Pin the world and A/B within one page:
 `debug=` flags (comma separated): `noterrain`, `nograss`, `nolod0`/`1`/`2` (tree LODs;
 2 = impostors), `novegshadow` (all) or `novegshadow0`..`3` (per cascade),
 `fastleafshadow`, `noprepass`, `nodof`, `nomb`, `novol`, `nodetail`, `norock`,
-`nomirror`, `probe`, `allbore` (all terrain with the tunnel-bore discard).
+`nomirror`, `probe`, `allbore` (all terrain with the tunnel-bore discard), `fullao` (SSAO at full resolution).
 
 ## Performance findings so far
 
@@ -73,7 +73,9 @@ counts in full.
   discard), sorted near to far; at 1440p terrain 1.2-1.6 ms -> 0.4-0.7 ms.
 - Impostors (`nolod2`) cost only ~0.1 ms in forest, so an impostor pre-pass isn't
   worth it here either.
-- Still open: SSAO is 1.5-2 ms at 1440p (full resolution, 40 depth taps per pixel); SSR
+- SSAO runs at half resolution (`fsHalf`, rg16float AO + distance) with a depth-aware
+  upsample (`fsUp`): 1.1-1.3 ms saved at 1440p, screenshots within noise of `fullao`.
+- Still open: SSR
   2.4 ms in snow at 1440p; forest cascades 0/1 (~2.5 ms each).
 
 ### Apple M1 (Metal)

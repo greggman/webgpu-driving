@@ -1484,6 +1484,7 @@ export class Renderer {
 
     this.encodeHzb(enc);
     this.post.aoEnabled = this.graphics.ssao;
+    this.post.aoHalfRes = !DEBUG.has('fullao');
     this.post.ssrEnabled =
       biome.weather.wetness > 0 || (biome.weather.rain ?? 0) > 0 || biome.ocean;
     this.vegetation.grassEnabled = this.graphics.grass;

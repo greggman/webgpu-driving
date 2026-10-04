@@ -37,6 +37,13 @@ export class Post {
   private bloomMips: GPUTexture[] = [];
   private sampler: GPUSampler;
   private aoPipe!: GPURenderPipeline;
+  private aoHalfPipe!: GPURenderPipeline;
+  private aoUpPipe!: GPURenderPipeline;
+  private aoHalf!: GPUTexture;
+  private aoHalfBG!: GPUBindGroup;
+  private aoUpBG!: GPUBindGroup;
+  // SSAO at half resolution, upsampled (false: full resolution).
+  aoHalfRes = true;
   private ssrPipe!: GPURenderPipeline;
   private ssrCompPipe!: GPURenderPipeline;
   private ssrBG!: GPUBindGroup;
@@ -108,10 +115,21 @@ export class Post {
         assign,
       );
     const bloomMod = mod(bloomSrc, 'bloom');
-    mk('ssao', mod(aoSrc, 'ssao'), 'fs', HDR_FORMAT, p => (this.aoPipe = p), {
+    const aoMod = mod(aoSrc, 'ssao');
+    const multiply: GPUBlendState = {
       color: {srcFactor: 'dst', dstFactor: 'zero', operation: 'add'},
       alpha: {srcFactor: 'zero', dstFactor: 'one', operation: 'add'},
-    });
+    };
+    mk('ssao', aoMod, 'fs', HDR_FORMAT, p => (this.aoPipe = p), multiply);
+    mk('ssao-half', aoMod, 'fsHalf', 'rg16float', p => (this.aoHalfPipe = p));
+    mk(
+      'ssao-up',
+      aoMod,
+      'fsUp',
+      HDR_FORMAT,
+      p => (this.aoUpPipe = p),
+      multiply,
+    );
     mk('taa', mod(taaSrc, 'taa'), 'fs', HDR_FORMAT, p => (this.taaPipe = p));
     const ssrMod = mod(ssrSrc, 'ssr');
     mk('ssr', ssrMod, 'fs', HDR_FORMAT, p => (this.ssrPipe = p));
@@ -193,6 +211,7 @@ export class Post {
     const {width, height} = this.targets;
     for (const t of [...this.history, ...this.bloomMips]) t.destroy();
     this.postA?.destroy();
+    this.aoHalf?.destroy();
     this.postB?.destroy();
     const hdr = (label: string, w = width, h = height) =>
       d.createTexture({
@@ -205,6 +224,13 @@ export class Post {
     this.history = [hdr('taa-history-0'), hdr('taa-history-1')];
     this.postA = hdr('post-motion-blur');
     this.postB = hdr('post-dof');
+    this.aoHalf = d.createTexture({
+      label: 'ssao-half',
+      size: [Math.ceil(width / 2), Math.ceil(height / 2)],
+      format: 'rg16float',
+      usage:
+        GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    });
     this.bloomMips = [];
     let w = width,
       h = height;
@@ -225,6 +251,16 @@ export class Post {
       fb,
       {binding: 1, resource: t.depth.createView()},
       {binding: 2, resource: t.normal.createView()},
+    ]);
+    this.aoHalfBG = bg('ssao-half-bg', this.aoHalfPipe, [
+      fb,
+      {binding: 1, resource: t.depth.createView()},
+      {binding: 2, resource: t.normal.createView()},
+    ]);
+    this.aoUpBG = bg('ssao-up-bg', this.aoUpPipe, [
+      fb,
+      {binding: 1, resource: t.depth.createView()},
+      {binding: 3, resource: this.aoHalf.createView()},
     ]);
     this.ssrBG = bg('ssr-bg', this.ssrPipe, [
       fb,
@@ -383,7 +419,16 @@ export class Post {
       p.draw(3);
       p.end();
     };
-    if (this.aoEnabled) {
+    if (this.aoEnabled && this.aoHalfRes) {
+      pass('ssao', this.aoHalf.createView(), this.aoHalfPipe, this.aoHalfBG);
+      pass(
+        'ssao',
+        this.targets.color.createView(),
+        this.aoUpPipe,
+        this.aoUpBG,
+        'load',
+      );
+    } else if (this.aoEnabled) {
       pass(
         'ssao',
         this.targets.color.createView(),
