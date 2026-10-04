@@ -3,14 +3,18 @@
 // each variant's median GPU span. GPU timing here drifts by a millisecond or
 // more between runs (clocks, heat), which interleaving cancels out.
 //   node test/ab.js 'biome=forest&seed=1&s=600&freeze=1' base noprepass ...
+//     [--size WxH]
 // (`base` = no debug flags; build first with `npm run build`.)
 import puppeteer from 'puppeteer';
 import {startServer} from './server.js';
-const [params, ...variants] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const si = args.indexOf('--size');
+const [W, H] = (si >= 0 ? args.splice(si, 2)[1] : '1280x720').split('x').map(Number);
+const [params, ...variants] = args;
 const server = await startServer(8127);
 const browser = await puppeteer.launch({headless: true});
 const page = await browser.newPage();
-await page.setViewport({width: 1280, height: 720});
+await page.setViewport({width: W, height: H});
 await page.goto(`http://localhost:8127/?hud=0&${params}`);
 await new Promise(r => setTimeout(r, 6000));
 const res = Object.fromEntries(variants.map(v => [v, []]));

@@ -124,11 +124,16 @@ fn fieldCell(p: vec2f) -> Field {
   return f;
 }
 
+// False for the nodes away from tunnels: without the discard below the GPU
+// can depth-test terrain fragments before shading them (a discard anywhere in
+// the shader turns that off on many GPUs, and this shader is expensive).
+override TERRAIN_BORE: bool = true;
+
 @fragment
 fn fs(in: VOut) -> GBufferOut {
   let wp = in.world;
   // The bore through the hill (the tunnel lining draws its inside).
-  if (boreDepth(wp, 0.3) >= 1.0) { discard; }
+  if (TERRAIN_BORE && boreDepth(wp, 0.3) >= 1.0) { discard; }
   let dist = in.viewDist;
   let minL = clamp(i32(floor(log2(max(dist * 0.004, 0.5) / 0.5))), 0, CLIP_LEVELS - 1);
   let g = clipSample(wp.xz, minL);

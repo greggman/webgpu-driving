@@ -16,7 +16,8 @@ struct Blade {
   height: f32,
   width: f32,
   rot: f32,
-  bend: f32,
+  // pack4x8unorm(bend, base-colour mix weights (see grassMix), 0)
+  bendMix: u32,
   kindTint: f32, // kind * 10 + tint
 };
 
@@ -170,7 +171,7 @@ fn spawn(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) li: 
         b.width = (0.012 + 0.012 * rand01(pcg(h0 + 19u))) * widen * grow;
     if (plant) { b.width = height * 0.28 * grow; } // billboard half width
     b.rot = rand01(pcg(h0 + 20u)) * 6.2831;
-    b.bend = bend;
+    b.bendMix = pack4x8unorm(vec4f(bend, grassMix(world), 0.0));
     b.kindTint = kind * 10.0 + tint;
     // Geometry LOD switches per blade somewhere in 26-36 m (spread out).
     if (dist < 26.0 + 10.0 * rand01(pcg(h0 + 21u))) {
@@ -183,6 +184,14 @@ fn spawn(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) li: 
   }
 }
 
+// Mix weights of the base colour (it matches the terrain's grass): computed
+// once per blade here rather than per fragment (it varies over tens of m).
+fn grassMix(world2: vec2f) -> vec2f {
+  let macroN = fbm2(world2 * 0.0025, 4);
+  let mid = fbm2(world2 * 0.03, 4);
+  return vec2f(saturate(macroN * 1.8 - 0.4), saturate(mid * 2.2 - 1.1) * 0.6);
+}
+
 // ---- Draw ----
 @group(1) @binding(0) var<storage, read> blades: array<Blade>;
 
@@ -193,6 +202,7 @@ struct GOut {
   @location(2) t: f32,
   @location(3) @interpolate(flat) kindTint: f32,
   @location(4) side: f32,
+  @location(5) @interpolate(flat) colMix: vec2f,
 };
 
 // Flowering plant: a camera-facing billboard in rows (t = 0 .. 1), the
@@ -219,6 +229,8 @@ fn plantVertex(b: Blade, vi: u32, segments: u32) -> GOut {
 
 fn bladeVertex(b: Blade, vi: u32, segments: u32) -> GOut {
   if (floor(b.kindTint / 10.0) == 5.0) { return plantVertex(b, vi, segments); }
+  let bm = unpack4x8unorm(b.bendMix);
+  let bend = bm.x;
   let tipIdx = segments * 2u;
   var t: f32;
   var side: f32;
@@ -234,18 +246,19 @@ fn bladeVertex(b: Blade, vi: u32, segments: u32) -> GOut {
   let kind = floor(b.kindTint / 10.0);
   var w = b.width * (1.0 - t * 0.85);
   if (kind == 2.0) { w *= 0.7; }
-  var p = b.pos + vec3f(0.0, t * b.height, 0.0) + facing * (b.bend * t * t * b.height) + across * side * w;
+  var p = b.pos + vec3f(0.0, t * b.height, 0.0) + facing * (bend * t * t * b.height) + across * side * w;
   let wind = windOffset(p, t * t * 1.6, fract(b.rot)) ;
   p += wind * b.height;
   var o: GOut;
   o.world = p;
   o.pos = F.viewProj * vec4f(p, 1.0);
   // Normal: blade facing, rounded across, blended toward up.
-  let bn = normalize(facing + across * side * 0.6 - vec3f(0.0, b.bend * t, 0.0));
+  let bn = normalize(facing + across * side * 0.6 - vec3f(0.0, bend * t, 0.0));
   o.normal = normalize(mix(bn, vec3f(0.0, 1.0, 0.0), 0.55));
   o.t = t;
   o.kindTint = b.kindTint;
   o.side = side;
+  o.colMix = bm.yz;
   return o;
 }
 
@@ -333,12 +346,9 @@ fn fs(in: GOut, @builtin(front_facing) ff: bool) -> GBufferOut {
     c = finishColor(c, in.world);
     return gbuffer(c, in.world, in.world, s.n, 0.6);
   }
-  let world2 = in.world.xz + F.misc.xy;
   // Base color matches the terrain's grass.
-  let macroN = fbm2(world2 * 0.0025, 4);
-  let mid = fbm2(world2 * 0.03, 4);
-  var col = mix(pal(0), pal(1), saturate(macroN * 1.8 - 0.4));
-  col = mix(col, pal(2), saturate(mid * 2.2 - 1.1) * 0.6);
+  var col = mix(pal(0), pal(1), in.colMix.x);
+  col = mix(col, pal(2), in.colMix.y);
   col *= 0.75 + 0.5 * tv;
   // Lighter, drier tips.
   col = mix(col * 0.35, mix(col, pal(2), 0.2) * 1.1, smoothstep(0.0, 0.9, in.t));

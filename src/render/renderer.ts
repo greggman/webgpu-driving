@@ -101,9 +101,21 @@ export function isMobileDevice(): boolean {
     return false;
   }
 }
-export const DEBUG = new Set(
-  (new URLSearchParams(location.search).get('debug') ?? '').split(','),
-);
+// `debug` URL flags, re-read when the URL changes (test/ab.js switches them
+// in a running page).
+let debugSearch: string | null = null;
+let debugFlags = new Set<string>();
+export const DEBUG = {
+  has(flag: string): boolean {
+    if (location.search !== debugSearch) {
+      debugSearch = location.search;
+      debugFlags = new Set(
+        (new URLSearchParams(debugSearch).get('debug') ?? '').split(','),
+      );
+    }
+    return debugFlags.has(flag);
+  },
+};
 const MAX_LIGHTS = 64;
 // Intensity of each tunnel lamp (tunnelLamps in lighting.wgsl).
 const TUNNEL_LAMP = 3;
@@ -765,6 +777,13 @@ export class Renderer {
       );
     });
     this.frame.set('tunnels', data);
+    this.terrain.setBores(
+      list.map((_, i) => {
+        const z0 = data[i * 4],
+          z1 = data[i * 4 + 1];
+        return [Math.min(z0, z1), Math.max(z0, z1)];
+      }),
+    );
     this.frame.set('tunnel', [
       list.length,
       road.skyVisibility(eye[0], eye[1], eye[2]),
@@ -1430,7 +1449,7 @@ export class Renderer {
     this.props.draw(main);
     main.setBindGroup(2, this.emptyBG);
     this.vegetation.draw(main, this.emptyBG);
-    if (!DEBUG.has('noterrain')) this.terrain.draw(main);
+    if (!DEBUG.has('noterrain')) this.terrain.draw(main, DEBUG.has('allbore'));
     this.water?.draw(main);
     main.setPipeline(this.atmosphere.skyDrawPipe);
     main.draw(3);

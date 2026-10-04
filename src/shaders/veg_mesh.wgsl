@@ -24,8 +24,10 @@ struct VOut {
   @location(2) uv: vec2f,
   @location(3) local: vec3f,
   @location(4) @interpolate(flat) mat: u32,
-  @location(5) @interpolate(flat) inst: u32,
-  @location(6) @interpolate(flat) cardRand: f32,
+  // Per-instance values as flat varyings rather than an `insts` load in
+  // every fragment (leaf cards are many layers deep): fade, card erosion,
+  // tint, crown height.
+  @location(5) @interpolate(flat) inst: vec4f,
 };
 
 fn instWorld(v: VIn, inst: Inst) -> vec3f {
@@ -50,8 +52,8 @@ fn vs(v: VIn, @builtin(instance_index) ii: u32) -> VOut {
   o.uv = v.uv;
   o.local = v.pos;
   o.mat = u32(v.mat + 0.5);
-  o.inst = idx;
-  o.cardRand = cardRand(v.wind);
+  o.inst = vec4f(inst.fade, cardErode(cardRand(v.wind), instMorph(inst.mesh)),
+    inst.tint, meshes[instMesh(inst.mesh)].height);
   return o;
 }
 
@@ -61,21 +63,19 @@ fn isCard(mat: u32) -> bool {
 
 // Leaf card cutout at this fragment: (alpha, per-leaf shade); opaque parts
 // (1, 1).
-fn cutout(in: VOut, inst: Inst, duv: vec2f) -> vec2f {
+fn cutout(in: VOut, duv: vec2f) -> vec2f {
   if (!isCard(in.mat)) { return vec2f(1.0); }
-  return leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv,
-    cardErode(in.cardRand, instMorph(inst.mesh)));
+  return leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv, in.inst.y);
 }
 
 // Single pass: alpha test and shade (the rear-view mirror).
 @fragment
 fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   let duv = fwidth(in.uv);
-  let inst = insts[in.inst];
-  if (fadeDiscard(inst.fade, in.pos.xy)) { discard; }
-  let la = cutout(in, inst, duv);
+  if (fadeDiscard(in.inst.x, in.pos.xy)) { discard; }
+  let la = cutout(in, duv);
   if (la.x < 0.5) { discard; }
-  return shadeVeg(in, ff, inst, la.y);
+  return shadeVeg(in, ff, la.y);
 }
 
 // Depth pre-pass: only the alpha test (color writes are masked off). The
@@ -85,9 +85,8 @@ fn fs(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
 @fragment
 fn fsPrepass(in: VOut) -> GBufferOut {
   let duv = fwidth(in.uv);
-  let inst = insts[in.inst];
-  if (fadeDiscard(inst.fade, in.pos.xy)) { discard; }
-  if (cutout(in, inst, duv).x < 0.5) { discard; }
+  if (fadeDiscard(in.inst.x, in.pos.xy)) { discard; }
+  if (cutout(in, duv).x < 0.5) { discard; }
   return GBufferOut();
 }
 
@@ -95,13 +94,12 @@ fn fsPrepass(in: VOut) -> GBufferOut {
 @fragment
 fn fsShade(in: VOut, @builtin(front_facing) ff: bool) -> GBufferOut {
   let duv = fwidth(in.uv);
-  let inst = insts[in.inst];
-  return shadeVeg(in, ff, inst, cutout(in, inst, duv).y);
+  return shadeVeg(in, ff, cutout(in, duv).y);
 }
 
-fn shadeVeg(in: VOut, ff: bool, inst: Inst, leafShade: f32) -> GBufferOut {
+fn shadeVeg(in: VOut, ff: bool, leafShade: f32) -> GBufferOut {
   let card = isCard(in.mat);
-  var m = vegMaterial(in.mat, in.uv, inst.tint, in.local);
+  var m = vegMaterial(in.mat, in.uv, in.inst.z, in.local);
   m.albedo *= leafShade;
   var n = normalize(in.normal);
   if (!card && !ff) { n = -n; }
@@ -111,13 +109,13 @@ fn shadeVeg(in: VOut, ff: bool, inst: Inst, leafShade: f32) -> GBufferOut {
   s.rough = m.rough;
   s.metal = 0.0;
   // Crown self-occlusion: darker toward the inside/bottom of the crown.
-  let mi = meshes[instMesh(inst.mesh)];
+  let height = in.inst.w;
   var ao = 1.0;
   if (card) {
-    let h = saturate(in.local.y / max(mi.height, 0.1));
+    let h = saturate(in.local.y / max(height, 0.1));
     ao = mix(0.45, 1.0, h);
   } else if (in.mat != 3u && in.mat != 4u) {
-    ao = mix(0.5, 1.0, saturate(in.local.y / max(mi.height * 0.5, 0.1)));
+    ao = mix(0.5, 1.0, saturate(in.local.y / max(height * 0.5, 0.1)));
   }
   s.ao = ao;
   s.spec = m.spec;
@@ -135,13 +133,15 @@ fn shadeVeg(in: VOut, ff: bool, inst: Inst, leafShade: f32) -> GBufferOut {
 }
 
 // ---- Shadows ----
+// (Per-instance values come in as flat varyings: the fragment shader runs
+// for every leaf-card layer, and a storage load per fragment adds up.)
 struct SOut {
   @builtin(position) pos: vec4f,
   @location(0) uv: vec2f,
   @location(1) @interpolate(flat) mat: u32,
-  @location(2) @interpolate(flat) inst: u32,
+  @location(2) @interpolate(flat) fade: f32,
   @location(3) local: vec3f,
-  @location(4) @interpolate(flat) cardRand: f32,
+  @location(4) @interpolate(flat) erode: f32,
 };
 
 @vertex
@@ -152,21 +152,19 @@ fn vsShadow(v: VIn, @builtin(instance_index) ii: u32) -> SOut {
   o.pos = shadowVP * vec4f(instWorld(v, inst), 1.0);
   o.uv = v.uv;
   o.mat = u32(v.mat + 0.5);
-  o.inst = idx;
+  o.fade = inst.fade;
   o.local = v.pos;
-  o.cardRand = cardRand(v.wind);
+  o.erode = cardErode(cardRand(v.wind), instMorph(inst.mesh));
   return o;
 }
 
 @fragment
 fn fsShadow(in: SOut) {
   let duv = fwidth(in.uv);
-  let inst = insts[in.inst];
   // Same complementary dither as the main view: one caster while fading.
-  if (fadeDiscard(inst.fade, in.pos.xy)) { discard; }
+  if (fadeDiscard(in.fade, in.pos.xy)) { discard; }
   if (isCard(in.mat)) {
-    let a = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv,
-      cardErode(in.cardRand, instMorph(inst.mesh)));
+    let a = leafAlpha(in.uv, in.mat, fract(in.local.x * 3.1 + in.local.z * 1.7), duv, in.erode);
     if (a.x < 0.5) { discard; }
   }
 }

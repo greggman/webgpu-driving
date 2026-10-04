@@ -31,6 +31,7 @@ export class TerrainRenderer {
   private nodeBuf: GPUBuffer;
   private shadowNodeBuf: GPUBuffer;
   private nodeData = new Float32Array(MAX_NODES * 4);
+  private sortedNodeData = new Float32Array(MAX_NODES * 4);
   private shadowNodeData = new Float32Array(MAX_NODES * 4);
   nodeCount = 0;
   shadowNodeCount = 0;
@@ -38,7 +39,12 @@ export class TerrainRenderer {
   private indexCount: number;
   pipeline!: GPURenderPipeline;
   shadowPipeline!: GPURenderPipeline;
+  // Main view without the tunnel-bore discard (nodes away from tunnels).
+  private plainPipeline!: GPURenderPipeline;
   private nodeBG!: GPUBindGroup;
+  // Main-view nodes from this index on overlap a tunnel (setBores).
+  private boreStart = 0;
+  private bores: Array<[number, number]> = [];
   private shadowNodeBG!: GPUBindGroup;
 
   // World-space (f64) min corner of each level; NaN = needs full rebuild.
@@ -220,29 +226,37 @@ export class TerrainRenderer {
       RENDER_PRELUDE + '\n' + drawSrc,
       'terrain-draw',
     );
-    deferRenderPipeline(
-      d,
-      {
-        label: 'terrain',
-        layout: d.createPipelineLayout({
-          label: 'terrain-layout',
-          bindGroupLayouts: [frameLayout, nodeLayout],
-        }),
-        vertex: {module, entryPoint: 'vs'},
-        fragment: {module, entryPoint: 'fs', targets: GBUFFER_TARGETS},
-        primitive: {
-          topology: 'triangle-list',
-          cullMode: 'back',
-          frontFace: 'ccw',
+    const layout = d.createPipelineLayout({
+      label: 'terrain-layout',
+      bindGroupLayouts: [frameLayout, nodeLayout],
+    });
+    for (const bore of [true, false]) {
+      deferRenderPipeline(
+        d,
+        {
+          label: bore ? 'terrain' : 'terrain-no-bore',
+          layout,
+          vertex: {module, entryPoint: 'vs'},
+          fragment: {
+            module,
+            entryPoint: 'fs',
+            targets: GBUFFER_TARGETS,
+            constants: {TERRAIN_BORE: bore ? 1 : 0},
+          },
+          primitive: {
+            topology: 'triangle-list',
+            cullMode: 'back',
+            frontFace: 'ccw',
+          },
+          depthStencil: {
+            format: DEPTH_FORMAT,
+            depthWriteEnabled: true,
+            depthCompare: 'greater',
+          },
         },
-        depthStencil: {
-          format: DEPTH_FORMAT,
-          depthWriteEnabled: true,
-          depthCompare: 'greater',
-        },
-      },
-      p => (this.pipeline = p),
-    );
+        p => (bore ? (this.pipeline = p) : (this.plainPipeline = p)),
+      );
+    }
     deferRenderPipeline(
       d,
       {
@@ -376,6 +390,12 @@ export class TerrainRenderer {
     pass.end();
   }
 
+  // Local z ranges of the tunnels near the camera (see nearTunnel in
+  // terrain.wgsl): terrain nodes overlapping them draw with the bore test.
+  setBores(ranges: Array<[number, number]>) {
+    this.bores = ranges;
+  }
+
   // CDLOD quadtree selection around the camera (local coords).
   select(camLocal: [number, number, number], planes: Float32Array | null) {
     const ranges: number[] = [];
@@ -458,20 +478,46 @@ export class TerrainRenderer {
       }
     }
     if (planes) {
+      // Near to far (so early depth testing rejects terrain behind hills),
+      // nodes overlapping a tunnel last.
+      const keys: Array<[number, number]> = [];
+      for (let i = 0; i < count; ++i) {
+        const x = out[i * 4],
+          z = out[i * 4 + 1],
+          size = out[i * 4 + 2];
+        const bore = this.bores.some(
+          ([z0, z1]) => z + size > z0 - 4 && z < z1 + 4,
+        );
+        keys.push([distTo(x, z, size) + (bore ? 1e9 : 0), i]);
+      }
+      keys.sort((a, b) => a[0] - b[0]);
+      const sorted = this.sortedNodeData;
+      keys.forEach(([, i], j) =>
+        sorted.set(out.subarray(i * 4, i * 4 + 4), j * 4),
+      );
+      const firstBore = keys.findIndex(k => k[0] >= 1e9);
+      this.boreStart = firstBore < 0 ? count : firstBore;
       this.nodeCount = count;
-      this.device.queue.writeBuffer(this.nodeBuf, 0, out, 0, count * 4);
+      this.device.queue.writeBuffer(this.nodeBuf, 0, sorted, 0, count * 4);
     } else {
       this.shadowNodeCount = count;
       this.device.queue.writeBuffer(this.shadowNodeBuf, 0, out, 0, count * 4);
     }
   }
 
-  draw(pass: GPURenderPassEncoder) {
+  draw(pass: GPURenderPassEncoder, allBore = false) {
     if (!this.nodeCount) return;
-    pass.setPipeline(this.pipeline);
+    const split = allBore ? 0 : this.boreStart;
     pass.setBindGroup(1, this.nodeBG);
     pass.setIndexBuffer(this.indexBuf, 'uint16');
-    pass.drawIndexed(this.indexCount, this.nodeCount);
+    if (split > 0) {
+      pass.setPipeline(this.plainPipeline);
+      pass.drawIndexed(this.indexCount, split);
+    }
+    if (split < this.nodeCount) {
+      pass.setPipeline(this.pipeline);
+      pass.drawIndexed(this.indexCount, this.nodeCount - split, 0, 0, split);
+    }
   }
 
   // All around the camera (the shadow selection: no frustum culling), with

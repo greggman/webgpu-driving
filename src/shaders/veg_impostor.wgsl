@@ -14,8 +14,11 @@ struct IOut {
   @builtin(position) pos: vec4f,
   @location(0) quv: vec2f,
   @location(1) world: vec3f,
-  @location(2) @interpolate(flat) inst: u32,
+  // Per-instance values as flat varyings rather than an `insts` load per
+  // fragment: fade, tint, rotation, broadleaf (1) or conifer (0).
+  @location(2) @interpolate(flat) inst: vec4f,
   @location(3) viewObj: vec3f,
+  @location(4) @interpolate(flat) layer: i32,
 };
 
 fn billboard(vi: u32, inst: Inst, eye: vec3f, o: ptr<function, IOut>) -> vec3f {
@@ -34,6 +37,8 @@ fn billboard(vi: u32, inst: Inst, eye: vec3f, o: ptr<function, IOut>) -> vec3f {
   let corner = vec2f(f32(vi & 1u), f32((vi >> 1u) & 1u)) * 2.0 - 1.0;
   (*o).quv = vec2f(corner.x * 0.5 + 0.5, 0.5 - corner.y * 0.5);
   (*o).viewObj = rotY(toEye, -inst.rot);
+  (*o).inst = vec4f(inst.fade, inst.tint, inst.rot, select(0.0, 1.0, mi.kind > 0.5));
+  (*o).layer = i32(instMesh(inst.mesh));
   // Pull the quad toward the viewer so it doesn't clip into terrain.
   return center + (right * corner.x + up * corner.y) * R + dir * R * 0.3;
 }
@@ -46,7 +51,6 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> IOut 
   let w = billboard(vi, inst, F.cam.xyz, &o);
   o.pos = F.viewProj * vec4f(w, 1.0);
   o.world = w;
-  o.inst = idx;
   return o;
 }
 
@@ -91,19 +95,18 @@ fn sampleImpostor(viewObj: vec3f, quv: vec2f, layer: i32) -> ImpSample {
 
 @fragment
 fn fs(in: IOut) -> GBufferOut {
-  let inst = insts[in.inst];
-  if (fadeDiscard(inst.fade, in.pos.xy)) { discard; }
-  let im = sampleImpostor(normalize(in.viewObj), in.quv, i32(instMesh(inst.mesh)));
+  if (fadeDiscard(in.inst.x, in.pos.xy)) { discard; }
+  let im = sampleImpostor(normalize(in.viewObj), in.quv, in.layer);
   if (im.alpha < 0.5) { discard; }
   let a = vec4f(im.albedo, im.alpha);
   let nn = im.normal;
-  let n = normalize(rotY(nn.xyz * 2.0 - 1.0, inst.rot));
-  let t = inst.tint - 0.5;
+  let n = normalize(rotY(nn.xyz * 2.0 - 1.0, in.inst.z));
+  let t = in.inst.y - 0.5;
   var s: Surface;
     s.albedo = a.rgb * (0.85 + 0.4 * t);
   // Broadleaf foliage (baked neutral) gets its autumn colour here.
-  if (meshes[instMesh(inst.mesh)].kind > 0.5 && nn.a > 0.05) {
-    s.albedo = autumnize(s.albedo, inst.tint);
+  if (in.inst.w > 0.5 && nn.a > 0.05) {
+    s.albedo = autumnize(s.albedo, in.inst.y);
   }
   s.n = n;
   s.rough = 0.7;
@@ -131,17 +134,15 @@ fn vsShadow(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
   let w = billboard(vi, inst, far, &o);
   o.pos = shadowVP * vec4f(w, 1.0);
   o.world = w;
-  o.inst = idx;
   return o;
 }
 
 @fragment
 fn fsShadow(in: IOut) {
-  let inst = insts[in.inst];
   let g = hemiOctEncode(normalize(in.viewObj)) * OCT_N - 0.5;
   let cc = clamp(floor(g + 0.5), vec2f(0.0), vec2f(OCT_N - 1.0));
   let uv = (cc + in.quv) / OCT_N;
-  if (fadeDiscard(inst.fade, in.pos.xy)) { discard; }
-  let a = textureSampleLevel(impAlbedo, impSampler, uv, i32(instMesh(inst.mesh)), 0.0);
+  if (fadeDiscard(in.inst.x, in.pos.xy)) { discard; }
+  let a = textureSampleLevel(impAlbedo, impSampler, uv, in.layer, 0.0);
   if (a.a < 0.5) { discard; }
 }

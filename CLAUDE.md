@@ -40,13 +40,43 @@ heat), so single runs mislead. Pin the world and A/B within one page:
   GPU span (`base` = no flags). Build first. Prefer this for any < 2 ms question.
 - Make sure the browser is on the intended GPU (`chrome://gpu`; laptops with switchable
   graphics may use the integrated one, headless Chrome may differ from the desktop one).
+- Loading takes ~7 s (Windows/NVIDIA), so `perf` needs `--secs 12` or more, or it
+  measures the warm-up. Both tools take `--size WxH` (default 1280x720); try 2560x1440
+  too, since full-screen passes scale with it.
+- A pass that doesn't run every frame keeps its last timing: `clipmap` shows 5-25 ms
+  left over from start-up, but one level update costs ~0.1 ms.
 
 `debug=` flags (comma separated): `noterrain`, `nograss`, `nolod0`/`1`/`2` (tree LODs;
 2 = impostors), `novegshadow` (all) or `novegshadow0`..`3` (per cascade),
 `fastleafshadow`, `noprepass`, `nodof`, `nomb`, `novol`, `nodetail`, `norock`,
-`nomirror`, `probe`.
+`nomirror`, `probe`, `allbore` (all terrain with the tunnel-bore discard).
 
 ## Performance findings so far
+
+### NVIDIA RTX 2070 Super (Windows 11, D3D12)
+
+On this GPU a `discard` anywhere in a fragment shader makes the whole draw late-Z: every
+layer is shaded, and early depth tests don't help (sorting tree triangles top-down
+for the shadow pass gained nothing). So per-fragment cost in alpha-tested passes
+counts in full.
+
+- Vegetation shadows were 6.2 ms of a 10.6 ms forest frame (720p); cascades 0 and 1
+  cost ~3 ms each, all fragment work (a 1x1 scissor left ~0.25 ms). Most of that was
+  one `insts[]` storage load per fragment. Per-instance values now reach the fragment
+  stage as flat varyings (`veg_mesh.wgsl`, `veg_impostor.wgsl`): forest 10.6 -> 8.6 ms.
+  Opaque cards in cascades 0/1 would save ~2 ms more but lose the dappled shadows.
+- Tree depth pre-pass: worth ~1.6 ms here (`noprepass` 11.0 vs 9.4), unlike on the M1.
+- Grass computed two 4-octave fbm per fragment for a base colour that changes over tens
+  of metres; now once per blade in the spawn pass (`grassMix`): forest grass
+  1.15 -> 0.67 ms.
+- Terrain: nodes away from tunnels draw with a `TERRAIN_BORE = false` pipeline (no
+  discard), sorted near to far; at 1440p terrain 1.2-1.6 ms -> 0.4-0.7 ms.
+- Impostors (`nolod2`) cost only ~0.1 ms in forest, so an impostor pre-pass isn't
+  worth it here either.
+- Still open: SSAO is 1.5-2 ms at 1440p (full resolution, 40 depth taps per pixel); SSR
+  2.4 ms in snow at 1440p; forest cascades 0/1 (~2.5 ms each).
+
+### Apple M1 (Metal)
 
 All measured on an M1 Mac (Apple tile-based GPU, Metal). A tile-based GPU hides
 overdraw and handles `discard` differently from a discrete immediate-mode GPU (e.g.
@@ -63,11 +93,9 @@ them on other hardware rather than ruling them out.
   reverted (not in git). On a discrete GPU, try it again: an `impostorAlpha` that sums
   the four atlas views' alpha for the pre-pass, and a no-discard shading entry point.
 - Vegetation shadows: turning all of them off saved only ~0.3 ms on the M1 (frozen
-  forest). Far cascades already draw cards without the alpha test (`fastleafshadow`,
-  `OPAQUE_SHADOW_CASCADE`).
+  forest). With "Detailed leaf shadows" off, cascades from `OPAQUE_SHADOW_CASCADE` on
+  draw cards without the alpha test (`fastleafshadow`).
 - Terrain fragments `discard` inside tunnel bores (`terrain_draw.wgsl`); costless on the
-  M1 but it can disable early depth on other GPUs. If terrain looks expensive
-  elsewhere, check this first (it could become a separate pipeline used only while a
-  tunnel is near).
+  M1. (Now only for terrain near a tunnel; see the NVIDIA notes.)
 - Forest remains the heaviest scene; at ~9 ms on the M1 most of its cost is outside the
   vegetation (post-processing, terrain, main pass).
